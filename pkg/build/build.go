@@ -21,12 +21,10 @@ var (
 func Build(steps []Step, config *Config, opts ...Option) (map[string]StepCache, error) {
 	o := defaultOptions().Apply(opts...)
 
-	// Create new manifest, feed config
 	man := manifest.New()
 	manifest.Set(man, OptionsK, o)
 	manifest.Set(man, ConfigK, config)
 
-	// Create cache
 	cache := make(map[string]StepCache)
 
 	for len(steps) > 0 {

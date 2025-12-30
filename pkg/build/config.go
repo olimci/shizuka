@@ -187,7 +187,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("site.url must start with http:// or https:// (got %q)", c.Site.URL)
 	}
 
-	// Defaults for RSS/sitemap output paths if targets are enabled but paths omitted.
 	if c.Build.Targets.RSS.Enable && strings.TrimSpace(c.Build.Targets.RSS.Path) == "" {
 		c.Build.Targets.RSS.Path = "rss.xml"
 	}
