@@ -18,19 +18,17 @@ var (
 	ErrBuildFailed          = fmt.Errorf("build failed")
 )
 
-func Build(steps []Step, config *Config, opts ...Option) (map[string]StepCache, error) {
+func Build(steps []Step, config *Config, opts ...Option) error {
 	o := defaultOptions().Apply(opts...)
 
 	man := manifest.New()
-	manifest.Set(man, OptionsK, o)
-	manifest.Set(man, ConfigK, config)
-
-	cache := make(map[string]StepCache)
+	man.Set(string(OptionsK), o)
+	man.Set(string(ConfigK), config)
 
 	for len(steps) > 0 {
 		dag, err := newDAG(steps)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		var ready []string
@@ -40,7 +38,7 @@ func Build(steps []Step, config *Config, opts ...Option) (map[string]StepCache, 
 			}
 		}
 		if len(ready) == 0 {
-			return nil, ErrCircularDependency
+			return ErrCircularDependency
 		}
 
 		g, ctx := errgroup.WithContext(o.context)
@@ -64,23 +62,14 @@ func Build(steps []Step, config *Config, opts ...Option) (map[string]StepCache, 
 				default:
 				}
 
-				surface := man.MakeSurface()
-
 				sc := StepContext{
-					Ctx:     ctx,
-					Surface: surface,
-					Options: o,
+					Ctx:      ctx,
+					Manifest: man,
+					Options:  o,
 				}
 
 				if err := step.Func(&sc); err != nil {
 					return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
-				}
-
-				man.ApplySurface(surface)
-
-				cache[step.ID] = StepCache{
-					surface: surface.AsCache(),
-					defers:  sc.defers,
 				}
 
 				var ready []string
@@ -108,7 +97,7 @@ func Build(steps []Step, config *Config, opts ...Option) (map[string]StepCache, 
 		}
 
 		if err := g.Wait(); err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrBuildFailed, err)
+			return fmt.Errorf("%w: %w", ErrBuildFailed, err)
 		}
 
 		if done != len(steps) {
@@ -118,7 +107,7 @@ func Build(steps []Step, config *Config, opts ...Option) (map[string]StepCache, 
 					stuck = append(stuck, id)
 				}
 			}
-			return nil, fmt.Errorf("%w: %v", ErrCircularDependency, stuck)
+			return fmt.Errorf("%w: %v", ErrCircularDependency, stuck)
 		}
 
 		steps = next
@@ -135,10 +124,10 @@ func Build(steps []Step, config *Config, opts ...Option) (map[string]StepCache, 
 	}
 
 	if err := man.Build(manifestOpts...); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrBuildFailed, err)
+		return fmt.Errorf("%w: %w", ErrBuildFailed, err)
 	}
 
-	return cache, nil
+	return nil
 }
 
 func newDAG(steps []Step) (*dag, error) {

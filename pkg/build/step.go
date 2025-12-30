@@ -9,25 +9,14 @@ import (
 type StepContext struct {
 	Ctx context.Context
 
-	Surface *manifest.Surface
-	Options *Options
+	Manifest *manifest.Manifest
+	Options  *Options
 
-	defers  []Step
-	watches []string
-}
-
-type StepCache struct {
-	surface *manifest.SurfaceCache
-	defers  []Step
-	watches []string
+	defers []Step
 }
 
 func (ctx *StepContext) Defer(step Step) {
 	ctx.defers = append(ctx.defers, step)
-}
-
-func (ctx *StepContext) AddWatch(path string) {
-	ctx.watches = append(ctx.watches, path)
 }
 
 type Step struct {

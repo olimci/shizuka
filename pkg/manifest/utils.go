@@ -7,6 +7,17 @@ import (
 	"github.com/olimci/shizuka/pkg/utils/set"
 )
 
+type K[T any] string
+
+func GetAs[T any](m *Manifest, k K[T]) T {
+	if v, ok := m.Get(string(k)); ok {
+		if vt, ok := v.(T); ok {
+			return vt
+		}
+	}
+	return *new(T)
+}
+
 func isRel(p string) bool {
 	for {
 		if p == ".." {

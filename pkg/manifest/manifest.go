@@ -3,7 +3,6 @@ package manifest
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"sync"
@@ -46,26 +45,11 @@ func (m *Manifest) Get(k string) (any, bool) {
 	return v, ok
 }
 
-func (m *Manifest) MakeSurface() *Surface {
-	m.registryMu.RLock()
-	defer m.registryMu.RUnlock()
-
-	return &Surface{
-		parent:    m,
-		artefacts: make([]Artefact, 0),
-		registry:  make(map[string]any),
-	}
-}
-
-func (m *Manifest) ApplySurface(s *Surface) {
-	m.registryMu.Lock()
-	maps.Copy(m.registry, s.registry)
-	m.registryMu.Unlock()
-
+func (m *Manifest) Emit(a Artefact) {
 	m.artefactsMu.Lock()
 	defer m.artefactsMu.Unlock()
 
-	m.artefacts = append(m.artefacts, s.artefacts...)
+	m.artefacts = append(m.artefacts, a)
 }
 
 func (m *Manifest) Build(opts ...Option) error {

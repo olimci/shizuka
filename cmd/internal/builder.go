@@ -59,7 +59,7 @@ func (b *Builder) Build(ctx context.Context) BuildResult {
 		build.WithMaxWorkers(4),
 	}
 
-	_, err := build.Build(steps, b.config, opts...)
+	err := build.Build(steps, b.config, opts...)
 	duration := time.Since(start)
 
 	return BuildResult{
@@ -82,7 +82,7 @@ func (b *Builder) BuildDev(ctx context.Context) BuildResult {
 		build.WithDev(), // Enable dev mode for faster rebuilds
 	}
 
-	_, err := build.Build(steps, b.config, opts...)
+	err := build.Build(steps, b.config, opts...)
 	duration := time.Since(start)
 
 	return BuildResult{

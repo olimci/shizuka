@@ -29,7 +29,7 @@ const (
 
 func StepStatic() Step {
 	return StepFunc("static", func(sc *StepContext) error {
-		config := manifest.GetUnsafe(sc.Surface, ConfigK)
+		config := manifest.GetAs(sc.Manifest, ConfigK)
 
 		m := newMinifier(config.Build.Transforms.Minify)
 
@@ -41,8 +41,7 @@ func StepStatic() Step {
 		for _, rel := range files.Values() {
 			full := filepath.Join(config.Build.StaticDir, rel)
 			artefact := makeStatic("static", full, rel)
-			sc.Surface.Emit(minifyArtefact(m, rel, artefact))
-			sc.AddWatch(full)
+			sc.Manifest.Emit(minifyArtefact(m, rel, artefact))
 		}
 
 		return nil
@@ -51,9 +50,9 @@ func StepStatic() Step {
 
 func StepContent() Step {
 	build := StepFunc("pages:build", func(sc *StepContext) error {
-		config := manifest.GetUnsafe(sc.Surface, ConfigK)
-		pages := manifest.GetUnsafe(sc.Surface, PagesK)
-		site := manifest.GetUnsafe(sc.Surface, SiteK)
+		config := manifest.GetAs(sc.Manifest, ConfigK)
+		pages := manifest.GetAs(sc.Manifest, PagesK)
+		site := manifest.GetAs(sc.Manifest, SiteK)
 
 		tmpl, err := parseTemplateGlob(config.Build.TemplatesGlob)
 		if err != nil {
@@ -94,15 +93,15 @@ func StepContent() Step {
 			}
 
 			artefact := makeArtefact(page, claim)
-			sc.Surface.Emit(artefact)
+			sc.Manifest.Emit(artefact)
 		}
 
 		return nil
 	}, "pages:resolve")
 
 	resolve := StepFunc("pages:resolve", func(sc *StepContext) error {
-		config := manifest.GetUnsafe(sc.Surface, ConfigK)
-		pages := manifest.GetUnsafe(sc.Surface, PagesK)
+		config := manifest.GetAs(sc.Manifest, ConfigK)
+		pages := manifest.GetAs(sc.Manifest, PagesK)
 
 		site := transforms.Site{
 			Title:       config.Site.Title,
@@ -142,13 +141,13 @@ func StepContent() Step {
 			return 0
 		})
 
-		manifest.Set(sc.Surface, SiteK, site)
+		sc.Manifest.Set(string(SiteK), site)
 
 		return nil
 	})
 
 	return StepFunc("pages:index", func(sc *StepContext) error {
-		config := manifest.GetUnsafe(sc.Surface, ConfigK)
+		config := manifest.GetAs(sc.Manifest, ConfigK)
 
 		md := MakeGoldmark(config.Build.Goldmark)
 
@@ -166,7 +165,7 @@ func StepContent() Step {
 			}
 
 			if filepath.Ext(source) == ".html" {
-				sc.Surface.Emit(makeStatic("pages:index", source, target))
+				sc.Manifest.Emit(makeStatic("pages:index", source, target))
 				continue
 			}
 
@@ -180,7 +179,7 @@ func StepContent() Step {
 			pages[rel] = page
 		}
 
-		manifest.Set(sc.Surface, PagesK, pages)
+		sc.Manifest.Set(string(PagesK), pages)
 
 		sc.Defer(resolve)
 		sc.Defer(build)
