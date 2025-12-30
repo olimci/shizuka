@@ -76,7 +76,7 @@ func StepContent() Step {
 				},
 			}
 
-			return minifyArtefact(m, page.Source, a)
+			return minifyArtefact(m, page.Target, a)
 		}
 
 		for _, page := range pages {

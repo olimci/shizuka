@@ -20,12 +20,7 @@ func newMinifier(enabled bool) *minify.M {
 
 	m := minify.New()
 
-	m.Add("text/html", &minhtml.Minifier{
-		KeepEndTags:         true,
-		KeepDocumentTags:    true,
-		KeepSpecialComments: true,
-	})
-
+	m.AddFunc("text/html", minhtml.Minify)
 	m.AddFunc("text/css", mincss.Minify)
 	m.AddFunc("application/javascript", minjs.Minify)
 
@@ -52,7 +47,7 @@ func makeStatic(owner, source, target string) manifest.Artefact {
 	}
 }
 
-func minifyArtefact(m *minify.M, rel string, artefact manifest.Artefact) manifest.Artefact {
+func minifyArtefact(m *minify.M, target string, artefact manifest.Artefact) manifest.Artefact {
 	if m == nil {
 		return artefact
 	}
@@ -63,7 +58,7 @@ func minifyArtefact(m *minify.M, rel string, artefact manifest.Artefact) manifes
 		".js":   "application/javascript",
 	}
 
-	if mime, ok := mimes[filepath.Ext(filepath.Base(rel))]; ok {
+	if mime, ok := mimes[filepath.Ext(filepath.Base(target))]; ok {
 		return manifest.Artefact{
 			Claim: artefact.Claim.AddTag("minified"),
 			Builder: func(w io.Writer) error {
