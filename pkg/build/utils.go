@@ -1,12 +1,15 @@
 package build
 
 import (
+	"fmt"
+	"html/template"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/olimci/shizuka/pkg/manifest"
+	"github.com/olimci/shizuka/pkg/transforms"
 	"github.com/tdewolff/minify/v2"
 	mincss "github.com/tdewolff/minify/v2/css"
 	minhtml "github.com/tdewolff/minify/v2/html"
@@ -84,4 +87,46 @@ func makeTarget(root, rel string) (src, dst string, err error) {
 	} else {
 		return src, filepath.Join(dir, name, "index.html"), nil
 	}
+}
+
+func parseTemplateGlob(pattern string) (*template.Template, error) {
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no template files found matching pattern: %s", pattern)
+	}
+
+	tmpl := template.New("site").Funcs(template.FuncMap{
+		"where": transforms.TemplateFuncWhere,
+		"sort":  transforms.TemplateFuncSortBy,
+		"limit": transforms.TemplateFuncLimit,
+	})
+
+	seenNames := make(map[string]string) // template name -> file path
+
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read template file %s: %w", file, err)
+		}
+
+		// Use the filename without extension as the template name
+		name := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+
+		// Check for name conflicts
+		if existingFile, exists := seenNames[name]; exists {
+			return nil, fmt.Errorf("template name conflict: both %s and %s would create template '%s'", existingFile, file, name)
+		}
+		seenNames[name] = file
+
+		_, err = tmpl.New(name).Parse(string(content))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse template %s: %w", file, err)
+		}
+	}
+
+	return tmpl, nil
 }

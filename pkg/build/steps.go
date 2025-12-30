@@ -3,12 +3,9 @@ package build
 import (
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
-	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/transforms"
@@ -58,7 +55,7 @@ func StepContent() Step {
 		pages := manifest.GetUnsafe(sc.Surface, PagesK)
 		site := manifest.GetUnsafe(sc.Surface, SiteK)
 
-		tmpl, err := parseTemplatesWithCleanNames(config.Build.TemplatesGlob)
+		tmpl, err := parseTemplateGlob(config.Build.TemplatesGlob)
 		if err != nil {
 			return fmt.Errorf("failed to parse templates: %w", err)
 		}
@@ -190,46 +187,4 @@ func StepContent() Step {
 
 		return nil
 	})
-}
-
-// parseTemplatesWithCleanNames parses templates from a glob pattern but uses
-// clean names without file extensions (e.g., "page.tmpl" becomes "page").
-func parseTemplatesWithCleanNames(pattern string) (*template.Template, error) {
-	files, err := filepath.Glob(pattern)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no template files found matching pattern: %s", pattern)
-	}
-
-	tmpl := template.New("site").Funcs(template.FuncMap{
-		// TODO: add template funcs...
-	})
-
-	seenNames := make(map[string]string) // template name -> file path
-
-	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read template file %s: %w", file, err)
-		}
-
-		// Use the filename without extension as the template name
-		name := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
-
-		// Check for name conflicts
-		if existingFile, exists := seenNames[name]; exists {
-			return nil, fmt.Errorf("template name conflict: both %s and %s would create template '%s'", existingFile, file, name)
-		}
-		seenNames[name] = file
-
-		_, err = tmpl.New(name).Parse(string(content))
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse template %s: %w", file, err)
-		}
-	}
-
-	return tmpl, nil
 }
