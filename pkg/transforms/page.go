@@ -74,9 +74,24 @@ type PageLite struct {
 	Draft    bool
 }
 
+// PageMeta contains metadata about a page's build context.
+type PageMeta struct {
+	Source   string // Original source file path
+	Target   string // Output target path
+	Template string // Template name used to render this page
+}
+
+// SiteMeta contains metadata about the site's build context.
+type SiteMeta struct {
+	BuildTime string // When the build started (RFC3339)
+	Dev       bool   // Whether this is a dev build
+}
+
 type PageTemplate struct {
-	Page Page
-	Site Site
+	Page     Page
+	Site     Site
+	Meta     PageMeta
+	SiteMeta SiteMeta
 }
 
 func buildMD(path string, md gm.Markdown) (*Frontmatter, string, error) {

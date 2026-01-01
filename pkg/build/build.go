@@ -66,6 +66,7 @@ func Build(steps []Step, config *Config, opts ...Option) error {
 					Ctx:      ctx,
 					Manifest: man,
 					Options:  o,
+					StepID:   step.ID,
 				}
 
 				if err := step.Func(&sc); err != nil {
@@ -125,6 +126,13 @@ func Build(steps []Step, config *Config, opts ...Option) error {
 
 	if err := man.Build(manifestOpts...); err != nil {
 		return fmt.Errorf("%w: %w", ErrBuildFailed, err)
+	}
+
+	// Check if any diagnostics at or above the fail-on level were reported
+	if o.DiagnosticSink().HasLevel(o.FailOnLevel()) {
+		maxLevel := o.DiagnosticSink().MaxLevel()
+		return fmt.Errorf("%w: %s(s) reported during build (fail-on-level: %s)",
+			ErrBuildFailed, maxLevel, o.FailOnLevel())
 	}
 
 	return nil

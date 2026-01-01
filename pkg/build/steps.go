@@ -3,9 +3,11 @@ package build
 import (
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/transforms"
@@ -61,14 +63,30 @@ func StepContent() Step {
 
 		m := newMinifier(config.Build.Transforms.Minify)
 
-		makeArtefact := func(page *transforms.PageData, claim manifest.Claim) manifest.Artefact {
+		// Build time for SiteMeta
+		buildTime := time.Now().Format(time.RFC3339)
+
+		// Create SiteMeta once for all pages
+		siteMeta := transforms.SiteMeta{
+			BuildTime: buildTime,
+			Dev:       sc.Options.Dev,
+		}
+
+		makeArtefact := func(page *transforms.PageData, claim manifest.Claim, useTemplate *template.Template, templateName string) manifest.Artefact {
 			a := manifest.Artefact{
 				Claim: claim,
 				Builder: func(w io.Writer) error {
-					return tmpl.ExecuteTemplate(w, page.Template, transforms.PageTemplate{
+					data := transforms.PageTemplate{
 						Page: page.Page,
 						Site: site,
-					})
+						Meta: transforms.PageMeta{
+							Source:   page.Source,
+							Target:   page.Target,
+							Template: templateName,
+						},
+						SiteMeta: siteMeta,
+					}
+					return useTemplate.Execute(w, data)
 				},
 			}
 
@@ -82,18 +100,57 @@ func StepContent() Step {
 				Owner:  "pages:build",
 			}
 
-			if tmpl.Lookup(page.Template) == nil {
+			// Check if template exists
+			pageTmpl := tmpl.Lookup(page.Template)
+			templateName := page.Template
+
+			if pageTmpl == nil {
+				// Template not found - try fallback
+				fallback := sc.Options.FallbackTemplate()
+				if fallback != nil {
+					// Use fallback template
+					if page.Template == "" {
+						sc.Warn(page.Source, "no template specified, using fallback", nil)
+					} else {
+						sc.Warnf(page.Source, "template %q not found, using fallback", page.Template)
+					}
+					artefact := makeArtefact(page, claim, fallback, page.Template)
+					sc.Manifest.Emit(minifyArtefact(m, page.Target, artefact))
+					continue
+				}
+
+				// No fallback - report error
 				if page.Template == "" {
-					// should be non-fatal except on final build
-					return fmt.Errorf("%w for page %s", ErrNoTemplate, page.Source)
+					if err := sc.Error(page.Source, "no template specified", ErrNoTemplate); err != nil {
+						continue // Skip this page, but don't abort build
+					}
+					continue
 				} else {
-					// same here
-					return fmt.Errorf("%w (%s) for page %s", ErrTemplateNotFound, page.Template, page.Source)
+					if err := sc.Error(page.Source, fmt.Sprintf("template %q not found", page.Template), ErrTemplateNotFound); err != nil {
+						continue
+					}
+					continue
 				}
 			}
 
-			artefact := makeArtefact(page, claim)
-			sc.Manifest.Emit(artefact)
+			// Template found - create artefact with the named template
+			artefact := manifest.Artefact{
+				Claim: claim,
+				Builder: func(w io.Writer) error {
+					data := transforms.PageTemplate{
+						Page: page.Page,
+						Site: site,
+						Meta: transforms.PageMeta{
+							Source:   page.Source,
+							Target:   page.Target,
+							Template: templateName,
+						},
+						SiteMeta: siteMeta,
+					}
+					return tmpl.ExecuteTemplate(w, templateName, data)
+				},
+			}
+			sc.Manifest.Emit(minifyArtefact(m, page.Target, artefact))
 		}
 
 		return nil
@@ -161,7 +218,8 @@ func StepContent() Step {
 		for _, rel := range files.Values() {
 			source, target, err := makeTarget(config.Build.ContentDir, rel)
 			if err != nil {
-				return err // should be nonfatal (warn) really
+				sc.Warn(rel, "invalid target path, skipping", err)
+				continue
 			}
 
 			if filepath.Ext(source) == ".html" {
@@ -171,7 +229,10 @@ func StepContent() Step {
 
 			page, err := transforms.BuildPage(source, md)
 			if err != nil {
-				return err // should likely be non-fatal
+				if err := sc.Error(source, "failed to build page", err); err != nil {
+					continue // Skip this page in lenient mode
+				}
+				continue
 			}
 
 			page.Target = target

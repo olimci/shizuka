@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/log"
+	"github.com/olimci/shizuka/pkg/build"
 )
 
 type DevServer struct {
@@ -30,7 +31,7 @@ type DevServerConfig struct {
 type DevServerEvent struct {
 	Type    string
 	Message string
-	Data    interface{}
+	Data    any
 }
 
 func NewDevServer(config DevServerConfig) (*DevServer, error) {
@@ -219,11 +220,12 @@ func (ds *DevServer) buildWorker(ctx context.Context, requests <-chan BuildReque
 
 			// Enhance result with request info
 			enhancedResult := BuildResult{
-				Duration: buildResult.Duration,
-				Error:    buildResult.Error,
-				Reason:   req.Reason,
-				Paths:    req.Paths,
-				Number:   buildCount,
+				Duration:    buildResult.Duration,
+				Error:       buildResult.Error,
+				Reason:      req.Reason,
+				Paths:       req.Paths,
+				Number:      buildCount,
+				Diagnostics: buildResult.Diagnostics,
 			}
 
 			select {
@@ -235,6 +237,16 @@ func (ds *DevServer) buildWorker(ctx context.Context, requests <-chan BuildReque
 }
 
 func (ds *DevServer) logBuildResult(result BuildResult) {
+	// Log diagnostics first
+	for _, d := range result.Diagnostics {
+		prefix := levelPrefixLog(d.Level)
+		if d.Source != "" {
+			log.Printf("%s %s: %s", prefix, d.Source, d.Message)
+		} else {
+			log.Printf("%s %s", prefix, d.Message)
+		}
+	}
+
 	if result.Error != nil {
 		log.Printf("ERR  build #%d failed in %s (%s): %v", result.Number, result.Duration.Truncate(time.Millisecond), result.Reason, result.Error)
 		if len(result.Paths) > 0 {
@@ -243,10 +255,49 @@ func (ds *DevServer) logBuildResult(result BuildResult) {
 		return
 	}
 
-	log.Printf("OK   build #%d in %s (%s)", result.Number, result.Duration.Truncate(time.Millisecond), result.Reason)
+	summary := ds.summarizeDiagnostics(result.Diagnostics)
+	if summary != "" {
+		log.Printf("OK   build #%d in %s (%s) [%s]", result.Number, result.Duration.Truncate(time.Millisecond), result.Reason, summary)
+	} else {
+		log.Printf("OK   build #%d in %s (%s)", result.Number, result.Duration.Truncate(time.Millisecond), result.Reason)
+	}
 	if len(result.Paths) > 0 {
 		log.Printf("     changes: %s", strings.Join(result.Paths, ", "))
 	}
+}
+
+func levelPrefixLog(level build.DiagnosticLevel) string {
+	switch level {
+	case build.LevelDebug:
+		return "DBG "
+	case build.LevelInfo:
+		return "INFO"
+	case build.LevelWarning:
+		return "WARN"
+	case build.LevelError:
+		return "ERR "
+	default:
+		return "    "
+	}
+}
+
+func (ds *DevServer) summarizeDiagnostics(diagnostics []build.Diagnostic) string {
+	counts := make(map[build.DiagnosticLevel]int)
+	for _, d := range diagnostics {
+		counts[d.Level]++
+	}
+
+	if len(counts) == 0 {
+		return ""
+	}
+
+	var parts []string
+	for _, level := range []build.DiagnosticLevel{build.LevelError, build.LevelWarning, build.LevelInfo, build.LevelDebug} {
+		if count := counts[level]; count > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", count, level))
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func (ds *DevServer) Close() error {

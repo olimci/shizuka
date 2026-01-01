@@ -30,10 +30,15 @@ func Execute(ctx context.Context, args []string) error {
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Value: "shizuka.toml", Usage: "config file path"},
 					&cli.StringFlag{Name: "dist", Aliases: []string{"d"}, Value: "", Usage: "output directory (overrides config)"},
+					&cli.BoolFlag{Name: "strict", Aliases: []string{"s"}, Value: false, Usage: "fail on warnings (strict mode)"},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					configPath := cmd.String("config")
 					distDir := cmd.String("dist")
+					strict := cmd.Bool("strict")
+					if strict {
+						return BuildStrict(ctx, configPath, distDir)
+					}
 					return Build(ctx, configPath, distDir)
 				},
 			},

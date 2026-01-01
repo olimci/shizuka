@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/log"
+	"github.com/olimci/shizuka/pkg/build"
 )
 
 type UI struct {
@@ -40,11 +41,12 @@ func (ui *UI) LogEvent(message string) {
 
 func (ui *UI) BuildResultToMsg(result BuildResult) tea.Msg {
 	return buildResultMsg{
-		Reason:   result.Reason,
-		Paths:    result.Paths,
-		Duration: result.Duration,
-		Error:    result.Error,
-		Number:   result.Number,
+		Reason:      result.Reason,
+		Paths:       result.Paths,
+		Duration:    result.Duration,
+		Error:       result.Error,
+		Number:      result.Number,
+		Diagnostics: result.Diagnostics,
 	}
 }
 
@@ -55,6 +57,16 @@ func (ui *UI) PrintMsg(msg tea.Msg) {
 	case BuildStartedMsg:
 		log.Printf("BUILD #%d start (%s)", m.Number, m.Reason)
 	case buildResultMsg:
+		// Print diagnostics first
+		for _, d := range m.Diagnostics {
+			prefix := levelPrefix(d.Level)
+			if d.Source != "" {
+				log.Printf("%s %s: %s", prefix, d.Source, d.Message)
+			} else {
+				log.Printf("%s %s", prefix, d.Message)
+			}
+		}
+
 		if m.Error != nil {
 			log.Printf("ERR  build #%d failed in %s (%s): %v", m.Number, m.Duration.Truncate(time.Millisecond), m.Reason, m.Error)
 			if len(m.Paths) > 0 {
@@ -62,11 +74,53 @@ func (ui *UI) PrintMsg(msg tea.Msg) {
 			}
 			return
 		}
-		log.Printf("OK   build #%d in %s (%s)", m.Number, m.Duration.Truncate(time.Millisecond), m.Reason)
+
+		summary := summarizeDiagnostics(m.Diagnostics)
+		if summary != "" {
+			log.Printf("OK   build #%d in %s (%s) [%s]", m.Number, m.Duration.Truncate(time.Millisecond), m.Reason, summary)
+		} else {
+			log.Printf("OK   build #%d in %s (%s)", m.Number, m.Duration.Truncate(time.Millisecond), m.Reason)
+		}
 		if len(m.Paths) > 0 {
 			log.Printf("     changes: %s", strings.Join(m.Paths, ", "))
 		}
 	}
+}
+
+// levelPrefix returns a display prefix for each diagnostic level.
+func levelPrefix(level build.DiagnosticLevel) string {
+	switch level {
+	case build.LevelDebug:
+		return "DBG "
+	case build.LevelInfo:
+		return "INFO"
+	case build.LevelWarning:
+		return "WARN"
+	case build.LevelError:
+		return "ERR "
+	default:
+		return "    "
+	}
+}
+
+// summarizeDiagnostics returns a human-readable summary of diagnostics.
+func summarizeDiagnostics(diagnostics []build.Diagnostic) string {
+	counts := make(map[build.DiagnosticLevel]int)
+	for _, d := range diagnostics {
+		counts[d.Level]++
+	}
+
+	if len(counts) == 0 {
+		return ""
+	}
+
+	var parts []string
+	for _, level := range []build.DiagnosticLevel{build.LevelError, build.LevelWarning, build.LevelInfo, build.LevelDebug} {
+		if count := counts[level]; count > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", count, level))
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // Interactive UI model
@@ -89,11 +143,12 @@ type model struct {
 type logMsg string
 
 type buildResultMsg struct {
-	Reason   string
-	Paths    []string
-	Duration time.Duration
-	Error    error
-	Number   int
+	Reason      string
+	Paths       []string
+	Duration    time.Duration
+	Error       error
+	Number      int
+	Diagnostics []build.Diagnostic
 }
 
 func (m model) Init() tea.Cmd {
@@ -138,12 +193,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastReason = x.Reason
 		m.lastDur = x.Duration
 		m.lastChanged = x.Paths
+
+		// Display diagnostics
+		for _, d := range x.Diagnostics {
+			prefix := levelPrefix(d.Level)
+			if d.Source != "" {
+				m.appendLog(fmt.Sprintf("%s %s: %s", prefix, d.Source, d.Message))
+			} else {
+				m.appendLog(fmt.Sprintf("%s %s", prefix, d.Message))
+			}
+		}
+
 		if x.Error != nil {
 			m.lastErr = x.Error.Error()
 			m.appendLog(fmt.Sprintf("ERR  build #%d in %s: %v", x.Number, x.Duration.Truncate(time.Millisecond), x.Error))
 		} else {
 			m.lastErr = ""
-			m.appendLog(fmt.Sprintf("OK   build #%d in %s", x.Number, x.Duration.Truncate(time.Millisecond)))
+			summary := summarizeDiagnostics(x.Diagnostics)
+			if summary != "" {
+				m.appendLog(fmt.Sprintf("OK   build #%d in %s [%s]", x.Number, x.Duration.Truncate(time.Millisecond), summary))
+			} else {
+				m.appendLog(fmt.Sprintf("OK   build #%d in %s", x.Number, x.Duration.Truncate(time.Millisecond)))
+			}
 		}
 		if len(x.Paths) > 0 {
 			m.appendLog("changes: " + strings.Join(x.Paths, ", "))

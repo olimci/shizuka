@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .Page.Title }} - Missing Template</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --surface: #16213e;
+            --border: #0f3460;
+            --text: #e8e8e8;
+            --text-muted: #a0a0a0;
+            --accent: #e94560;
+            --accent-dim: #533a4a;
+            --code-bg: #0d1117;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .banner {
+            background: var(--accent-dim);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 1rem 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .banner h2 {
+            color: var(--accent);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+        .banner p {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+        .banner code {
+            background: var(--code-bg);
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            font-family: ui-monospace, monospace;
+            color: var(--accent);
+        }
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            color: var(--text);
+        }
+        .meta-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .meta-section h3 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .meta-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+        .meta-grid dt {
+            color: var(--text-muted);
+        }
+        .meta-grid dd {
+            color: var(--text);
+            font-family: ui-monospace, monospace;
+            word-break: break-all;
+        }
+        .content {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+        .content h3 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .body-preview {
+            color: var(--text);
+        }
+        .body-preview h1, .body-preview h2, .body-preview h3 {
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .body-preview h1:first-child { margin-top: 0; }
+        .body-preview p { margin-bottom: 1rem; }
+        .body-preview code {
+            background: var(--code-bg);
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            font-family: ui-monospace, monospace;
+        }
+        .body-preview pre {
+            background: var(--code-bg);
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin-bottom: 1rem;
+        }
+        .body-preview ul, .body-preview ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .tag {
+            background: var(--border);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+        footer {
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="banner">
+            <h2>⚠ Fallback Template</h2>
+            <p>
+                This page is using the fallback template because
+                {{- if .Meta.Template }} template <code>{{ .Meta.Template }}</code> was not found
+                {{- else }} no template was specified
+                {{- end }}.
+            </p>
+        </div>
+
+        <h1>{{ .Page.Title }}</h1>
+
+        <div class="meta-section">
+            <h3>Page Metadata</h3>
+            <dl class="meta-grid">
+                <dt>Source</dt>
+                <dd>{{ .Meta.Source }}</dd>
+                <dt>Target</dt>
+                <dd>{{ .Meta.Target }}</dd>
+                <dt>Template</dt>
+                <dd>{{ if .Meta.Template }}{{ .Meta.Template }}{{ else }}<em>(not specified)</em>{{ end }}</dd>
+                {{- if .Page.Slug }}
+                <dt>Slug</dt>
+                <dd>{{ .Page.Slug }}</dd>
+                {{- end }}
+                {{- if .Page.Section }}
+                <dt>Section</dt>
+                <dd>{{ .Page.Section }}</dd>
+                {{- end }}
+                {{- if not .Page.Date.IsZero }}
+                <dt>Date</dt>
+                <dd>{{ .Page.Date.Format "2006-01-02 15:04:05" }}</dd>
+                {{- end }}
+                {{- if not .Page.Updated.IsZero }}
+                <dt>Updated</dt>
+                <dd>{{ .Page.Updated.Format "2006-01-02 15:04:05" }}</dd>
+                {{- end }}
+                {{- if .Page.Description }}
+                <dt>Description</dt>
+                <dd>{{ .Page.Description }}</dd>
+                {{- end }}
+                {{- if .Page.Draft }}
+                <dt>Draft</dt>
+                <dd>true</dd>
+                {{- end }}
+                {{- if .Page.Featured }}
+                <dt>Featured</dt>
+                <dd>true</dd>
+                {{- end }}
+            </dl>
+            {{- if .Page.Tags }}
+            <div style="margin-top: 1rem;">
+                <dt style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.5rem;">Tags</dt>
+                <div class="tags">
+                    {{- range .Page.Tags }}
+                    <span class="tag">{{ . }}</span>
+                    {{- end }}
+                </div>
+            </div>
+            {{- end }}
+        </div>
+
+        <div class="content">
+            <h3>Content Preview</h3>
+            <div class="body-preview">
+                {{ .Page.Body }}
+            </div>
+        </div>
+
+        <footer>
+            Built with Shizuka
+            {{- if .SiteMeta.Dev }} (dev mode){{ end }}
+            {{- if .SiteMeta.BuildTime }} · {{ .SiteMeta.BuildTime }}{{ end }}
+        </footer>
+    </div>
+</body>
+</html>
