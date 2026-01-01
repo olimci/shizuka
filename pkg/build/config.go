@@ -3,7 +3,6 @@ package build
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/olimci/shizuka/pkg/version"
@@ -17,6 +16,7 @@ import (
 	gmhtml "github.com/yuin/goldmark/renderer/html"
 )
 
+// Config represents the configuration for the build process.
 type Config struct {
 	Shizuka ShizukaConfig `toml:"shizuka"`
 	Site    SiteConfig    `toml:"site"`
@@ -88,6 +88,7 @@ type GoldmarkRenderer struct {
 	XHTML      bool `toml:"XHTML"`
 }
 
+// DefaultConfig constructs a new Config with default values.
 func DefaultConfig() *Config {
 	return &Config{
 		Shizuka: ShizukaConfig{
@@ -138,6 +139,7 @@ func DefaultConfig() *Config {
 	}
 }
 
+// LoadConfig loads a Config from a file.
 func LoadConfig(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
@@ -156,17 +158,7 @@ func LoadConfig(path string) (*Config, error) {
 	return cfg, nil
 }
 
-func SaveDefaultConfig(path string) error {
-	cfg := DefaultConfig()
-
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-
-	return toml.NewEncoder(file).Encode(cfg)
-}
-
+// Validate validates the Config.
 func (c *Config) Validate() error {
 	c.Site.BasePath = strings.TrimSpace(c.Site.BasePath)
 	if c.Site.BasePath == "" {
@@ -197,7 +189,8 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func MakeGoldmark(cfg GoldmarkConfig) gm.Markdown {
+// makeGoldmark constructs a new Goldmark instance with the given configuration.
+func makeGoldmark(cfg GoldmarkConfig) gm.Markdown {
 	var (
 		exts       []gm.Extender
 		parserOpts []gmparse.Option

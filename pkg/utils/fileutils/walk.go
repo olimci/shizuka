@@ -7,6 +7,7 @@ import (
 	"github.com/olimci/shizuka/pkg/utils/set"
 )
 
+// Walk walks a directory tree and returns a set of files and directories
 func Walk(root string) (files *set.Set[string], dirs *set.Set[string], err error) {
 	abs, err := filepath.Abs(root)
 	if err != nil {
@@ -38,6 +39,7 @@ func Walk(root string) (files *set.Set[string], dirs *set.Set[string], err error
 	return files, dirs, err
 }
 
+// WalkFiles walks a directory tree and returns a set of files
 func WalkFiles(root string) (files *set.Set[string], err error) {
 	abs, err := filepath.Abs(root)
 	if err != nil {
@@ -66,6 +68,7 @@ func WalkFiles(root string) (files *set.Set[string], err error) {
 	return files, err
 }
 
+// WalkDirs walks a directory tree and returns a set of directories
 func WalkDirs(root string) (dirs *set.Set[string], err error) {
 	abs, err := filepath.Abs(root)
 	if err != nil {
@@ -94,6 +97,7 @@ func WalkDirs(root string) (dirs *set.Set[string], err error) {
 	return dirs, err
 }
 
+// WalkInfo walks a directory tree and returns a map of files and directories with their info
 func WalkInfo(root string) (files map[string]os.FileInfo, dirs map[string]os.FileInfo, err error) {
 	abs, err := filepath.Abs(root)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// TemplateFuncWhere filters pages based on a field and value.
 func TemplateFuncWhere(field string, value any, pages []*PageLite) []*PageLite {
 	out := make([]*PageLite, 0, len(pages))
 
@@ -58,6 +59,7 @@ func TemplateFuncWhere(field string, value any, pages []*PageLite) []*PageLite {
 	return out
 }
 
+// TemplateFuncSortBy sorts pages by a field and order.
 func TemplateFuncSortBy(field string, order string, pages []*PageLite) []*PageLite {
 	out := slices.Clone(pages)
 
@@ -109,6 +111,7 @@ func TemplateFuncSortBy(field string, order string, pages []*PageLite) []*PageLi
 	return out
 }
 
+// TemplateFuncLimit limits the number of pages returned.
 func TemplateFuncLimit(limit int, pages []*PageLite) []*PageLite {
 	if len(pages) <= limit {
 		return pages

@@ -13,6 +13,20 @@ import (
 
 var ErrConflicts = errors.New("conflicts")
 
+// K is a typed key
+type K[T any] string
+
+// GetAs retrieves a value from the manifest as the specified type. UB for bad keys/types
+func GetAs[T any](m *Manifest, k K[T]) T {
+	if v, ok := m.Get(string(k)); ok {
+		if vt, ok := v.(T); ok {
+			return vt
+		}
+	}
+	return *new(T)
+}
+
+// New creates a new manifest
 func New() *Manifest {
 	return &Manifest{
 		artefacts: make([]Artefact, 0),
@@ -20,16 +34,16 @@ func New() *Manifest {
 	}
 }
 
+// Manifest represents a manifest of build artefacts, and a registry of build information
 type Manifest struct {
-	// artefacts is a list of artefacts that will be built to files on Build()
 	artefacts   []Artefact
 	artefactsMu sync.Mutex
 
-	// registry is a store to be used by build steps to share data
 	registry   map[string]any
 	registryMu sync.RWMutex
 }
 
+// Set sets a value in the registry
 func (m *Manifest) Set(k string, v any) {
 	m.registryMu.Lock()
 	defer m.registryMu.Unlock()
@@ -37,6 +51,7 @@ func (m *Manifest) Set(k string, v any) {
 	m.registry[k] = v
 }
 
+// Get retrieves a value from the registry
 func (m *Manifest) Get(k string) (any, bool) {
 	m.registryMu.RLock()
 	defer m.registryMu.RUnlock()
@@ -45,6 +60,7 @@ func (m *Manifest) Get(k string) (any, bool) {
 	return v, ok
 }
 
+// Emit adds an artefact to the manifest
 func (m *Manifest) Emit(a Artefact) {
 	m.artefactsMu.Lock()
 	defer m.artefactsMu.Unlock()
@@ -52,6 +68,7 @@ func (m *Manifest) Emit(a Artefact) {
 	m.artefacts = append(m.artefacts, a)
 }
 
+// Build builds the manifest
 func (m *Manifest) Build(opts ...Option) error {
 	o := defaultOptions().apply(opts...)
 

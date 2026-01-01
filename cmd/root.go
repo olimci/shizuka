@@ -25,6 +25,21 @@ func Execute(ctx context.Context, args []string) error {
 				},
 			},
 			{
+				Name:      "init",
+				Usage:     "Scaffold a new Shizuka site",
+				ArgsUsage: "[directory]",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "template", Aliases: []string{"t"}, Value: "minimal", Usage: "Starter template to use"},
+					&cli.StringFlag{Name: "name", Aliases: []string{"n"}, Value: "", Usage: "Site name (defaults to directory name)"},
+					&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Value: false, Usage: "Overwrite existing files"},
+					&cli.BoolFlag{Name: "list-templates", Aliases: []string{"l"}, Value: false, Usage: "List available templates"},
+					&cli.BoolFlag{Name: "quiet", Aliases: []string{"q"}, Value: false, Usage: "Suppress output"},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return Init(ctx, cmd)
+				},
+			},
+			{
 				Name:  "build",
 				Usage: "Build the site into a dist directory",
 				Flags: []cli.Flag{

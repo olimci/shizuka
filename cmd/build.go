@@ -9,7 +9,6 @@ import (
 	"github.com/olimci/shizuka/pkg/build"
 )
 
-// Build performs a single build of the site
 func Build(ctx context.Context, configPath, distDir string) error {
 	builder, err := internal.NewBuilderWithDistOverride(configPath, distDir)
 	if err != nil {
@@ -18,7 +17,6 @@ func Build(ctx context.Context, configPath, distDir string) error {
 
 	result := builder.Build(ctx)
 
-	// Display diagnostics
 	for _, d := range result.Diagnostics {
 		prefix := levelPrefix(d.Level)
 		if d.Source != "" {
@@ -47,7 +45,6 @@ func Build(ctx context.Context, configPath, distDir string) error {
 	return nil
 }
 
-// BuildStrict performs a build that fails on warnings
 func BuildStrict(ctx context.Context, configPath, distDir string) error {
 	builder, err := internal.NewBuilderWithDistOverride(configPath, distDir)
 	if err != nil {
@@ -56,7 +53,6 @@ func BuildStrict(ctx context.Context, configPath, distDir string) error {
 
 	result := builder.BuildStrict(ctx)
 
-	// Display diagnostics
 	for _, d := range result.Diagnostics {
 		prefix := levelPrefix(d.Level)
 		if d.Source != "" {

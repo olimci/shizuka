@@ -39,12 +39,10 @@ func (s *Server) Start(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to listen on %s: %w", s.addr, err)
 	}
 
-	// Start server in background
 	go func() {
 		_ = s.server.Serve(ln)
 	}()
 
-	// Handle context cancellation
 	go func() {
 		<-ctx.Done()
 		_ = s.server.Close()

@@ -7,17 +7,7 @@ import (
 	"github.com/olimci/shizuka/pkg/utils/set"
 )
 
-type K[T any] string
-
-func GetAs[T any](m *Manifest, k K[T]) T {
-	if v, ok := m.Get(string(k)); ok {
-		if vt, ok := v.(T); ok {
-			return vt
-		}
-	}
-	return *new(T)
-}
-
+// isRel checks if a path is relative
 func isRel(p string) bool {
 	for {
 		if p == ".." {
@@ -34,6 +24,7 @@ func isRel(p string) bool {
 	}
 }
 
+// manifestDirs creates a set of directories from the manifest's claims
 func manifestDirs(m map[string]ArtefactBuilder) *set.Set[string] {
 	out := set.New[string]()
 	for claim := range m {
@@ -54,6 +45,7 @@ func manifestDirs(m map[string]ArtefactBuilder) *set.Set[string] {
 	return out
 }
 
+// makeArtefacts converts a list of artefacts into a map, and a collection of conflicts.
 func makeArtefacts(as []Artefact) (artefacts map[string]ArtefactBuilder, conflicts map[string][]Claim) {
 	artefacts = make(map[string]ArtefactBuilder)
 	conflicts = make(map[string][]Claim)

@@ -6,123 +6,100 @@ import (
 	"runtime"
 )
 
+// defaultOptions constructs an Options with default values.
 func defaultOptions() *Options {
 	return &Options{
-		context:          context.Background(),
-		configPath:       "shizuka.toml",
-		maxWorkers:       runtime.NumCPU(),
+		Context:          context.Background(),
+		ConfigPath:       "shizuka.toml",
+		MaxWorkers:       runtime.NumCPU(),
 		Dev:              false,
-		diagnosticSink:   NoopSink(),
-		failOnLevel:      LevelError, // By default, only errors cause failure
-		lenientErrors:    false,
-		fallbackTemplate: nil,
+		DiagnosticSink:   NoopSink(),
+		FailOnWarn:       false,
+		LenientErrors:    false,
+		FallbackTemplate: nil,
 	}
 }
 
+// Options represents the options for building a site.
 type Options struct {
-	context    context.Context
-	configPath string
-	maxWorkers int
+	Context    context.Context
+	ConfigPath string
+	MaxWorkers int
 	Dev        bool
 
-	// Diagnostic options
-	diagnosticSink DiagnosticSink
-	failOnLevel    DiagnosticLevel // Build fails if any diagnostic at or above this level
-	lenientErrors  bool            // Treat certain errors as warnings (typically enabled in dev)
+	DiagnosticSink DiagnosticSink
+	FailOnWarn     bool
+	LenientErrors  bool
 
-	// Fallback template for pages with missing templates
-	fallbackTemplate *template.Template
+	FallbackTemplate *template.Template
 }
 
+// Apply applies a set of Option to the receiver.
 func (o *Options) Apply(opts ...Option) *Options {
 	for _, opt := range opts {
 		opt(o)
 	}
+	if o.FailOnWarn && o.LenientErrors {
+		panic("build: cannot use FailOnWarn and LenientErrors together")
+	}
 	return o
 }
 
-// DiagnosticSink returns the configured diagnostic sink.
-func (o *Options) DiagnosticSink() DiagnosticSink {
-	return o.diagnosticSink
-}
-
-// FailOnLevel returns the minimum diagnostic level that causes build failure.
-func (o *Options) FailOnLevel() DiagnosticLevel {
-	return o.failOnLevel
-}
-
-// LenientErrors returns whether errors should be demoted to warnings.
-func (o *Options) LenientErrors() bool {
-	return o.lenientErrors
-}
-
-// FallbackTemplate returns the fallback template for pages with missing templates.
-func (o *Options) FallbackTemplate() *template.Template {
-	return o.fallbackTemplate
-}
-
+// Option represents an option for building a site.
 type Option func(*Options)
 
+// WithContext attatches a context to be used by the build process
 func WithContext(ctx context.Context) Option {
 	return func(o *Options) {
-		o.context = ctx
+		o.Context = ctx
 	}
 }
 
+// WithConfig sets the path to the configuration file
 func WithConfig(path string) Option {
 	return func(o *Options) {
-		o.configPath = path
+		o.ConfigPath = path
 	}
 }
 
+// WithMaxWorkers sets the maximum number of workers to use during the build process
 func WithMaxWorkers(n int) Option {
 	return func(o *Options) {
-		o.maxWorkers = n
+		o.MaxWorkers = n
 	}
 }
 
+// WithDev enables development mode
 func WithDev() Option {
 	return func(o *Options) {
 		o.Dev = true
 	}
 }
 
-// WithDiagnosticSink sets the diagnostic sink for collecting build diagnostics.
+// WithDiagnosticSink sets the diagnostic sink to be used during the build process
 func WithDiagnosticSink(sink DiagnosticSink) Option {
 	return func(o *Options) {
-		o.diagnosticSink = sink
+		o.DiagnosticSink = sink
 	}
 }
 
-// WithFailOnLevel sets the minimum diagnostic level that causes build failure.
-// Common values:
-//   - LevelError (default): only errors cause failure
-//   - LevelWarning: warnings and errors cause failure (strict mode)
-//   - LevelInfo: even info messages cause failure (very strict, rarely used)
-func WithFailOnLevel(level DiagnosticLevel) Option {
+// WithFailOnWarn enables fail on warning mode
+func WithFailOnWarn() Option {
 	return func(o *Options) {
-		o.failOnLevel = level
+		o.FailOnWarn = true
 	}
 }
 
-// WithFailOnWarnings is a convenience for WithFailOnLevel(LevelWarning).
-func WithFailOnWarnings() Option {
-	return WithFailOnLevel(LevelWarning)
-}
-
-// WithLenientErrors enables lenient mode where errors are demoted to warnings.
-// This is typically used in dev mode to allow the build to continue despite errors.
+// WithLenientErrors enables lenient errors mode
 func WithLenientErrors() Option {
 	return func(o *Options) {
-		o.lenientErrors = true
+		o.LenientErrors = true
 	}
 }
 
-// WithFallbackTemplate sets a fallback template to use when a page's template is missing.
-// When set, pages with missing templates will be rendered using this template instead of
-// causing an error. The template receives the full PageTemplate data including Meta.
+// WithFallbackTemplate sets the fallback template to be used during the build process
 func WithFallbackTemplate(tmpl *template.Template) Option {
 	return func(o *Options) {
-		o.fallbackTemplate = tmpl
+		o.FallbackTemplate = tmpl
 	}
 }

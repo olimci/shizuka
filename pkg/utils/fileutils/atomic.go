@@ -9,6 +9,7 @@ import (
 	"slices"
 )
 
+// AtomicWrite writes a file atomically.
 func AtomicWrite(path string, gen func(w io.Writer) error) error {
 	dir, base := filepath.Split(path)
 
@@ -41,6 +42,7 @@ func AtomicWrite(path string, gen func(w io.Writer) error) error {
 	return nil
 }
 
+// AtomicEdit edits a file atomically.
 func AtomicEdit(path string, gen func(w io.Writer) error) error {
 	dir, base := filepath.Split(path)
 	tmp, err := os.CreateTemp(dir, "."+base+".tmp-*")
@@ -79,6 +81,7 @@ func AtomicEdit(path string, gen func(w io.Writer) error) error {
 	return nil
 }
 
+// cmpFiles compares two files
 func cmpFiles(a, b string) (bool, error) {
 	aFi, err := os.Stat(a)
 	if err != nil {
@@ -101,6 +104,7 @@ func cmpFiles(a, b string) (bool, error) {
 	return cmpContent(a, b)
 }
 
+// cmpContent compares two files content
 func cmpContent(a, b string) (bool, error) {
 	aF, err := os.Open(a)
 	if err != nil {

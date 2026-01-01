@@ -57,7 +57,6 @@ func (ui *UI) PrintMsg(msg tea.Msg) {
 	case BuildStartedMsg:
 		log.Printf("BUILD #%d start (%s)", m.Number, m.Reason)
 	case buildResultMsg:
-		// Print diagnostics first
 		for _, d := range m.Diagnostics {
 			prefix := levelPrefix(d.Level)
 			if d.Source != "" {
@@ -87,7 +86,6 @@ func (ui *UI) PrintMsg(msg tea.Msg) {
 	}
 }
 
-// levelPrefix returns a display prefix for each diagnostic level.
 func levelPrefix(level build.DiagnosticLevel) string {
 	switch level {
 	case build.LevelDebug:
@@ -103,7 +101,6 @@ func levelPrefix(level build.DiagnosticLevel) string {
 	}
 }
 
-// summarizeDiagnostics returns a human-readable summary of diagnostics.
 func summarizeDiagnostics(diagnostics []build.Diagnostic) string {
 	counts := make(map[build.DiagnosticLevel]int)
 	for _, d := range diagnostics {
@@ -123,7 +120,6 @@ func summarizeDiagnostics(diagnostics []build.Diagnostic) string {
 	return strings.Join(parts, ", ")
 }
 
-// Interactive UI model
 type model struct {
 	baseURL       string
 	buildRequests chan<- BuildRequest
@@ -194,7 +190,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastDur = x.Duration
 		m.lastChanged = x.Paths
 
-		// Display diagnostics
 		for _, d := range x.Diagnostics {
 			prefix := levelPrefix(d.Level)
 			if d.Source != "" {

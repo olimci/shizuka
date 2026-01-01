@@ -1,5 +1,15 @@
 package transforms
 
+// Site represents the global data for the site
+type Site struct {
+	Title       string
+	Description string
+	URL         string
+
+	Collections Collections
+}
+
+// Collections store collections of pages for Site
 type Collections struct {
 	All []*PageLite
 
@@ -10,10 +20,8 @@ type Collections struct {
 	RecentlyUpdated []*PageLite
 }
 
-type Site struct {
-	Title       string
-	Description string
-	URL         string
-
-	Collections Collections
+// SiteMeta stores metadata for the site
+type SiteMeta struct {
+	BuildTime string
+	Dev       bool
 }

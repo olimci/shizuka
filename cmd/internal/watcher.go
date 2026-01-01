@@ -44,12 +44,10 @@ func (fw *FileWatcher) Start(ctx context.Context) (<-chan WatchEvent, <-chan err
 	eventCh := make(chan WatchEvent, 10)
 	errorCh := make(chan error, 10)
 
-	// Add paths to watcher
 	var watchedPaths []string
 	for _, path := range fw.paths {
 		path = filepath.Clean(path)
 		if err := fw.addRecursive(path); err != nil {
-			// Log warning but continue
 			select {
 			case errorCh <- fmt.Errorf("watch warn: %s: %w", path, err):
 			default:
@@ -113,7 +111,6 @@ func (fw *FileWatcher) watchLoop(ctx context.Context, eventCh chan<- WatchEvent,
 		select {
 		case eventCh <- WatchEvent{Reason: reason, Paths: paths}:
 		default:
-			// Channel full, skip this event
 		}
 	}
 
@@ -123,7 +120,6 @@ func (fw *FileWatcher) watchLoop(ctx context.Context, eventCh chan<- WatchEvent,
 			return
 
 		case ev := <-fw.watcher.Events:
-			// Ignore chmod noise
 			if ev.Op&fsnotify.Chmod == fsnotify.Chmod {
 				continue
 			}
@@ -162,7 +158,6 @@ func (fw *FileWatcher) addRecursive(root string) error {
 			return walkErr
 		}
 		if d.IsDir() {
-			// Skip common directories that shouldn't be watched
 			base := filepath.Base(path)
 			if base == ".git" || base == "node_modules" || base == ".cache" || base == "dist" {
 				return filepath.SkipDir

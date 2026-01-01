@@ -67,40 +67,34 @@ func (ds *DevServer) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Start HTTP server
 	baseURL, err := ds.server.Start(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
 
-	// Start file watcher
 	watchEvents, watchErrors, err := ds.watcher.Start(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start file watcher: %w", err)
 	}
 
-	// Event channels
 	buildRequests := make(chan BuildRequest, 10)
 	buildResults := make(chan BuildResult, 10)
 	uiEvents := make(chan tea.Msg, 10)
 
 	var wg sync.WaitGroup
 
-	// Build worker
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		ds.buildWorker(ctx, buildRequests, buildResults, uiEvents)
 	}()
 
-	// Initial build
 	select {
 	case buildRequests <- BuildRequest{Reason: "initial", Paths: nil}:
 	default:
 		ds.ui.LogEvent("build skipped: request queue full")
 	}
 
-	// Start UI
 	if ds.ui.IsInteractive() {
 		return ds.runWithUI(ctx, baseURL, buildRequests, watchEvents, watchErrors, buildResults, uiEvents, &wg)
 	} else {
@@ -120,7 +114,6 @@ func (ds *DevServer) runWithUI(ctx context.Context, baseURL string, buildRequest
 		_, runErr = program.Run()
 	}()
 
-	// Event forwarding goroutine
 	go func() {
 		for {
 			select {
@@ -200,7 +193,6 @@ func (ds *DevServer) buildWorker(ctx context.Context, requests <-chan BuildReque
 		case req := <-requests:
 			buildCount++
 
-			// Notify build started
 			startMsg := BuildStartedMsg{
 				Reason: req.Reason,
 				Number: buildCount,
@@ -210,7 +202,6 @@ func (ds *DevServer) buildWorker(ctx context.Context, requests <-chan BuildReque
 			default:
 			}
 
-			// Perform build
 			var buildResult BuildResult
 			if req.Reason == "initial" {
 				buildResult = ds.builder.Build(ctx)
@@ -218,7 +209,6 @@ func (ds *DevServer) buildWorker(ctx context.Context, requests <-chan BuildReque
 				buildResult = ds.builder.BuildDev(ctx)
 			}
 
-			// Enhance result with request info
 			enhancedResult := BuildResult{
 				Duration:    buildResult.Duration,
 				Error:       buildResult.Error,
@@ -237,7 +227,6 @@ func (ds *DevServer) buildWorker(ctx context.Context, requests <-chan BuildReque
 }
 
 func (ds *DevServer) logBuildResult(result BuildResult) {
-	// Log diagnostics first
 	for _, d := range result.Diagnostics {
 		prefix := levelPrefixLog(d.Level)
 		if d.Source != "" {

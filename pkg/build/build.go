@@ -18,6 +18,7 @@ var (
 	ErrBuildFailed          = fmt.Errorf("build failed")
 )
 
+// Build is a function that builds a site from a DAG of steps.
 func Build(steps []Step, config *Config, opts ...Option) error {
 	o := defaultOptions().Apply(opts...)
 
@@ -41,9 +42,9 @@ func Build(steps []Step, config *Config, opts ...Option) error {
 			return ErrCircularDependency
 		}
 
-		g, ctx := errgroup.WithContext(o.context)
-		if o.maxWorkers > 0 {
-			g.SetLimit(o.maxWorkers)
+		g, ctx := errgroup.WithContext(o.Context)
+		if o.MaxWorkers > 0 {
+			g.SetLimit(o.MaxWorkers)
 		}
 
 		var (
@@ -69,7 +70,7 @@ func Build(steps []Step, config *Config, opts ...Option) error {
 					StepID:   step.ID,
 				}
 
-				if err := step.Func(&sc); err != nil {
+				if err := step.Fn(&sc); err != nil {
 					return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
 				}
 
@@ -116,8 +117,8 @@ func Build(steps []Step, config *Config, opts ...Option) error {
 
 	manifestOpts := []manifest.Option{
 		manifest.WithBuildDir(config.Build.OutputDir),
-		manifest.WithContext(o.context),
-		manifest.WithMaxWorkers(o.maxWorkers),
+		manifest.WithContext(o.Context),
+		manifest.WithMaxWorkers(o.MaxWorkers),
 	}
 
 	if o.Dev {
@@ -128,16 +129,21 @@ func Build(steps []Step, config *Config, opts ...Option) error {
 		return fmt.Errorf("%w: %w", ErrBuildFailed, err)
 	}
 
-	// Check if any diagnostics at or above the fail-on level were reported
-	if o.DiagnosticSink().HasLevel(o.FailOnLevel()) {
-		maxLevel := o.DiagnosticSink().MaxLevel()
-		return fmt.Errorf("%w: %s(s) reported during build (fail-on-level: %s)",
-			ErrBuildFailed, maxLevel, o.FailOnLevel())
+	failLevel := LevelError
+	if o.FailOnWarn {
+		failLevel = LevelWarning
+	}
+
+	if o.DiagnosticSink.HasLevel(failLevel) {
+		maxLevel := o.DiagnosticSink.MaxLevel()
+		return fmt.Errorf("%w: %s(s) reported during build",
+			ErrBuildFailed, maxLevel)
 	}
 
 	return nil
 }
 
+// newDAG constructs a DAG from a slice of steps.
 func newDAG(steps []Step) (*dag, error) {
 	d := &dag{
 		m:   make(map[string]Step),
@@ -175,6 +181,7 @@ func newDAG(steps []Step) (*dag, error) {
 	return d, nil
 }
 
+// dag is an internal struct representing a directed acyclic graph
 type dag struct {
 	m   map[string]Step
 	adj map[string][]string

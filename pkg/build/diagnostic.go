@@ -7,7 +7,6 @@ import (
 	"sync"
 )
 
-// DiagnosticLevel represents the severity of a diagnostic message.
 type DiagnosticLevel int
 
 const (
@@ -32,7 +31,6 @@ func (l DiagnosticLevel) String() string {
 	}
 }
 
-// ParseLevel converts a string to a DiagnosticLevel.
 func ParseLevel(s string) (DiagnosticLevel, error) {
 	switch strings.ToLower(s) {
 	case "debug":
@@ -48,13 +46,12 @@ func ParseLevel(s string) (DiagnosticLevel, error) {
 	}
 }
 
-// Diagnostic represents a single build issue or log message.
 type Diagnostic struct {
-	Level   DiagnosticLevel
-	StepID  string // Which step reported this
-	Source  string // File path or other context
-	Message string
-	Err     error // Original error, if any
+	Level   DiagnosticLevel // Diagnostic level
+	StepID  string          // Which step reported this
+	Source  string          // File path or other context
+	Message string          // Diagnostic message
+	Err     error           // Original error, if any
 }
 
 func (d Diagnostic) Error() string {
@@ -70,57 +67,44 @@ func (d Diagnostic) Error() string {
 	return fmt.Sprintf("[%s] %s", d.Level, d.Message)
 }
 
-// DiagnosticSink collects diagnostics during a build.
 type DiagnosticSink interface {
-	// Report adds a diagnostic to the sink.
+	// Report a diagnostic
 	Report(d Diagnostic)
-
-	// Diagnostics returns all collected diagnostics.
+	// Diagnostics returns all diagnostics reported to the sink.
 	Diagnostics() []Diagnostic
-
-	// DiagnosticsAtLevel returns diagnostics at or above the given level.
+	// DiagnosticsAtLevel returns all diagnostics reported to the sink at the given level.
 	DiagnosticsAtLevel(level DiagnosticLevel) []Diagnostic
-
-	// HasLevel returns true if any diagnostics at or above level were reported.
+	// HasLevel returns true if the sink has any diagnostics at the given level.
 	HasLevel(level DiagnosticLevel) bool
-
-	// MaxLevel returns the highest severity level reported, or -1 if empty.
+	// MaxLevel returns the maximum level of diagnostics reported to the sink.
 	MaxLevel() DiagnosticLevel
-
-	// Clear removes all diagnostics (useful between rebuilds).
+	// Clear clears all diagnostics reported to the sink.
 	Clear()
 }
 
-// DiagnosticCollector is the default thread-safe implementation of DiagnosticSink.
+// DiagnosticCollector is a DiagnosticSink that collects diagnostics in memory.
 type DiagnosticCollector struct {
 	mu          sync.RWMutex
 	diagnostics []Diagnostic
 	minLevel    DiagnosticLevel
 
-	// OnReport is an optional callback for real-time streaming.
 	OnReport func(Diagnostic)
 }
 
-// CollectorOption configures a DiagnosticCollector.
 type CollectorOption func(*DiagnosticCollector)
 
-// WithMinLevel sets the minimum level for diagnostics to be collected.
-// Diagnostics below this level will be ignored.
 func WithMinLevel(level DiagnosticLevel) CollectorOption {
 	return func(c *DiagnosticCollector) {
 		c.minLevel = level
 	}
 }
 
-// WithOnReport sets a callback that will be called for each diagnostic reported.
-// The callback is called outside the lock, so it's safe to do blocking operations.
 func WithOnReport(fn func(Diagnostic)) CollectorOption {
 	return func(c *DiagnosticCollector) {
 		c.OnReport = fn
 	}
 }
 
-// NewDiagnosticCollector creates a new DiagnosticCollector with the given options.
 func NewDiagnosticCollector(opts ...CollectorOption) *DiagnosticCollector {
 	c := &DiagnosticCollector{
 		minLevel: LevelDebug, // Collect everything by default
@@ -131,8 +115,6 @@ func NewDiagnosticCollector(opts ...CollectorOption) *DiagnosticCollector {
 	return c
 }
 
-// Report adds a diagnostic to the collector.
-// Diagnostics below the minimum level are ignored.
 func (c *DiagnosticCollector) Report(d Diagnostic) {
 	if d.Level < c.minLevel {
 		return
@@ -143,20 +125,17 @@ func (c *DiagnosticCollector) Report(d Diagnostic) {
 	callback := c.OnReport
 	c.mu.Unlock()
 
-	// Call outside lock to avoid deadlocks
 	if callback != nil {
 		callback(d)
 	}
 }
 
-// Diagnostics returns a copy of all collected diagnostics.
 func (c *DiagnosticCollector) Diagnostics() []Diagnostic {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return slices.Clone(c.diagnostics)
 }
 
-// DiagnosticsAtLevel returns diagnostics at or above the given level.
 func (c *DiagnosticCollector) DiagnosticsAtLevel(level DiagnosticLevel) []Diagnostic {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -169,7 +148,6 @@ func (c *DiagnosticCollector) DiagnosticsAtLevel(level DiagnosticLevel) []Diagno
 	return result
 }
 
-// HasLevel returns true if any diagnostics at or above level were reported.
 func (c *DiagnosticCollector) HasLevel(level DiagnosticLevel) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -181,7 +159,6 @@ func (c *DiagnosticCollector) HasLevel(level DiagnosticLevel) bool {
 	return false
 }
 
-// MaxLevel returns the highest severity level reported, or -1 if empty.
 func (c *DiagnosticCollector) MaxLevel() DiagnosticLevel {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -197,14 +174,12 @@ func (c *DiagnosticCollector) MaxLevel() DiagnosticLevel {
 	return max
 }
 
-// Clear removes all diagnostics.
 func (c *DiagnosticCollector) Clear() {
 	c.mu.Lock()
 	c.diagnostics = nil
 	c.mu.Unlock()
 }
 
-// CountByLevel returns a map of level to count.
 func (c *DiagnosticCollector) CountByLevel() map[DiagnosticLevel]int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -215,7 +190,6 @@ func (c *DiagnosticCollector) CountByLevel() map[DiagnosticLevel]int {
 	return counts
 }
 
-// Summary returns a human-readable summary of diagnostics.
 func (c *DiagnosticCollector) Summary() string {
 	counts := c.CountByLevel()
 	if len(counts) == 0 {
@@ -231,7 +205,7 @@ func (c *DiagnosticCollector) Summary() string {
 	return strings.Join(parts, ", ")
 }
 
-// noopSink is used when no sink is provided.
+// noopSink is a DiagnosticSink that does nothing.
 type noopSink struct{}
 
 func (noopSink) Report(Diagnostic)                               {}
@@ -241,7 +215,7 @@ func (noopSink) HasLevel(DiagnosticLevel) bool                   { return false 
 func (noopSink) MaxLevel() DiagnosticLevel                       { return DiagnosticLevel(-1) }
 func (noopSink) Clear()                                          {}
 
-// NoopSink returns a DiagnosticSink that discards all diagnostics.
+// NoopSink returns a DiagnosticSink that does nothing.
 func NoopSink() DiagnosticSink {
 	return noopSink{}
 }

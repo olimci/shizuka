@@ -50,7 +50,6 @@ func NewBuilderWithDistOverride(configPath, distDir string) (*Builder, error) {
 	}, nil
 }
 
-// loadFallbackTemplate loads the embedded fallback template
 func loadFallbackTemplate() (*template.Template, error) {
 	content, err := embed.Templates.ReadFile("templates/fallback.html")
 	if err != nil {
@@ -68,7 +67,6 @@ func loadFallbackTemplate() (*template.Template, error) {
 func (b *Builder) Build(ctx context.Context) BuildResult {
 	start := time.Now()
 
-	// In prod, only collect warnings and above (skip debug/info noise)
 	collector := build.NewDiagnosticCollector(
 		build.WithMinLevel(build.LevelWarning),
 	)
@@ -82,7 +80,6 @@ func (b *Builder) Build(ctx context.Context) BuildResult {
 		build.WithContext(ctx),
 		build.WithMaxWorkers(4),
 		build.WithDiagnosticSink(collector),
-		build.WithFailOnLevel(build.LevelError), // Fail on errors
 	}
 
 	err := build.Build(steps, b.config, opts...)
@@ -98,17 +95,14 @@ func (b *Builder) Build(ctx context.Context) BuildResult {
 func (b *Builder) BuildDev(ctx context.Context) BuildResult {
 	start := time.Now()
 
-	// In dev mode, collect everything including debug for verbose output
 	collector := build.NewDiagnosticCollector(
 		build.WithMinLevel(build.LevelDebug),
 	)
 
-	// Load fallback template for dev mode (lazy load and cache)
 	if b.fallbackTemplate == nil {
 		if tmpl, err := loadFallbackTemplate(); err == nil {
 			b.fallbackTemplate = tmpl
 		}
-		// If loading fails, we just won't use a fallback (non-fatal)
 	}
 
 	steps := []build.Step{
@@ -121,11 +115,9 @@ func (b *Builder) BuildDev(ctx context.Context) BuildResult {
 		build.WithMaxWorkers(4),
 		build.WithDev(),
 		build.WithDiagnosticSink(collector),
-		build.WithLenientErrors(),               // Demote errors to warnings in dev
-		build.WithFailOnLevel(build.LevelError), // Only fail on actual errors (after demotion, there should be none)
+		build.WithLenientErrors(),
 	}
 
-	// Add fallback template if available
 	if b.fallbackTemplate != nil {
 		opts = append(opts, build.WithFallbackTemplate(b.fallbackTemplate))
 	}
@@ -140,7 +132,6 @@ func (b *Builder) BuildDev(ctx context.Context) BuildResult {
 	}
 }
 
-// BuildStrict is like Build but fails on warnings too
 func (b *Builder) BuildStrict(ctx context.Context) BuildResult {
 	start := time.Now()
 
@@ -157,7 +148,7 @@ func (b *Builder) BuildStrict(ctx context.Context) BuildResult {
 		build.WithContext(ctx),
 		build.WithMaxWorkers(4),
 		build.WithDiagnosticSink(collector),
-		build.WithFailOnLevel(build.LevelWarning), // Strict: fail on warnings
+		build.WithFailOnWarn(),
 	}
 
 	err := build.Build(steps, b.config, opts...)

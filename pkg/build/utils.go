@@ -16,6 +16,7 @@ import (
 	minjs "github.com/tdewolff/minify/v2/js"
 )
 
+// newMinifier constructs a new minifier, can be expanded later to derive from config better if needed
 func newMinifier(enabled bool) *minify.M {
 	if !enabled {
 		return nil
@@ -30,6 +31,7 @@ func newMinifier(enabled bool) *minify.M {
 	return m
 }
 
+// static creates a new static artefact
 func makeStatic(owner, source, target string) manifest.Artefact {
 	return manifest.Artefact{
 		Claim: manifest.Claim{
@@ -50,6 +52,7 @@ func makeStatic(owner, source, target string) manifest.Artefact {
 	}
 }
 
+// minifyArtefact minifies an artefact if a minifier is provided
 func minifyArtefact(m *minify.M, target string, artefact manifest.Artefact) manifest.Artefact {
 	if m == nil {
 		return artefact
@@ -75,6 +78,7 @@ func minifyArtefact(m *minify.M, target string, artefact manifest.Artefact) mani
 	}
 }
 
+// makeTarget creates a new target path based on the root and relative path
 func makeTarget(root, rel string) (src, dst string, err error) {
 	dir, base := filepath.Split(rel)
 
@@ -89,6 +93,8 @@ func makeTarget(root, rel string) (src, dst string, err error) {
 	}
 }
 
+// parseTemplateGlob parses a glob pattern and returns templates
+// also attatches template funcs
 func parseTemplateGlob(pattern string) (*template.Template, error) {
 	files, err := filepath.Glob(pattern)
 	if err != nil {

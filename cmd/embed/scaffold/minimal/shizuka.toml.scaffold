@@ -1,0 +1,25 @@
+shizuka.version = "{{.Version}}"
+
+[site]
+title = "{{.SiteName}}"
+description = "A new Shizuka site"
+url = "https://example.com"
+base_path = "/"
+
+[build]
+output_dir     = "dist"
+templates_glob = "templates/*.tmpl"
+static_dir     = "static"
+content_dir    = "content"
+
+[build.transforms]
+minify = false
+
+[build.goldmark]
+extensions = ["gfm", "table", "strikethrough", "tasklist", "footnotes", "typographer"]
+[build.goldmark.parser]
+auto_heading_id = true
+attribute       = false
+[build.goldmark.renderer]
+hardbreaks      = false
+XHTML           = false

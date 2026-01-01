@@ -1,0 +1,18 @@
+# Template manifest for the minimal starter template
+
+name = "minimal"
+description = "A minimal starting point with the essentials"
+version = "1.0.0"
+
+# Files that should be processed as Go templates (variables substituted)
+# Uses glob patterns relative to the template directory
+template_patterns = [
+    "*.scaffold",
+    "content/*.md",
+]
+
+# File rename rules (source -> destination)
+# Useful for files that can't have their real name in the repo
+[renames]
+"gitignore.scaffold" = ".gitignore"
+"shizuka.toml.scaffold" = "shizuka.toml"

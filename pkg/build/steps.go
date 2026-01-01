@@ -20,15 +20,13 @@ var (
 )
 
 const (
-	// internal keys
 	ConfigK  = manifest.K[*Config]("config")
 	OptionsK = manifest.K[*Options]("options")
-
-	// transform keys
-	PagesK = manifest.K[map[string]*transforms.PageData]("pages")
-	SiteK  = manifest.K[transforms.Site]("site")
+	PagesK   = manifest.K[map[string]*transforms.PageData]("pages")
+	SiteK    = manifest.K[transforms.Site]("site")
 )
 
+// StepStatic attatches static files
 func StepStatic() Step {
 	return StepFunc("static", func(sc *StepContext) error {
 		config := manifest.GetAs(sc.Manifest, ConfigK)
@@ -50,7 +48,9 @@ func StepStatic() Step {
 	})
 }
 
+// StepContent builds pages
 func StepContent() Step {
+	// build creates the manifest artefacts for the pages
 	build := StepFunc("pages:build", func(sc *StepContext) error {
 		config := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
@@ -63,10 +63,8 @@ func StepContent() Step {
 
 		m := newMinifier(config.Build.Transforms.Minify)
 
-		// Build time for SiteMeta
 		buildTime := time.Now().Format(time.RFC3339)
 
-		// Create SiteMeta once for all pages
 		siteMeta := transforms.SiteMeta{
 			BuildTime: buildTime,
 			Dev:       sc.Options.Dev,
@@ -100,15 +98,12 @@ func StepContent() Step {
 				Owner:  "pages:build",
 			}
 
-			// Check if template exists
 			pageTmpl := tmpl.Lookup(page.Template)
 			templateName := page.Template
 
 			if pageTmpl == nil {
-				// Template not found - try fallback
-				fallback := sc.Options.FallbackTemplate()
+				fallback := sc.Options.FallbackTemplate
 				if fallback != nil {
-					// Use fallback template
 					if page.Template == "" {
 						sc.Warn(page.Source, "no template specified, using fallback", nil)
 					} else {
@@ -119,10 +114,9 @@ func StepContent() Step {
 					continue
 				}
 
-				// No fallback - report error
 				if page.Template == "" {
 					if err := sc.Error(page.Source, "no template specified", ErrNoTemplate); err != nil {
-						continue // Skip this page, but don't abort build
+						continue
 					}
 					continue
 				} else {
@@ -133,7 +127,6 @@ func StepContent() Step {
 				}
 			}
 
-			// Template found - create artefact with the named template
 			artefact := manifest.Artefact{
 				Claim: claim,
 				Builder: func(w io.Writer) error {
@@ -156,6 +149,7 @@ func StepContent() Step {
 		return nil
 	}, "pages:resolve")
 
+	// resolve creates the manifest registry entries for site information.
 	resolve := StepFunc("pages:resolve", func(sc *StepContext) error {
 		config := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
@@ -203,10 +197,11 @@ func StepContent() Step {
 		return nil
 	})
 
+	// index indexes pages and creates the manifest registry entries for page information.
 	return StepFunc("pages:index", func(sc *StepContext) error {
 		config := manifest.GetAs(sc.Manifest, ConfigK)
 
-		md := MakeGoldmark(config.Build.Goldmark)
+		md := makeGoldmark(config.Build.Goldmark)
 
 		files, err := fileutils.WalkFiles(config.Build.ContentDir)
 		if err != nil {
@@ -230,7 +225,7 @@ func StepContent() Step {
 			page, err := transforms.BuildPage(source, md)
 			if err != nil {
 				if err := sc.Error(source, "failed to build page", err); err != nil {
-					continue // Skip this page in lenient mode
+					continue
 				}
 				continue
 			}

@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// PageData is an internal representation of a page
 type PageData struct {
 	Page     Page
 	Template string
@@ -22,6 +23,7 @@ type PageData struct {
 	Target string
 }
 
+// Page represents a page in the site
 type Page struct {
 	Slug string
 
@@ -42,6 +44,7 @@ type Page struct {
 	Draft    bool
 }
 
+// Lite returns a lite representation of the page
 func (p *Page) Lite() *PageLite {
 	return &PageLite{
 		Slug:        p.Slug,
@@ -57,6 +60,7 @@ func (p *Page) Lite() *PageLite {
 	}
 }
 
+// PageLite is a lite representation of a page, used for links etc
 type PageLite struct {
 	Slug string
 
@@ -74,19 +78,14 @@ type PageLite struct {
 	Draft    bool
 }
 
-// PageMeta contains metadata about a page's build context.
+// PageMeta represents metadata for a page
 type PageMeta struct {
-	Source   string // Original source file path
-	Target   string // Output target path
-	Template string // Template name used to render this page
+	Source   string
+	Target   string
+	Template string
 }
 
-// SiteMeta contains metadata about the site's build context.
-type SiteMeta struct {
-	BuildTime string // When the build started (RFC3339)
-	Dev       bool   // Whether this is a dev build
-}
-
+// PageTemplate is the struct from which page templates are built
 type PageTemplate struct {
 	Page     Page
 	Site     Site
@@ -94,73 +93,7 @@ type PageTemplate struct {
 	SiteMeta SiteMeta
 }
 
-func buildMD(path string, md gm.Markdown) (*Frontmatter, string, error) {
-	doc, err := os.ReadFile(path)
-	if err != nil {
-		return nil, "", err
-	}
-
-	fm, body, err := ExtractFrontmatter(doc)
-	if err != nil {
-		return nil, "", err
-	}
-
-	var buf strings.Builder
-	if err := md.Convert(body, &buf); err != nil {
-		return nil, "", err
-	}
-
-	return fm, buf.String(), nil
-}
-
-func buildTOML(path string) (*Frontmatter, string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, "", err
-	}
-	defer file.Close()
-
-	fm := new(Frontmatter)
-
-	if _, err := toml.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", err
-	}
-
-	return fm, fm.Body, nil
-}
-
-func buildYaml(path string) (*Frontmatter, string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, "", err
-	}
-	defer file.Close()
-
-	fm := new(Frontmatter)
-
-	if err := yaml.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", err
-	}
-
-	return fm, fm.Body, nil
-}
-
-func buildJSON(path string) (*Frontmatter, string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, "", err
-	}
-	defer file.Close()
-
-	fm := new(Frontmatter)
-
-	if err := json.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", err
-	}
-
-	return fm, fm.Body, nil
-}
-
+// BuildPage builds a page from a file
 func BuildPage(src string, md gm.Markdown) (*PageData, error) {
 	var (
 		fm   *Frontmatter
@@ -203,4 +136,75 @@ func BuildPage(src string, md gm.Markdown) (*PageData, error) {
 		Template: fm.Template,
 		Source:   src,
 	}, nil
+}
+
+// buildMD builds a page from a markdown file
+func buildMD(path string, md gm.Markdown) (*Frontmatter, string, error) {
+	doc, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", err
+	}
+
+	fm, body, err := ExtractFrontmatter(doc)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var buf strings.Builder
+	if err := md.Convert(body, &buf); err != nil {
+		return nil, "", err
+	}
+
+	return fm, buf.String(), nil
+}
+
+// buildTOML builds a page from a TOML file
+func buildTOML(path string) (*Frontmatter, string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, "", err
+	}
+	defer file.Close()
+
+	fm := new(Frontmatter)
+
+	if _, err := toml.NewDecoder(file).Decode(fm); err != nil {
+		return nil, "", err
+	}
+
+	return fm, fm.Body, nil
+}
+
+// buildYaml builds a page from a YAML file
+func buildYaml(path string) (*Frontmatter, string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, "", err
+	}
+	defer file.Close()
+
+	fm := new(Frontmatter)
+
+	if err := yaml.NewDecoder(file).Decode(fm); err != nil {
+		return nil, "", err
+	}
+
+	return fm, fm.Body, nil
+}
+
+// buildJSON builds a page from a JSON file
+func buildJSON(path string) (*Frontmatter, string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, "", err
+	}
+	defer file.Close()
+
+	fm := new(Frontmatter)
+
+	if err := json.NewDecoder(file).Decode(fm); err != nil {
+		return nil, "", err
+	}
+
+	return fm, fm.Body, nil
 }
