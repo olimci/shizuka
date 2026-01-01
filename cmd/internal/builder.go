@@ -51,7 +51,7 @@ func NewBuilderWithDistOverride(configPath, distDir string) (*Builder, error) {
 }
 
 func loadFallbackTemplate() (*template.Template, error) {
-	content, err := embed.Templates.ReadFile("templates/fallback.html")
+	content, err := embed.Templates.ReadFile("templates/fallback.tmpl")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read embedded fallback template: %w", err)
 	}

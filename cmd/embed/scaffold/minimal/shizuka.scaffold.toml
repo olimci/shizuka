@@ -1,0 +1,16 @@
+[metadata]
+name = "minimal"
+description = "A minimal starting point with the essentials"
+version = "1.0.0"
+shizuka_version = "0.1.0"
+
+[files]
+# Only strip .tmpl suffix from files that are scaffold templates (processed with variables)
+# Site template files like templates/page.tmpl should keep their extension
+strip_suffixes = []
+templates = ["_shizuka.toml.tmpl", "content/**/*.md"]
+files = ["**/*"]
+
+[files.renames]
+"_gitignore" = ".gitignore"
+"_shizuka.toml.tmpl" = "shizuka.toml"

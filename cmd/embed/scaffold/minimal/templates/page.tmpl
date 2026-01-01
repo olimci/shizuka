@@ -1,28 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Page.Title}} - {{.Site.Title}}</title>
-    <meta name="description" content="{{.Site.Description}}">
-    <link rel="stylesheet" href="{{.Site.BasePath}}style.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>{{.Page.Title}}</h1>
-            {{if .Page.Date}}
-            <p class="meta">Published on {{.Page.Date.Format "January 2, 2006"}}</p>
-            {{end}}
-        </header>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{{.Page.Title}} - {{.Site.Title}}</title>
+        <meta name="description" content="{{.Site.Description}}" />
+        <link rel="stylesheet" href="{{.Site.URL}}style.css" />
+    </head>
+    <body>
+        <div class="container">
+            <header>
+                <h1>{{.Page.Title}}</h1>
+                {{if .Page.Date}}
+                <p class="meta">
+                    Published on {{.Page.Date.Format "January 2, 2006"}}
+                </p>
+                {{end}}
+            </header>
 
-        <main class="content">
-            {{.Page.Body}}
-        </main>
+            <main class="content">{{.Page.Body}}</main>
 
-        <footer>
-            <p>Built with <a href="https://github.com/olimci/shizuka">Shizuka</a></p>
-        </footer>
-    </div>
-</body>
+            <footer>
+                <p>
+                    Built with
+                    <a href="https://github.com/olimci/shizuka">Shizuka</a>
+                </p>
+            </footer>
+        </div>
+    </body>
 </html>

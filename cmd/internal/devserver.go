@@ -83,11 +83,9 @@ func (ds *DevServer) Run(ctx context.Context) error {
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ds.buildWorker(ctx, buildRequests, buildResults, uiEvents)
-	}()
+	})
 
 	select {
 	case buildRequests <- BuildRequest{Reason: "initial", Paths: nil}:

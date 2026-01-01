@@ -32,7 +32,6 @@ type SiteConfig struct {
 	Title       string `toml:"title"`
 	Description string `toml:"description"`
 	URL         string `toml:"url"`
-	BasePath    string `toml:"base_path"`
 }
 
 type ContentConfig struct {
@@ -98,9 +97,12 @@ func DefaultConfig() *Config {
 			Title:       "Shizuka",
 			Description: "Shizuka site",
 			URL:         "https://example.com",
-			BasePath:    "/",
 		},
 		Build: BuildConfig{
+			OutputDir:     "dist",
+			TemplatesGlob: "templates/*.tmpl",
+			StaticDir:     "static",
+			ContentDir:    "content",
 			Targets: BuildTargets{
 				RSS: BuildRSSConfig{
 					Enable:      false,
@@ -160,17 +162,6 @@ func LoadConfig(path string) (*Config, error) {
 
 // Validate validates the Config.
 func (c *Config) Validate() error {
-	c.Site.BasePath = strings.TrimSpace(c.Site.BasePath)
-	if c.Site.BasePath == "" {
-		c.Site.BasePath = "/"
-	}
-	if !strings.HasPrefix(c.Site.BasePath, "/") {
-		c.Site.BasePath = "/" + c.Site.BasePath
-	}
-	if c.Site.BasePath != "/" && strings.HasSuffix(c.Site.BasePath, "/") {
-		c.Site.BasePath = strings.TrimSuffix(c.Site.BasePath, "/")
-	}
-
 	c.Site.URL = strings.TrimSpace(c.Site.URL)
 	if c.Site.URL == "" {
 		return errors.New("site.url is required")
