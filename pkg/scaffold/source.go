@@ -9,8 +9,8 @@ import (
 	"sync"
 )
 
-// source represents an arbitrary source for a scaffold
-type source interface {
+// Source represents an arbitrary Source for a scaffold
+type Source interface {
 	FS(context.Context) (fs.FS, error)
 	Root() string
 	Close() error

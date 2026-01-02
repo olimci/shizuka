@@ -4,6 +4,6 @@ description = "Built-in starter templates for Shizuka"
 version = "1.0.0"
 shizuka_version = "0.1.0"
 
-[scaffolds]
-items = ["minimal"]
+[templates]
+items = ["minimal", "terrible"]
 default = "minimal"

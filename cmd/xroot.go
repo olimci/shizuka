@@ -1,33 +1,24 @@
 package cmd
 
 import (
-	"context"
-
-	"github.com/olimci/shizuka/pkg/version"
 	"github.com/urfave/cli/v3"
 )
 
-var Version = version.String()
-
-func Execute(ctx context.Context, args []string) error {
-	app := &cli.Command{
-		Name:  "shizuka",
-		Usage: "A static site generator",
+// xCmd returns the non-interactive subcommand group
+func xCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "x",
+		Usage: "Non-interactive commands (for scripts and CI)",
 		Commands: []*cli.Command{
-			versionCmd(),
-			initCmd(),
-			buildCmd(),
-			devCmd(),
-
-			// noninteractive subcommand group
-			xCmd(),
+			xInitCmd(),
+			xBuildCmd(),
+			xDevCmd(),
 		},
 	}
-
-	return app.Run(ctx, args)
 }
 
-func versionCmd() *cli.Command {
+// xVersionCmd is an alias to versionCmd, since versionCmd is noninteractive by default
+func xVersionCmd() *cli.Command {
 	return &cli.Command{
 		Name:   "version",
 		Usage:  "Print version information",
@@ -35,16 +26,34 @@ func versionCmd() *cli.Command {
 	}
 }
 
-func initCmd() *cli.Command {
+func xInitCmd() *cli.Command {
 	return &cli.Command{
 		Name:      "init",
-		Usage:     "Scaffold a new Shizuka site (interactive)",
+		Usage:     "Scaffold a new Shizuka site (non-interactive)",
 		ArgsUsage: "[source] [directory]",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
+				Name:    "source",
+				Aliases: []string{"s"},
+				Usage:   "Template source (local path or remote URL; overrides positional source)",
+			},
+			&cli.StringFlag{
 				Name:    "template",
 				Aliases: []string{"t"},
-				Usage:   "Scaffold name (for collections)",
+				Usage:   "Template name (for collections)",
+			},
+			&cli.StringSliceFlag{
+				Name:  "var",
+				Usage: "Template variable (key=value, repeatable)",
+			},
+			&cli.StringFlag{
+				Name:  "vars-file",
+				Usage: "Variables file (.toml, .yaml, .yml, .json)",
+			},
+			&cli.BoolFlag{
+				Name:    "force",
+				Aliases: []string{"f"},
+				Usage:   "Overwrite existing files",
 			},
 			&cli.BoolFlag{
 				Name:    "list",
@@ -55,20 +64,15 @@ func initCmd() *cli.Command {
 				Name:  "list-vars",
 				Usage: "List template variables",
 			},
-			&cli.BoolFlag{
-				Name:    "force",
-				Aliases: []string{"f"},
-				Usage:   "Overwrite existing files",
-			},
 		},
-		Action: runInit,
+		Action: runXInit,
 	}
 }
 
-func buildCmd() *cli.Command {
+func xBuildCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "build",
-		Usage: "Build the site (interactive)",
+		Usage: "Build the site (non-interactive)",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "config",
@@ -87,14 +91,14 @@ func buildCmd() *cli.Command {
 				Usage:   "Fail on warnings (strict mode)",
 			},
 		},
-		Action: runBuild,
+		Action: runXBuild,
 	}
 }
 
-func devCmd() *cli.Command {
+func xDevCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "dev",
-		Usage: "Start development server with TUI",
+		Usage: "Start development server (non-interactive, logs to stdout)",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "config",
@@ -114,6 +118,6 @@ func devCmd() *cli.Command {
 				Usage:   "HTTP port",
 			},
 		},
-		Action: runDev,
+		Action: runXDev,
 	}
 }

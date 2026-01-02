@@ -10,14 +10,14 @@ import (
 	"strings"
 )
 
-type Scaffold struct {
-	Config ScaffoldConfig
-	source source
+type Template struct {
+	Config TemplateCfg
+	source Source
 	Base   string
 }
 
-func (s *Scaffold) Close() error {
-	return s.source.Close()
+func (t *Template) Close() error {
+	return t.source.Close()
 }
 
 // BuildResult contains information about what was created.
@@ -27,10 +27,10 @@ type BuildResult struct {
 }
 
 // Build scaffolds the template to the target directory.
-func (s *Scaffold) Build(ctx context.Context, targetPath string, opts ...Option) (*BuildResult, error) {
+func (t *Template) Build(ctx context.Context, targetPath string, opts ...Option) (*BuildResult, error) {
 	o := defaultOptions().apply(opts...)
 
-	fsy, err := s.source.FS(ctx)
+	fsy, err := t.source.FS(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("accessing source: %w", err)
 	}
@@ -44,21 +44,21 @@ func (s *Scaffold) Build(ctx context.Context, targetPath string, opts ...Option)
 		DirsCreated:  make([]string, 0),
 	}
 
-	err = fs.WalkDir(fsy, s.Base, func(src string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(fsy, t.Base, func(src string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		rel, err := filepath.Rel(s.Base, src)
+		rel, err := filepath.Rel(t.Base, src)
 		if err != nil {
 			return err
 		}
 
-		if rel == "." || rel == ScaffoldPath {
+		if rel == "." || rel == TemplateFile {
 			return nil
 		}
 
-		destRelPath := s.transformPath(rel)
+		destRelPath := t.transformPath(rel)
 		destPath := filepath.Join(targetPath, destRelPath)
 
 		if d.IsDir() {
@@ -89,7 +89,7 @@ func (s *Scaffold) Build(ctx context.Context, targetPath string, opts ...Option)
 			return fmt.Errorf("creating %s: %w", destRelPath, err)
 		}
 
-		if matchesGlobs(rel, s.Config.Files.Templates) {
+		if matchesGlobs(rel, t.Config.Files.Templates) {
 			if err := processTemplate(source, target, o.variables); err != nil {
 				return fmt.Errorf("processing template %s: %w", rel, err)
 			}
@@ -111,11 +111,11 @@ func (s *Scaffold) Build(ctx context.Context, targetPath string, opts ...Option)
 }
 
 // transformPath applies renames and suffix stripping to get the destination path.
-func (s *Scaffold) transformPath(relPath string) string {
-	dir := filepath.Dir(relPath)
-	baseName := filepath.Base(relPath)
+func (t *Template) transformPath(rel string) string {
+	dir := filepath.Dir(rel)
+	baseName := filepath.Base(rel)
 
-	if newName, ok := s.Config.Files.Renames[baseName]; ok {
+	if newName, ok := t.Config.Files.Renames[baseName]; ok {
 		baseName = newName
 	} else {
 		if strings.HasPrefix(baseName, "_") && len(baseName) > 1 {
@@ -123,7 +123,7 @@ func (s *Scaffold) transformPath(relPath string) string {
 		}
 	}
 
-	for _, suffix := range s.Config.Files.StripSuffixes {
+	for _, suffix := range t.Config.Files.StripSuffixes {
 		if base, ok := strings.CutSuffix(baseName, suffix); ok {
 			baseName = base
 			break

@@ -1,0 +1,25 @@
+[metadata]
+name = "Terrible"
+slug = "terrible"
+description = "A terrible starting point with none of the essentials"
+version = "1.0.0"
+shizuka_version = "0.1.0"
+
+[files]
+strip_suffixes = []
+templates = ["_shizuka.toml.tmpl", "content/**/*.md"]
+files = ["**/*"]
+
+[files.renames]
+"_gitignore" = ".gitignore"
+"_shizuka.toml.tmpl" = "shizuka.toml"
+
+[variables.test_1]
+name = "Test variable 1"
+description = "Test variable 1"
+default = "default_value"
+
+[variables.test_2]
+name = "Test variable 2"
+description = "Test variable 2"
+default = "default_value"

@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	ScaffoldPath   = "shizuka.scaffold.toml"
-	CollectionPath = "shizuka.collection.toml"
+	TemplateFile   = "shizuka.template.toml"
+	CollectionFile = "shizuka.collection.toml"
 )
 
 var gitKnownHosts = []string{
@@ -23,7 +23,7 @@ var gitKnownHosts = []string{
 	"codeberg.org/",
 }
 
-func Load(ctx context.Context, target string) (*Scaffold, *Collection, error) {
+func Load(ctx context.Context, target string) (*Template, *Collection, error) {
 	src, err := resolve(target)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolving source: %w", err)
@@ -37,7 +37,7 @@ func Load(ctx context.Context, target string) (*Scaffold, *Collection, error) {
 
 	root := src.Root()
 
-	if _, err := fs.Stat(fsy, path.Join(root, CollectionPath)); err == nil {
+	if _, err := fs.Stat(fsy, path.Join(root, CollectionFile)); err == nil {
 		collection, err := LoadCollection(ctx, src, ".")
 		if err != nil {
 			src.Close()
@@ -46,20 +46,45 @@ func Load(ctx context.Context, target string) (*Scaffold, *Collection, error) {
 		return nil, collection, nil
 	}
 
-	if _, err := fs.Stat(fsy, path.Join(root, ScaffoldPath)); err == nil {
-		scaffold, err := LoadScaffold(ctx, src, ".")
+	if _, err := fs.Stat(fsy, path.Join(root, TemplateFile)); err == nil {
+		template, err := LoadTemplate(ctx, src, ".")
 		if err != nil {
 			src.Close()
 			return nil, nil, err
 		}
-		return scaffold, nil, nil
+		return template, nil, nil
 	}
 
 	src.Close()
-	return nil, nil, fmt.Errorf("no %s or %s found at %s", ScaffoldPath, CollectionPath, target)
+	return nil, nil, fmt.Errorf("no %s or %s found at %s", TemplateFile, CollectionFile, target)
 }
 
-func LoadScaffold(ctx context.Context, src source, p string) (*Scaffold, error) {
+func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection, error) {
+	src := NewFSSource(fsy, root)
+
+	if _, err := fs.Stat(fsy, path.Join(root, CollectionFile)); err == nil {
+		collection, err := LoadCollection(ctx, src, ".")
+		if err != nil {
+			src.Close()
+			return nil, nil, err
+		}
+		return nil, collection, nil
+	}
+
+	if _, err := fs.Stat(fsy, path.Join(root, TemplateFile)); err == nil {
+		template, err := LoadTemplate(ctx, src, ".")
+		if err != nil {
+			src.Close()
+			return nil, nil, err
+		}
+		return template, nil, nil
+	}
+
+	src.Close()
+	return nil, nil, fmt.Errorf("no %s or %s found in %s", TemplateFile, CollectionFile, root)
+}
+
+func LoadTemplate(ctx context.Context, src Source, p string) (*Template, error) {
 	fsy, err := src.FS(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("accessing source: %w", err)
@@ -67,27 +92,27 @@ func LoadScaffold(ctx context.Context, src source, p string) (*Scaffold, error) 
 
 	base := path.Join(src.Root(), p)
 
-	file, err := fsy.Open(path.Join(base, ScaffoldPath))
+	file, err := fsy.Open(path.Join(base, TemplateFile))
 	if err != nil {
-		return nil, fmt.Errorf("opening scaffold config file: %w", err)
+		return nil, fmt.Errorf("opening template config file: %w", err)
 	}
 	defer file.Close()
 
-	var config ScaffoldConfig
+	var config TemplateCfg
 	if md, err := toml.NewDecoder(file).Decode(&config); err != nil {
-		return nil, fmt.Errorf("decoding scaffold config: %w", err)
+		return nil, fmt.Errorf("decoding template config: %w", err)
 	} else if len(md.Undecoded()) > 0 {
-		return nil, fmt.Errorf("unknown keys in scaffold config: %v", md.Undecoded())
+		return nil, fmt.Errorf("unknown keys in template config: %v", md.Undecoded())
 	}
 
-	return &Scaffold{
+	return &Template{
 		Config: config,
 		source: src,
 		Base:   base,
 	}, nil
 }
 
-func LoadCollection(ctx context.Context, src source, p string) (*Collection, error) {
+func LoadCollection(ctx context.Context, src Source, p string) (*Collection, error) {
 	fsy, err := src.FS(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("accessing source: %w", err)
@@ -95,40 +120,45 @@ func LoadCollection(ctx context.Context, src source, p string) (*Collection, err
 
 	base := path.Join(src.Root(), p)
 
-	file, err := fsy.Open(path.Join(base, CollectionPath))
+	file, err := fsy.Open(path.Join(base, CollectionFile))
 	if err != nil {
 		return nil, fmt.Errorf("opening collection config file: %w", err)
 	}
 	defer file.Close()
 
-	var config CollectionConfig
+	var config CollectionCfg
 	if md, err := toml.NewDecoder(file).Decode(&config); err != nil {
 		return nil, fmt.Errorf("decoding collection config: %w", err)
 	} else if len(md.Undecoded()) > 0 {
 		return nil, fmt.Errorf("unknown keys in collection config: %v", md.Undecoded())
 	}
 
-	scaffolds := make([]*Scaffold, len(config.Scaffolds.Items))
+	templates := make([]*Template, len(config.Templates.Items))
 
-	for i, scaffoldPath := range config.Scaffolds.Items {
-		fullPath := path.Join(p, scaffoldPath)
-		scaffold, err := LoadScaffold(ctx, src, fullPath)
+	for i, slug := range config.Templates.Items {
+		fullPath := path.Join(p, slug)
+		template, err := LoadTemplate(ctx, src, fullPath)
 		if err != nil {
-			return nil, fmt.Errorf("loading scaffold %s: %w", scaffoldPath, err)
+			return nil, fmt.Errorf("loading template %s: %w", slug, err)
 		}
-		scaffolds[i] = scaffold
+
+		if template.Config.Metadata.Slug != slug {
+			return nil, fmt.Errorf("template slug %s does not match directory name %s", template.Config.Metadata.Slug, slug)
+		}
+
+		templates[i] = template
 	}
 
 	return &Collection{
 		Config:    config,
 		source:    src,
 		Base:      base,
-		Scaffolds: scaffolds,
+		Templates: templates,
 	}, nil
 }
 
 // resolve determines the source type from the target string and returns the appropriate source
-func resolve(target string) (source, error) {
+func resolve(target string) (Source, error) {
 	if isRemoteURL(target) {
 		return NewRemoteSource(target), nil
 	}

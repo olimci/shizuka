@@ -2,286 +2,142 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
-	"time"
-	"unicode"
+	"sync"
 
 	"github.com/olimci/shizuka/cmd/embed"
+	"github.com/olimci/shizuka/cmd/ui/init_ui"
 	"github.com/olimci/shizuka/pkg/scaffold"
-	"github.com/olimci/shizuka/pkg/version"
 	"github.com/urfave/cli/v3"
 )
 
-func Init(ctx context.Context, cmd *cli.Command) error {
-	source := cmd.String("source")
-	templateName := cmd.String("template")
-	force := cmd.Bool("force")
-	quiet := cmd.Bool("quiet")
+var (
+	ErrorFailedToLoadTemplate = errors.New("failed to load template")
+	ErrTemplateNotFound       = errors.New("no template found")
+)
 
-	if cmd.Bool("list") {
-		return listTemplates(ctx, source)
+func runInit(ctx context.Context, cmd *cli.Command) error {
+	source := ""
+	target := "."
+
+	switch cmd.NArg() {
+	case 0:
+	case 1:
+		source = cmd.Args().Get(0)
+	case 2:
+		source = cmd.Args().Get(0)
+		target = cmd.Args().Get(1)
+	default:
+		return fmt.Errorf("too many arguments!")
 	}
 
-	targetDir := "."
-	if cmd.NArg() > 0 {
-		targetDir = cmd.Args().First()
-	}
+	// flags
+	selected := cmd.String("template") // selected template
+	force := cmd.Bool("force")         // force overwrite
+	listOnly := cmd.Bool("list")
+	listVars := cmd.Bool("list-vars")
 
-	absTargetDir, err := filepath.Abs(targetDir)
-	if err != nil {
-		return fmt.Errorf("resolving target directory: %w", err)
-	}
-
-	siteName := cmd.String("name")
-	if siteName == "" {
-		siteName = deriveSiteName(absTargetDir)
-	}
-
-	vars := map[string]any{
-		"SiteName": siteName,
-		"SiteSlug": toSlug(siteName),
-		"Version":  version.String(),
-		"Year":     time.Now().Format("2006"),
-	}
-
-	scaf, err := loadScaffold(ctx, source, templateName)
+	tmpl, coll, close, err := loadTemplate(ctx, source)
 	if err != nil {
 		return err
 	}
-	defer scaf.Close()
+	defer close()
 
-	if !quiet {
-		if targetDir == "." {
-			fmt.Println("Creating new Shizuka site in current directory...")
-		} else {
-			fmt.Printf("Creating new Shizuka site in %s...\n", targetDir)
-		}
-		fmt.Println()
+	if listOnly && listVars {
+		return fmt.Errorf("--list and --list-vars cannot be used together")
 	}
 
-	result, err := scaf.Build(
-		ctx, absTargetDir,
-		scaffold.WithVariables(vars),
-		scaffold.WithForce(force),
+	if listOnly {
+		return printTemplateList(tmpl, coll)
+	}
+
+	if listVars {
+		chosen, err := resolveTemplateFromSource(tmpl, coll, selected)
+		if err != nil {
+			return err
+		}
+		return printTemplateVars(chosen)
+	}
+
+	result, err := init_ui.Run(ctx, init_ui.Params{
+		Template:   tmpl,
+		Collection: coll,
+		Selected:   selected,
+		Target:     target,
+		Force:      force,
+	})
+	if err != nil {
+		return err
+	}
+	if result.Cancelled {
+		return nil
+	}
+
+	if result.Template == nil {
+		return fmt.Errorf("no template selected")
+	}
+
+	buildResult, err := result.Template.Build(ctx, result.Target,
+		scaffold.WithForce(result.Force),
+		scaffold.WithVariables(result.Variables),
 	)
 	if err != nil {
 		return err
 	}
 
-	if !quiet {
-		for _, f := range result.FilesCreated {
-			fmt.Printf("  ✓ %s\n", f)
-		}
-		fmt.Println()
-		fmt.Printf("Done! Created %d files.\n", len(result.FilesCreated))
-		fmt.Println()
-		fmt.Println("Next steps:")
-		if targetDir != "." {
-			fmt.Printf("  cd %s\n", targetDir)
-		}
-		fmt.Println("  shizuka dev     # Start development server")
-		fmt.Println("  shizuka build   # Build for production")
-	}
+	fmt.Print(renderBuildResult(buildResult, result.Target))
 
 	return nil
 }
 
-// loadScaffold loads a scaffold from the given source.
-// If source is empty, uses embedded templates.
-// If source points to a collection, templateName selects which scaffold to use.
-func loadScaffold(ctx context.Context, source, templateName string) (*scaffold.Scaffold, error) {
-	if source == "" {
-		return loadEmbeddedScaffold(ctx, templateName)
+func loadTemplate(ctx context.Context, source string) (tmpl *scaffold.Template, coll *scaffold.Collection, close func(), err error) {
+	switch source {
+	case "", "default":
+		tmpl, coll, err = scaffold.LoadFS(ctx, embed.Scaffold, "scaffold")
+	default:
+		tmpl, coll, err = scaffold.Load(ctx, source)
 	}
 
-	scaf, collection, err := scaffold.Load(ctx, source)
 	if err != nil {
-		return nil, fmt.Errorf("loading source: %w", err)
+		return nil, nil, nil, fmt.Errorf("%w: %w", ErrorFailedToLoadTemplate, err)
+	} else if tmpl == nil && coll == nil {
+		return nil, nil, nil, ErrTemplateNotFound
+	} else if tmpl != nil {
+		close = sync.OnceFunc(func() {
+			_ = tmpl.Close()
+		})
+	} else if coll != nil {
+		close = sync.OnceFunc(func() {
+			_ = coll.Close()
+		})
 	}
 
-	if scaf != nil {
-		return scaf, nil
-	}
-
-	if templateName == "" {
-		templateName = collection.Config.Scaffolds.Default
-	}
-
-	if templateName == "" {
-		var names []string
-		for _, s := range collection.Scaffolds {
-			names = append(names, s.Config.Metadata.Name)
-		}
-		collection.Close()
-		return nil, fmt.Errorf("source is a collection, please specify --template. Available: %s", strings.Join(names, ", "))
-	}
-
-	for _, s := range collection.Scaffolds {
-		if s.Config.Metadata.Name == templateName {
-			return s, nil
-		}
-	}
-
-	var names []string
-	for _, s := range collection.Scaffolds {
-		names = append(names, s.Config.Metadata.Name)
-	}
-	collection.Close()
-	return nil, fmt.Errorf("template %q not found in collection. Available: %s", templateName, strings.Join(names, ", "))
+	return tmpl, coll, close, nil
 }
 
-// loadEmbeddedScaffold loads a scaffold from the embedded templates
-func loadEmbeddedScaffold(ctx context.Context, templateName string) (*scaffold.Scaffold, error) {
-	src := scaffold.NewFSSource(embed.Scaffold, "scaffold")
+func renderBuildResult(result *scaffold.BuildResult, target string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Scaffold created in %s\n", target)
 
-	collection, err := scaffold.LoadCollection(ctx, src, ".")
-	if err == nil {
-		if templateName == "" {
-			templateName = collection.Config.Scaffolds.Default
-		}
-
-		if templateName == "" {
-			var names []string
-			for _, s := range collection.Scaffolds {
-				names = append(names, s.Config.Metadata.Name)
-			}
-			collection.Close()
-			return nil, fmt.Errorf("no template specified and no default set. Available: %s", strings.Join(names, ", "))
-		}
-
-		for _, s := range collection.Scaffolds {
-			if s.Config.Metadata.Name == templateName {
-				return s, nil
-			}
-		}
-
-		var names []string
-		for _, s := range collection.Scaffolds {
-			names = append(names, s.Config.Metadata.Name)
-		}
-		collection.Close()
-		return nil, fmt.Errorf("template %q not found. Available: %s", templateName, strings.Join(names, ", "))
+	if result == nil {
+		return b.String()
 	}
 
-	if templateName == "" {
-		return nil, fmt.Errorf("no embedded collection found and no template specified")
-	}
-
-	scaf, err := scaffold.LoadScaffold(ctx, src, templateName)
-	if err != nil {
-		return nil, fmt.Errorf("loading embedded template %q: %w", templateName, err)
-	}
-
-	return scaf, nil
-}
-
-func listTemplates(ctx context.Context, source string) error {
-	if source == "" {
-		return listEmbeddedTemplates(ctx)
-	}
-
-	scaf, collection, err := scaffold.Load(ctx, source)
-	if err != nil {
-		return fmt.Errorf("loading source: %w", err)
-	}
-
-	if scaf != nil {
-		defer scaf.Close()
-		fmt.Println("Source contains a single template:")
-		fmt.Println()
-		fmt.Printf("  %-12s  %s\n", scaf.Config.Metadata.Name, scaf.Config.Metadata.Description)
-		return nil
-	}
-
-	defer collection.Close()
-	fmt.Printf("Available templates from %s:\n", source)
-	fmt.Println()
-
-	for _, s := range collection.Scaffolds {
-		fmt.Printf("  %-12s  %s\n", s.Config.Metadata.Name, s.Config.Metadata.Description)
-	}
-
-	fmt.Println()
-	fmt.Println("Use: shizuka init --source <source> --template <name>")
-
-	return nil
-}
-
-func listEmbeddedTemplates(ctx context.Context) error {
-	src := scaffold.NewFSSource(embed.Scaffold, "scaffold")
-
-	collection, err := scaffold.LoadCollection(ctx, src, ".")
-	if err == nil {
-		defer collection.Close()
-		fmt.Println("Available templates:")
-		fmt.Println()
-
-		for _, s := range collection.Scaffolds {
-			fmt.Printf("  %-12s  %s\n", s.Config.Metadata.Name, s.Config.Metadata.Description)
-		}
-
-		fmt.Println()
-		fmt.Println("Use: shizuka init --template <name>")
-		return nil
-	}
-
-	fmt.Println("No embedded templates found.")
-	fmt.Println()
-	fmt.Println("Use --source to specify a local path or remote URL:")
-	fmt.Println("  shizuka init --source ./my-templates")
-	fmt.Println("  shizuka init --source github.com/user/templates")
-
-	return nil
-}
-
-// deriveSiteName generates a site name from the directory path
-func deriveSiteName(dir string) string {
-	if dir == "" || dir == "." {
-		if cwd, err := os.Getwd(); err == nil {
-			dir = cwd
-		} else {
-			return "My Site"
+	if len(result.DirsCreated) > 0 {
+		b.WriteString("\nDirectories:\n")
+		for _, dir := range result.DirsCreated {
+			fmt.Fprintf(&b, "- %s\n", dir)
 		}
 	}
 
-	name := filepath.Base(dir)
-	if name == "." || name == "/" {
-		return "My Site"
-	}
-
-	name = strings.ReplaceAll(name, "-", " ")
-	name = strings.ReplaceAll(name, "_", " ")
-
-	return toTitleCase(name)
-}
-
-var (
-	nonSlugChars = regexp.MustCompile(`[^a-z0-9]+`)
-	dashRuns     = regexp.MustCompile(`-+`)
-)
-
-// toSlug converts a string to a URL-friendly slug
-func toSlug(s string) string {
-	s = strings.ToLower(s)
-	s = strings.ReplaceAll(s, "_", " ")
-	s = nonSlugChars.ReplaceAllString(s, "-")
-	s = dashRuns.ReplaceAllString(s, "-")
-	return strings.Trim(s, "-")
-}
-
-// toTitleCase converts a string to title case
-func toTitleCase(s string) string {
-	words := strings.Fields(s)
-	for i, word := range words {
-		if len(word) > 0 {
-			runes := []rune(word)
-			runes[0] = unicode.ToUpper(runes[0])
-			words[i] = string(runes)
+	if len(result.FilesCreated) > 0 {
+		b.WriteString("\nFiles:\n")
+		for _, file := range result.FilesCreated {
+			fmt.Fprintf(&b, "- %s\n", file)
 		}
 	}
-	return strings.Join(words, " ")
+
+	return b.String()
 }

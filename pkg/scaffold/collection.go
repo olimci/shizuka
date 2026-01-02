@@ -1,11 +1,11 @@
 package scaffold
 
 type Collection struct {
-	Config CollectionConfig
-	source source
+	Config CollectionCfg
+	source Source
 	Base   string
 
-	Scaffolds []*Scaffold
+	Templates []*Template
 }
 
 func (c *Collection) Close() error {
