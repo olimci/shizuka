@@ -8,26 +8,29 @@ import (
 	"github.com/olimci/shizuka/pkg/transforms"
 )
 
-var fallbackTemplateFiles = []string{
-	"templates/err_style.tmpl",
-	"templates/fallback.tmpl",
-}
-
-func loadFallbackTemplate() (*template.Template, error) {
-	tmpl, err := template.New("fallback").Funcs(template.FuncMap{
-		"where": transforms.TemplateFuncWhere,
-		"sort":  transforms.TemplateFuncSortBy,
-		"limit": transforms.TemplateFuncLimit,
-	}).ParseFS(embed.Templates, "templates/*.tmpl")
+func loadDevErrTemplates() (*template.Template, *template.Template, *template.Template, error) {
+	tmpl, err := template.New("shizuka-errors").
+		Funcs(transforms.DefaultTemplateFuncs()).
+		ParseFS(embed.Templates, "templates/*.tmpl")
 
 	if err != nil {
-		return nil, fmt.Errorf("parse fallback templates: %w", err)
+		return nil, nil, nil, fmt.Errorf("parse fallback templates: %w", err)
 	}
 
 	fallback := tmpl.Lookup("fallback")
 	if fallback == nil {
-		return nil, fmt.Errorf("fallback template missing")
+		return nil, nil, nil, fmt.Errorf("fallback template missing")
 	}
 
-	return fallback, nil
+	errPage := tmpl.Lookup("error")
+	if errPage == nil {
+		return nil, nil, nil, fmt.Errorf("error template missing")
+	}
+
+	buildFailed := tmpl.Lookup("build_failed")
+	if buildFailed == nil {
+		return nil, nil, nil, fmt.Errorf("build_failed template missing")
+	}
+
+	return fallback, errPage, buildFailed, nil
 }

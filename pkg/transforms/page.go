@@ -2,6 +2,7 @@ package transforms
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"os"
@@ -14,17 +15,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// PageData is an internal representation of a page
-type PageData struct {
-	Page     Page
-	Template string
-
-	Source string
-	Target string
-}
+var (
+	ErrFailedToParsePage      = errors.New("failed to parse page")
+	ErrUnsupportedContentType = errors.New("unsupported content type")
+)
 
 // Page represents a page in the site
 type Page struct {
+	Meta PageMeta
+
 	Slug string
 
 	Title       string
@@ -83,18 +82,18 @@ type PageMeta struct {
 	Source   string
 	Target   string
 	Template string
+
+	Err error
 }
 
 // PageTemplate is the struct from which page templates are built
 type PageTemplate struct {
-	Page     Page
-	Site     Site
-	Meta     PageMeta
-	SiteMeta SiteMeta
+	Page Page
+	Site Site
 }
 
 // BuildPage builds a page from a file
-func BuildPage(src string, md gm.Markdown) (*PageData, error) {
+func BuildPage(src string, md gm.Markdown) (*Page, error) {
 	var (
 		fm   *Frontmatter
 		body string
@@ -118,23 +117,23 @@ func BuildPage(src string, md gm.Markdown) (*PageData, error) {
 		return nil, err
 	}
 
-	return &PageData{
-		Page: Page{
-			Slug:        fm.Slug,
-			Title:       fm.Title,
-			Description: fm.Description,
-			Section:     fm.Section,
-			Tags:        fm.Tags,
-			Date:        fm.Date,
-			Updated:     fm.Updated,
-			Params:      fm.Params,
-			LiteParams:  fm.LiteParams,
-			Body:        template.HTML(body),
-			Featured:    fm.Featured,
-			Draft:       fm.Draft,
+	return &Page{
+		Meta: PageMeta{
+			Source:   src,
+			Template: fm.Template,
 		},
-		Template: fm.Template,
-		Source:   src,
+		Slug:        fm.Slug,
+		Title:       fm.Title,
+		Description: fm.Description,
+		Section:     fm.Section,
+		Tags:        fm.Tags,
+		Date:        fm.Date,
+		Updated:     fm.Updated,
+		Params:      fm.Params,
+		LiteParams:  fm.LiteParams,
+		Body:        template.HTML(body),
+		Featured:    fm.Featured,
+		Draft:       fm.Draft,
 	}, nil
 }
 

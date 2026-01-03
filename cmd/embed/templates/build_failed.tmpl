@@ -1,0 +1,43 @@
+{{define "build_failed"}}
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Build Failed</title>
+
+        {{ template "err_style" . }}
+    </head>
+    <body>
+        <div class="wrap">
+            <div class="banner" role="status" aria-live="polite">
+                <div class="k">build failed</div>
+                <div class="msg">
+                    {{- if .Summary -}} {{ .Summary }} {{- else -}} error {{- end
+                    -}}
+                </div>
+            </div>
+
+            <section class="panel">
+                <div class="panel-h">
+                    <div>details</div>
+                    <div class="right">
+                        fail: {{ .FailLevel }} / max: {{ .MaxLevel }}
+                    </div>
+                </div>
+
+                {{- if .Diagnostics }}
+                <dl class="meta">
+                    {{- range .Diagnostics }}
+                    <dt>{{ .Level }}</dt>
+                    <dd>{{ .Source }}: {{ .Message }}{{ if .Err }}: {{ .Err }}{{ end }}</dd>
+                    {{- end }}
+                </dl>
+                {{- else }}
+                <p class="preview">No diagnostics available.</p>
+                {{- end }}
+            </section>
+        </div>
+    </body>
+</html>
+{{end}}

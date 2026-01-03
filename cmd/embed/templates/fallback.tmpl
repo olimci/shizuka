@@ -13,9 +13,9 @@
             <div class="banner" role="status" aria-live="polite">
                 <div class="k">fallback template</div>
                 <div class="msg">
-                    {{- if .Meta.Template -}} template
-                    <code>{{ .Meta.Template }}</code> not found {{- else -}} no
-                    template specified {{- end -}}
+                    {{- if .Page.Meta.Template -}} template
+                    <code>{{ .Page.Meta.Template }}</code> not found {{- else
+                    -}} no template specified {{- end -}}
                 </div>
             </div>
 
@@ -30,16 +30,15 @@
 
                 <dl class="meta">
                     <dt>source</dt>
-                    <dd>{{ .Meta.Source }}</dd>
+                    <dd>{{ .Page.Meta.Source }}</dd>
 
                     <dt>target</dt>
-                    <dd>{{ .Meta.Target }}</dd>
+                    <dd>{{ .Page.Meta.Target }}</dd>
 
                     <dt>template</dt>
                     <dd>
-                        {{ if .Meta.Template }}{{ .Meta.Template }}{{ else }}<em
-                            >(not specified)</em
-                        >{{ end }}
+                        {{ if .Page.Meta.Template }}{{ .Page.Meta.Template }}{{
+                        else }}<em>(not specified)</em>{{ end }}
                     </dd>
 
                     {{- if .Page.Title}}

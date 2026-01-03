@@ -22,7 +22,7 @@ var (
 const (
 	ConfigK  = manifest.K[*Config]("config")
 	OptionsK = manifest.K[*Options]("options")
-	PagesK   = manifest.K[map[string]*transforms.PageData]("pages")
+	PagesK   = manifest.K[map[string]*transforms.Page]("pages")
 	SiteK    = manifest.K[transforms.Site]("site")
 )
 
@@ -31,7 +31,7 @@ func StepStatic() Step {
 	return StepFunc("static", func(sc *StepContext) error {
 		config := manifest.GetAs(sc.Manifest, ConfigK)
 
-		m := newMinifier(config.Build.Transforms.Minify)
+		m := NewMinifier(config.Build.Transforms.Minify)
 
 		files, err := fileutils.WalkFiles(config.Build.StaticDir)
 		if err != nil {
@@ -41,7 +41,7 @@ func StepStatic() Step {
 		for _, rel := range files.Values() {
 			full := filepath.Join(config.Build.StaticDir, rel)
 			artefact := makeStatic("static", full, rel)
-			sc.Manifest.Emit(minifyArtefact(m, rel, artefact))
+			sc.Manifest.Emit(m.MinifyArtefact(rel, artefact))
 		}
 
 		return nil
@@ -56,12 +56,12 @@ func StepContent() Step {
 		pages := manifest.GetAs(sc.Manifest, PagesK)
 		site := manifest.GetAs(sc.Manifest, SiteK)
 
-		tmpl, err := parseTemplateGlob(config.Build.TemplatesGlob)
+		tmpl, err := parseTemplateGlob(config.Build.TemplatesGlob, WithTemplateFuncs(transforms.DefaultTemplateFuncs()))
 		if err != nil {
 			return fmt.Errorf("failed to parse templates: %w", err)
 		}
 
-		m := newMinifier(config.Build.Transforms.Minify)
+		m := NewMinifier(config.Build.Transforms.Minify)
 
 		buildTime := time.Now().Format(time.RFC3339)
 
@@ -70,80 +70,76 @@ func StepContent() Step {
 			Dev:       sc.Options.Dev,
 		}
 
-		makeArtefact := func(page *transforms.PageData, claim manifest.Claim, useTemplate *template.Template, templateName string) manifest.Artefact {
+		makeArtefact := func(page *transforms.Page, claim manifest.Claim, useTemplate *template.Template, templateName string) manifest.Artefact {
+			pageForTemplate := *page
+			pageForTemplate.Meta.Template = templateName
+
+			siteForTemplate := site
+			siteForTemplate.Meta = siteMeta
+
 			a := manifest.Artefact{
 				Claim: claim,
 				Builder: func(w io.Writer) error {
 					data := transforms.PageTemplate{
-						Page: page.Page,
-						Site: site,
-						Meta: transforms.PageMeta{
-							Source:   page.Source,
-							Target:   page.Target,
-							Template: templateName,
-						},
-						SiteMeta: siteMeta,
+						Page: pageForTemplate,
+						Site: siteForTemplate,
 					}
 					return useTemplate.Execute(w, data)
 				},
 			}
 
-			return minifyArtefact(m, page.Target, a)
+			return m.MinifyArtefact(page.Meta.Target, a)
 		}
 
 		for _, page := range pages {
 			claim := manifest.Claim{
-				Source: page.Source,
-				Target: page.Target,
+				Source: page.Meta.Source,
+				Target: page.Meta.Target,
 				Owner:  "pages:build",
 			}
 
-			pageTmpl := tmpl.Lookup(page.Template)
-			templateName := page.Template
+			if page.Meta.Err != nil {
+				if errTmpl := lookupErrPage(sc.Options, page.Meta.Err); errTmpl != nil {
+					sc.Manifest.Emit(makeArtefact(page, claim, errTmpl, page.Meta.Template))
+				}
+				continue
+			}
+
+			pageTmpl := tmpl.Lookup(page.Meta.Template)
+			templateName := page.Meta.Template
 
 			if pageTmpl == nil {
-				fallback := sc.Options.FallbackTemplate
-				if fallback != nil {
-					if page.Template == "" {
-						sc.Warn(page.Source, "no template specified, using fallback", nil)
-					} else {
-						sc.Warnf(page.Source, "template %q not found, using fallback", page.Template)
-					}
-					artefact := makeArtefact(page, claim, fallback, page.Template)
-					sc.Manifest.Emit(minifyArtefact(m, page.Target, artefact))
-					continue
+				if page.Meta.Template == "" {
+					page.Meta.Err = errors.Join(ErrNoTemplate, errors.New("no template specified"))
+					_ = sc.Error(page.Meta.Source, "no template specified", page.Meta.Err)
+				} else {
+					page.Meta.Err = errors.Join(ErrTemplateNotFound, fmt.Errorf("template %q not found", page.Meta.Template))
+					_ = sc.Error(page.Meta.Source, fmt.Sprintf("template %q not found", page.Meta.Template), page.Meta.Err)
 				}
 
-				if page.Template == "" {
-					if err := sc.Error(page.Source, "no template specified", ErrNoTemplate); err != nil {
-						continue
-					}
-					continue
-				} else {
-					if err := sc.Error(page.Source, fmt.Sprintf("template %q not found", page.Template), ErrTemplateNotFound); err != nil {
-						continue
-					}
-					continue
+				if errTmpl := lookupErrPage(sc.Options, page.Meta.Err); errTmpl != nil {
+					sc.Manifest.Emit(makeArtefact(page, claim, errTmpl, page.Meta.Template))
 				}
+				continue
 			}
+
+			pageForTemplate := *page
+			templateNameForTemplate := templateName
 
 			artefact := manifest.Artefact{
 				Claim: claim,
 				Builder: func(w io.Writer) error {
+					siteForTemplate := site
+					siteForTemplate.Meta = siteMeta
+
 					data := transforms.PageTemplate{
-						Page: page.Page,
-						Site: site,
-						Meta: transforms.PageMeta{
-							Source:   page.Source,
-							Target:   page.Target,
-							Template: templateName,
-						},
-						SiteMeta: siteMeta,
+						Page: pageForTemplate,
+						Site: siteForTemplate,
 					}
-					return tmpl.ExecuteTemplate(w, templateName, data)
+					return tmpl.ExecuteTemplate(w, templateNameForTemplate, data)
 				},
 			}
-			sc.Manifest.Emit(minifyArtefact(m, page.Target, artefact))
+			sc.Manifest.Emit(m.MinifyArtefact(page.Meta.Target, artefact))
 		}
 
 		return nil
@@ -161,15 +157,19 @@ func StepContent() Step {
 		}
 
 		for _, page := range pages {
-			if page.Page.Featured {
-				site.Collections.Featured = append(site.Collections.Featured, page.Page.Lite())
+			if page.Meta.Err != nil {
+				continue
 			}
 
-			if page.Page.Draft {
-				site.Collections.Drafts = append(site.Collections.Drafts, page.Page.Lite())
+			if page.Featured {
+				site.Collections.Featured = append(site.Collections.Featured, page.Lite())
 			}
 
-			site.Collections.All = append(site.Collections.All, page.Page.Lite())
+			if page.Draft {
+				site.Collections.Drafts = append(site.Collections.Drafts, page.Lite())
+			}
+
+			site.Collections.All = append(site.Collections.All, page.Lite())
 		}
 
 		site.Collections.Latest = slices.Clone(site.Collections.All)
@@ -208,7 +208,7 @@ func StepContent() Step {
 			return err
 		}
 
-		pages := make(map[string]*transforms.PageData)
+		pages := make(map[string]*transforms.Page)
 
 		for _, rel := range files.Values() {
 			source, target, err := makeTarget(config.Build.ContentDir, rel)
@@ -224,13 +224,22 @@ func StepContent() Step {
 
 			page, err := transforms.BuildPage(source, md)
 			if err != nil {
-				if err := sc.Error(source, "failed to build page", err); err != nil {
-					continue
+				pageErr := errors.Join(ErrPageBuild, err)
+				if sc.Options.Dev {
+					pages[rel] = &transforms.Page{
+						Meta: transforms.PageMeta{
+							Source: source,
+							Target: target,
+							Err:    pageErr,
+						},
+					}
 				}
+
+				_ = sc.Error(source, "failed to build page", err)
 				continue
 			}
 
-			page.Target = target
+			page.Meta.Target = target
 
 			pages[rel] = page
 		}

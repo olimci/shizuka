@@ -6,6 +6,8 @@ type Site struct {
 	Description string
 	URL         string
 
+	Meta SiteMeta
+
 	Collections Collections
 }
 

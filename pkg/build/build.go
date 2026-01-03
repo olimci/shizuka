@@ -135,10 +135,18 @@ func Build(steps []Step, config *Config, opts ...Option) error {
 	}
 
 	if o.DiagnosticSink.HasLevel(failLevel) {
-
 		maxLevel := o.DiagnosticSink.MaxLevel()
-		return fmt.Errorf("%w: %s(s) reported during build",
-			ErrBuildFailed, maxLevel)
+		if a := devFailureArtefact(o, DevFailurePageData{
+			Summary:     summaryDiagnostics(o.DiagnosticSink),
+			FailLevel:   failLevel,
+			MaxLevel:    maxLevel,
+			Diagnostics: o.DiagnosticSink.DiagnosticsAtLevel(failLevel),
+		}); a != nil {
+			man.Emit(*a)
+			_ = man.Build(manifestOpts...)
+		}
+
+		return fmt.Errorf("%w: %s(s) reported during build", ErrBuildFailed, maxLevel)
 	}
 
 	return nil

@@ -1,35 +1,13 @@
 package build
 
 import (
-	"fmt"
-	"html/template"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/olimci/shizuka/pkg/manifest"
-	"github.com/olimci/shizuka/pkg/transforms"
-	"github.com/tdewolff/minify/v2"
-	mincss "github.com/tdewolff/minify/v2/css"
-	minhtml "github.com/tdewolff/minify/v2/html"
-	minjs "github.com/tdewolff/minify/v2/js"
 )
-
-// newMinifier constructs a new minifier, can be expanded later to derive from config better if needed
-func newMinifier(enabled bool) *minify.M {
-	if !enabled {
-		return nil
-	}
-
-	m := minify.New()
-
-	m.AddFunc("text/html", minhtml.Minify)
-	m.AddFunc("text/css", mincss.Minify)
-	m.AddFunc("application/javascript", minjs.Minify)
-
-	return m
-}
 
 // static creates a new static artefact
 func makeStatic(owner, source, target string) manifest.Artefact {
@@ -52,32 +30,6 @@ func makeStatic(owner, source, target string) manifest.Artefact {
 	}
 }
 
-// minifyArtefact minifies an artefact if a minifier is provided
-func minifyArtefact(m *minify.M, target string, artefact manifest.Artefact) manifest.Artefact {
-	if m == nil {
-		return artefact
-	}
-
-	mimes := map[string]string{
-		".html": "text/html",
-		".css":  "text/css",
-		".js":   "application/javascript",
-	}
-
-	if mime, ok := mimes[filepath.Ext(filepath.Base(target))]; ok {
-		return manifest.Artefact{
-			Claim: artefact.Claim.AddTag("minified"),
-			Builder: func(w io.Writer) error {
-				x := m.Writer(mime, w)
-				defer x.Close()
-				return artefact.Builder(x)
-			},
-		}
-	} else {
-		return artefact
-	}
-}
-
 // makeTarget creates a new target path based on the root and relative path
 func makeTarget(root, rel string) (src, dst string, err error) {
 	dir, base := filepath.Split(rel)
@@ -91,46 +43,4 @@ func makeTarget(root, rel string) (src, dst string, err error) {
 	} else {
 		return src, filepath.Join(dir, name, "index.html"), nil
 	}
-}
-
-// parseTemplateGlob parses a glob pattern and returns templates
-// also attatches template funcs
-func parseTemplateGlob(pattern string) (*template.Template, error) {
-	files, err := filepath.Glob(pattern)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no template files found matching pattern: %s", pattern)
-	}
-
-	tmpl := template.New("site").Funcs(template.FuncMap{
-		"where": transforms.TemplateFuncWhere,
-		"sort":  transforms.TemplateFuncSortBy,
-		"limit": transforms.TemplateFuncLimit,
-	})
-
-	seenNames := make(map[string]string)
-
-	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read template file %s: %w", file, err)
-		}
-
-		name := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
-
-		if existingFile, exists := seenNames[name]; exists {
-			return nil, fmt.Errorf("template name conflict: both %s and %s would create template '%s'", existingFile, file, name)
-		}
-		seenNames[name] = file
-
-		_, err = tmpl.New(name).Parse(string(content))
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse template %s: %w", file, err)
-		}
-	}
-
-	return tmpl, nil
 }

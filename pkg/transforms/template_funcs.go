@@ -1,10 +1,19 @@
 package transforms
 
 import (
+	"html/template"
 	"slices"
 	"strings"
 	"time"
 )
+
+func DefaultTemplateFuncs() template.FuncMap {
+	return template.FuncMap{
+		"where": TemplateFuncWhere,
+		"sort":  TemplateFuncSortBy,
+		"limit": TemplateFuncLimit,
+	}
+}
 
 // TemplateFuncWhere filters pages based on a field and value.
 func TemplateFuncWhere(field string, value any, pages []*PageLite) []*PageLite {

@@ -9,14 +9,17 @@ import (
 // defaultOptions constructs an Options with default values.
 func defaultOptions() *Options {
 	return &Options{
-		Context:          context.Background(),
-		ConfigPath:       "shizuka.toml",
-		MaxWorkers:       runtime.NumCPU(),
-		Dev:              false,
-		DiagnosticSink:   NoopSink(),
-		FailOnWarn:       false,
-		LenientErrors:    false,
-		FallbackTemplate: nil,
+		Context:            context.Background(),
+		ConfigPath:         "shizuka.toml",
+		MaxWorkers:         runtime.NumCPU(),
+		Dev:                false,
+		DiagnosticSink:     NoopSink(),
+		FailOnWarn:         false,
+		LenientErrors:      false,
+		ErrPages:           nil,
+		DefaultErrPage:     nil,
+		DevFailureTemplate: nil,
+		DevFailureTarget:   "",
 	}
 }
 
@@ -31,13 +34,20 @@ type Options struct {
 	FailOnWarn     bool
 	LenientErrors  bool
 
-	FallbackTemplate *template.Template
+	ErrPages       map[error]*template.Template
+	DefaultErrPage *template.Template
+
+	DevFailureTemplate *template.Template
+	DevFailureTarget   string
 }
 
 // Apply applies a set of Option to the receiver.
 func (o *Options) Apply(opts ...Option) *Options {
 	for _, opt := range opts {
 		opt(o)
+	}
+	if o.Dev && !o.FailOnWarn {
+		o.LenientErrors = true
 	}
 	if o.FailOnWarn && o.LenientErrors {
 		panic("build: cannot use FailOnWarn and LenientErrors together")
@@ -97,9 +107,40 @@ func WithLenientErrors() Option {
 	}
 }
 
-// WithFallbackTemplate sets the fallback template to be used during the build process
-func WithFallbackTemplate(tmpl *template.Template) Option {
+// WithErrPages sets a map of error -> template to render pages for matching errors in dev mode,
+// plus an optional default template used when no error matches.
+func WithErrPages(pages map[error]*template.Template, defaultTemplate *template.Template) Option {
 	return func(o *Options) {
-		o.FallbackTemplate = tmpl
+		o.DefaultErrPage = defaultTemplate
+		if pages == nil {
+			return
+		}
+
+		if o.ErrPages == nil {
+			o.ErrPages = make(map[error]*template.Template, len(pages))
+		} else {
+			for k := range o.ErrPages {
+				delete(o.ErrPages, k)
+			}
+		}
+
+		for match, tmpl := range pages {
+			o.ErrPages[match] = tmpl
+		}
+	}
+}
+
+// WithDevFailurePage sets a template to render to a single page (default index.html)
+// if the build fails after artefacts were written (e.g. strict diagnostics).
+func WithDevFailurePage(tmpl *template.Template) Option {
+	return func(o *Options) {
+		o.DevFailureTemplate = tmpl
+	}
+}
+
+// WithDevFailureTarget sets the target path for the dev failure page (defaults to index.html).
+func WithDevFailureTarget(target string) Option {
+	return func(o *Options) {
+		o.DevFailureTarget = target
 	}
 }

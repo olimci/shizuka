@@ -33,8 +33,9 @@ type Frontmatter struct {
 }
 
 var (
-	ErrUnknownFrontmatterType = errors.New("unknown frontmatter type")
-	ErrNoFrontmatter          = errors.New("no frontmatter")
+	ErrUnknownFrontmatterType   = errors.New("unknown frontmatter type")
+	ErrFailedToParseFrontmatter = errors.New("failed to parse frontmatter")
+	ErrNoFrontmatter            = errors.New("no frontmatter")
 )
 
 // ExtractFrontmatter extracts the frontmatter from a document
@@ -45,13 +46,13 @@ func ExtractFrontmatter(doc []byte) (*Frontmatter, []byte, error) {
 	case "yaml":
 		var fm Frontmatter
 		if err := yaml.Unmarshal(b[start:end], &fm); err != nil {
-			return nil, doc, fmt.Errorf("failed to parse YAML frontmatter: %w", err)
+			return nil, doc, fmt.Errorf("%w: %w", ErrFailedToParseFrontmatter, err)
 		}
 		return &fm, b[bodyStart:], nil
 	case "toml":
 		var fm Frontmatter
 		if err := toml.Unmarshal(b[start:end], &fm); err != nil {
-			return nil, doc, fmt.Errorf("failed to parse TOML frontmatter: %w", err)
+			return nil, doc, fmt.Errorf("%w: %w", ErrFailedToParseFrontmatter, err)
 		}
 		return &fm, b[bodyStart:], nil
 	case "":

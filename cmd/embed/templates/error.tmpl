@@ -1,0 +1,47 @@
+{{define "error"}}
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{{ .Page.Title }} - Build Error</title>
+
+        {{ template "err_style" . }}
+    </head>
+    <body>
+        <div class="wrap">
+            <div class="banner" role="status" aria-live="polite">
+                <div class="k">error page</div>
+                <div class="msg">
+                    {{- if .Page.Meta.Err -}} {{ .Page.Meta.Err }} {{- else -}}
+                    unknown error {{- end -}}
+                </div>
+            </div>
+
+            <section class="panel">
+                <div class="panel-h">
+                    <div>metadata</div>
+                    <div class="right">
+                        {{- if not .Page.Date.IsZero -}} {{ .Page.Date.Format
+                        "2006-01-02" }} {{- else -}} undated {{- end -}}
+                    </div>
+                </div>
+
+                <dl class="meta">
+                    <dt>source</dt>
+                    <dd>{{ .Page.Meta.Source }}</dd>
+
+                    <dt>target</dt>
+                    <dd>{{ .Page.Meta.Target }}</dd>
+
+                    <dt>template</dt>
+                    <dd>
+                        {{ if .Page.Meta.Template }}{{ .Page.Meta.Template }}{{ else
+                        }}<em>(not specified)</em>{{ end }}
+                    </dd>
+                </dl>
+            </section>
+        </div>
+    </body>
+</html>
+{{end}}

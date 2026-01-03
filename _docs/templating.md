@@ -82,8 +82,6 @@ Each template receives a `PageTemplate` value with these fields:
 
 - `.Page` (full page data)
 - `.Site` (site metadata and collections)
-- `.Meta` (source/target/template metadata)
-- `.SiteMeta` (build metadata)
 
 ### `.Page`
 
@@ -91,12 +89,16 @@ Each template receives a `PageTemplate` value with these fields:
 Slug, Title, Description, Section, Tags,
 Date, Updated, Params, LiteParams,
 Body (HTML), Featured, Draft
+
+Meta (Source, Target, Template)
+Meta.Err (error, only in dev error pages)
 ```
 
 ### `.Site`
 
 ```text
 Title, Description, URL
+Meta (BuildTime, Dev)
 Collections (All, Drafts, Featured, Latest, RecentlyUpdated)
 ```
 
@@ -105,18 +107,6 @@ Each collection is a list of `PageLite` values. `PageLite` contains:
 ```text
 Slug, Title, Description, Section, Tags,
 Date, Updated, LiteParams, Featured, Draft
-```
-
-### `.Meta`
-
-```text
-Source, Target, Template
-```
-
-### `.SiteMeta`
-
-```text
-BuildTime (RFC3339 string), Dev (bool)
 ```
 
 ## Template helpers

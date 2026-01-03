@@ -53,7 +53,7 @@ type devServerHooks struct {
 }
 
 func runDevServer(ctx context.Context, configPath string, cfg *build.Config, port int, hooks devServerHooks) error {
-	fallbackTmpl, err := loadFallbackTemplate()
+	fallbackTmpl, errPageTmpl, buildFailedTmpl, err := loadDevErrTemplates()
 	if err != nil {
 		return err
 	}
@@ -119,7 +119,12 @@ func runDevServer(ctx context.Context, configPath string, cfg *build.Config, por
 			build.WithConfig(configPath),
 			build.WithDiagnosticSink(collector),
 			build.WithDev(),
-			build.WithFallbackTemplate(fallbackTmpl),
+			build.WithErrPages(map[error]*template.Template{
+				build.ErrNoTemplate:       fallbackTmpl,
+				build.ErrTemplateNotFound: fallbackTmpl,
+				build.ErrPageBuild:        errPageTmpl,
+			}, errPageTmpl),
+			build.WithDevFailurePage(buildFailedTmpl),
 		}
 
 		start := time.Now()
