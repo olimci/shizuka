@@ -5,5 +5,5 @@ version = "1.0.0"
 shizuka_version = "0.1.0"
 
 [templates]
-items = ["minimal", "terrible"]
-default = "minimal"
+items = ["default", "minimal"]
+default = "default"

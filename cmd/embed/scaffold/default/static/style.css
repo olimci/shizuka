@@ -1,0 +1,331 @@
+/* Default Shizuka Site Styles */
+
+:root {
+    --color-ink: #241f1a;
+    --color-muted: #6a5f54;
+    --color-accent: #d35c3a;
+    --color-accent-strong: #b2472c;
+    --color-surface: #fff9f1;
+    --color-card: #fffdf9;
+    --color-border: #eadccf;
+    --color-tag: #f3e7db;
+    --shadow: 0 24px 60px rgba(36, 31, 26, 0.12);
+    --shadow-soft: 0 18px 40px rgba(36, 31, 26, 0.08);
+    --radius-lg: 24px;
+    --max-width: 68rem;
+    --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", serif;
+    --font-sans: "Space Grotesk", "Avenir Next", "Gill Sans", sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", "Cascadia Mono", monospace;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background:
+        radial-gradient(circle at top right, rgba(241, 214, 190, 0.55), transparent 50%),
+        radial-gradient(circle at 20% 20%, rgba(232, 220, 208, 0.7), transparent 60%),
+        #fbf7f1;
+    min-height: 100vh;
+    line-height: 1.6;
+}
+
+a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--color-accent-strong);
+}
+
+.page {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 3rem 1.5rem 4rem;
+}
+
+.site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2rem;
+    margin-bottom: 3rem;
+}
+
+.brand {
+    max-width: 28rem;
+}
+
+.logo {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    letter-spacing: 0.03em;
+    color: var(--color-ink);
+}
+
+.tagline {
+    margin-top: 0.35rem;
+    color: var(--color-muted);
+}
+
+.nav a {
+    margin-left: 1rem;
+    color: var(--color-ink);
+    font-weight: 600;
+}
+
+.nav a:first-child {
+    margin-left: 0;
+}
+
+.hero {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    padding: 2.5rem;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+}
+
+.eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    margin-bottom: 0.75rem;
+}
+
+.hero h1,
+.article-title {
+    font-family: var(--font-display);
+    font-size: 2.6rem;
+    line-height: 1.05;
+    margin-bottom: 0.75rem;
+}
+
+.lead {
+    font-size: 1.1rem;
+    color: var(--color-muted);
+    margin-bottom: 1rem;
+}
+
+.hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+}
+
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.7rem 1.2rem;
+    border-radius: 999px;
+    background: var(--color-accent);
+    color: #fffaf6;
+    font-weight: 600;
+    border: 1px solid transparent;
+}
+
+.button.ghost {
+    background: transparent;
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+
+.posts {
+    margin-top: 3rem;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.section-header h2 {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+}
+
+.section-header p {
+    color: var(--color-muted);
+}
+
+.post-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.5rem;
+}
+
+.post-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+    padding: 1.5rem;
+    border-radius: 1.25rem;
+    box-shadow: var(--shadow-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.post-card h3 {
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    margin: 0;
+}
+
+.post-card p {
+    margin: 0;
+    color: var(--color-muted);
+}
+
+.post-date {
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+}
+
+.empty {
+    color: var(--color-muted);
+}
+
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.tag {
+    background: var(--color-tag);
+    color: var(--color-muted);
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+}
+
+.article {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    padding: 2.5rem;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+}
+
+.article-header {
+    margin-bottom: 1.5rem;
+}
+
+.article-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    color: var(--color-muted);
+    font-size: 0.9rem;
+}
+
+.content h1,
+.content h2,
+.content h3,
+.content h4,
+.content h5,
+.content h6 {
+    font-family: var(--font-display);
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+    line-height: 1.25;
+}
+
+.content h1 { font-size: 2rem; }
+.content h2 { font-size: 1.65rem; }
+.content h3 { font-size: 1.4rem; }
+
+.content p {
+    margin-bottom: 1rem;
+}
+
+.content ul,
+.content ol {
+    margin-bottom: 1rem;
+    padding-left: 1.4rem;
+}
+
+.content li {
+    margin-bottom: 0.4rem;
+}
+
+.content code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background: rgba(36, 31, 26, 0.08);
+    padding: 0.1em 0.35em;
+    border-radius: 6px;
+}
+
+.content pre {
+    margin-bottom: 1.5rem;
+    padding: 1.2rem;
+    background: rgba(36, 31, 26, 0.08);
+    border-radius: 12px;
+    overflow-x: auto;
+}
+
+.content pre code {
+    background: none;
+    padding: 0;
+}
+
+.content blockquote {
+    margin: 1.5rem 0;
+    padding-left: 1rem;
+    border-left: 3px solid var(--color-border);
+    color: var(--color-muted);
+    font-style: italic;
+}
+
+.content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 12px;
+    margin: 1.5rem 0;
+}
+
+.site-footer {
+    margin-top: 3rem;
+    color: var(--color-muted);
+    font-size: 0.9rem;
+}
+
+@media (max-width: 720px) {
+    .page {
+        padding: 2rem 1.25rem 3rem;
+    }
+
+    .site-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .hero {
+        padding: 2rem 1.5rem;
+    }
+
+    .hero h1,
+    .article-title {
+        font-size: 2.1rem;
+    }
+
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

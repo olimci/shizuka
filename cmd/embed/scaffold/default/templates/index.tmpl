@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{{.Site.Title}} | {{.Page.Title}}</title>
+        <meta name="description" content="{{.Page.Description}}" />
+        <link rel="stylesheet" href="{{.Site.URL}}style.css" />
+    </head>
+    <body>
+        <div class="page">
+            <header class="site-header">
+                <div class="brand">
+                    <a class="logo" href="{{.Site.URL}}">{{.Site.Title}}</a>
+                    <p class="tagline">{{.Site.Description}}</p>
+                </div>
+                <nav class="nav">
+                    <a href="{{.Site.URL}}">Home</a>
+                    <a href="#posts">Posts</a>
+                </nav>
+            </header>
+
+            <main>
+                <section class="hero">
+                    <div class="hero-text">
+                        <p class="eyebrow">Fresh start</p>
+                        <h1>{{.Page.Title}}</h1>
+                        {{if .Page.Description}}
+                        <p class="lead">{{.Page.Description}}</p>
+                        {{end}}
+                        <div class="content">{{.Page.Body}}</div>
+                        <div class="hero-actions">
+                            <a class="button" href="#posts">Read the posts</a>
+                            <a
+                                class="button ghost"
+                                href="https://github.com/olimci/shizuka"
+                                >Shizuka docs</a
+                            >
+                        </div>
+                    </div>
+                </section>
+
+                <section id="posts" class="posts">
+                    <div class="section-header">
+                        <h2>Latest posts</h2>
+                        <p>Short reads to get started.</p>
+                    </div>
+                    {{ $posts := where "Section" "posts" .Site.Collections.All
+                    }} {{ $sorted := sort "Date" "desc" $posts }} {{ if $sorted
+                    }}
+                    <div class="post-grid">
+                        {{ range $sorted }}
+                        <article class="post-card">
+                            {{ if not (.Date.IsZero) }}
+                            <p class="post-date">
+                                {{ .Date.Format "Jan 2, 2006" }}
+                            </p>
+                            {{ end }}
+                            <h3>
+                                <a href="{{$.Site.URL}}{{.Slug}}/"
+                                    >{{ .Title }}</a
+                                >
+                            </h3>
+                            {{ if .Description }}
+                            <p>{{ .Description }}</p>
+                            {{ end }} {{ if .Tags }}
+                            <div class="tags">
+                                {{ range .Tags }}<span class="tag">{{ . }}</span
+                                >{{ end }}
+                            </div>
+                            {{ end }}
+                        </article>
+                        {{ end }}
+                    </div>
+                    {{ else }}
+                    <p class="empty">
+                        No posts yet. Add one in <code>content/posts/</code>.
+                    </p>
+                    {{ end }}
+                </section>
+            </main>
+
+            <footer class="site-footer">
+                <p>
+                    &copy; {{.Site.Title}}. Built with
+                    <a href="https://github.com/olimci/shizuka">Shizuka</a>.
+                </p>
+            </footer>
+        </div>
+    </body>
+</html>

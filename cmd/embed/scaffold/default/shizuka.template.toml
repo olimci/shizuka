@@ -1,12 +1,12 @@
 [metadata]
-name = "Minimal"
-slug = "minimal"
-description = "A minimal starting point with the essentials"
+name = "Default"
+slug = "default"
+description = "A clean starter site with posts, templates, and styles"
 version = "1.0.0"
 shizuka_version = "0.1.0"
 
 [files]
-# Only strip .tmpl suffix from files qthat are scaffold templates (processed with variables)
+# Only strip .tmpl suffix from files that are scaffold templates (processed with variables)
 # Site template files like templates/page.tmpl should keep their extension
 strip_suffixes = []
 templates = ["_shizuka.toml.tmpl", "content/**/*.md"]
@@ -24,7 +24,7 @@ default = "My Shizuka Site"
 [variables.SiteDescription]
 name = "Site description"
 description = "Shown in metadata and site templates."
-default = "A new Shizuka site"
+default = "A small, fast static site with personality."
 
 [variables.SiteURL]
 name = "Site URL"

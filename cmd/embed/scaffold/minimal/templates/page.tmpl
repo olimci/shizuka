@@ -11,7 +11,7 @@
         <div class="container">
             <header>
                 <h1>{{.Page.Title}}</h1>
-                {{if .Page.Date}}
+                {{if not (.Page.Date.IsZero)}}
                 <p class="meta">
                     Published on {{.Page.Date.Format "January 2, 2006"}}
                 </p>
