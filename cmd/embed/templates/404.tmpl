@@ -1,0 +1,22 @@
+{{define "404"}}
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>404 - Not Found</title>
+
+        {{ template "err_style" . }}
+    </head>
+    <body>
+        <div class="wrap">
+            <div class="banner" role="status" aria-live="polite">
+                <div class="k">404</div>
+                <div class="msg">
+                    The page you are looking for does not exist.
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
+{{end}}

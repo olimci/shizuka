@@ -3,11 +3,8 @@ package cmd
 import (
 	"context"
 
-	"github.com/olimci/shizuka/pkg/version"
 	"github.com/urfave/cli/v3"
 )
-
-var Version = version.String()
 
 func Execute(ctx context.Context, args []string) error {
 	app := &cli.Command{
@@ -25,95 +22,4 @@ func Execute(ctx context.Context, args []string) error {
 	}
 
 	return app.Run(ctx, args)
-}
-
-func versionCmd() *cli.Command {
-	return &cli.Command{
-		Name:   "version",
-		Usage:  "Print version information",
-		Action: runVersion,
-	}
-}
-
-func initCmd() *cli.Command {
-	return &cli.Command{
-		Name:      "init",
-		Usage:     "Scaffold a new Shizuka site (interactive)",
-		ArgsUsage: "[source] [directory]",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "template",
-				Aliases: []string{"t"},
-				Usage:   "Scaffold name (for collections)",
-			},
-			&cli.BoolFlag{
-				Name:    "list",
-				Aliases: []string{"l"},
-				Usage:   "List available templates",
-			},
-			&cli.BoolFlag{
-				Name:  "list-vars",
-				Usage: "List template variables",
-			},
-			&cli.BoolFlag{
-				Name:    "force",
-				Aliases: []string{"f"},
-				Usage:   "Overwrite existing files",
-			},
-		},
-		Action: runInit,
-	}
-}
-
-func buildCmd() *cli.Command {
-	return &cli.Command{
-		Name:  "build",
-		Usage: "Build the site (interactive)",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "config",
-				Aliases: []string{"c"},
-				Value:   "shizuka.toml",
-				Usage:   "Config file path",
-			},
-			&cli.StringFlag{
-				Name:    "dist",
-				Aliases: []string{"d"},
-				Usage:   "Output directory (overrides config)",
-			},
-			&cli.BoolFlag{
-				Name:    "strict",
-				Aliases: []string{"s"},
-				Usage:   "Fail on warnings (strict mode)",
-			},
-		},
-		Action: runBuild,
-	}
-}
-
-func devCmd() *cli.Command {
-	return &cli.Command{
-		Name:  "dev",
-		Usage: "Start development server with TUI",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "config",
-				Aliases: []string{"c"},
-				Value:   "shizuka.toml",
-				Usage:   "Config file path",
-			},
-			&cli.StringFlag{
-				Name:    "dist",
-				Aliases: []string{"d"},
-				Usage:   "Output directory (overrides config)",
-			},
-			&cli.IntFlag{
-				Name:    "port",
-				Aliases: []string{"p"},
-				Value:   6767,
-				Usage:   "HTTP port",
-			},
-		},
-		Action: runDev,
-	}
 }

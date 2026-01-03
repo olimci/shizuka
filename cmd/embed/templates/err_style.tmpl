@@ -1,0 +1,203 @@
+{{define "err_style"}}
+<style>
+    :root {
+        --bg: #0b0c10;
+        --paper: #0f1116;
+        --edge: #2a2e38;
+        --edge-dim: #1b1f28;
+
+        --fg: #e6e6e6;
+        --fg-dim: #a7adba;
+        --fg-faint: #6e7480;
+
+        --accent: #b6a6ff;
+
+        /* fallback banner red */
+        --warn: #ff3b3b;
+        --warn-bg: #12090a;
+
+        --mono:
+            ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+            "Liberation Mono", "Courier New", monospace;
+        --sans:
+            system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+            sans-serif;
+
+        --w: 72ch;
+        --pad: 1.25rem;
+        --lh: 1.55;
+    }
+
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+    html,
+    body {
+        height: 100%;
+    }
+    body {
+        background: var(--bg);
+        color: var(--fg);
+        line-height: var(--lh);
+        font-family: var(--mono);
+        padding: 2rem 1.25rem;
+    }
+
+    .wrap {
+        max-width: var(--w);
+        margin: 0 auto;
+    }
+
+    .panel {
+        background: var(--paper);
+        border: 1px solid var(--edge);
+        padding: var(--pad);
+        margin-bottom: 1rem;
+    }
+
+    .panel-h {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--edge-dim);
+        color: var(--fg-faint);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+    }
+    .panel-h .right {
+        text-transform: none;
+        letter-spacing: normal;
+        color: var(--fg-faint);
+    }
+
+    /* fallback banner: square, flat, red */
+    .banner {
+        border: 1px solid var(--warn);
+        background: var(--warn-bg);
+        padding: 0.9rem 1rem;
+        margin-bottom: 1rem;
+    }
+    .banner .k {
+        color: var(--warn);
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 0.35rem;
+    }
+    .banner .msg {
+        color: var(--fg-dim);
+        font-size: 0.95rem;
+    }
+    .banner code {
+        color: var(--warn);
+        border-color: color-mix(in srgb, var(--warn) 45%, var(--edge));
+    }
+
+    code,
+    pre {
+        font-family: var(--mono);
+        font-size: 0.95em;
+    }
+    code {
+        color: var(--accent);
+        background: #07080b;
+        border: 1px solid var(--edge-dim);
+        padding: 0.05rem 0.35rem;
+    }
+
+    .meta {
+        display: grid;
+        grid-template-columns: 14ch 1fr;
+        gap: 0.35rem 1rem;
+        font-size: 0.95rem;
+    }
+    .meta dt {
+        color: var(--fg-faint);
+    }
+    .meta dd {
+        color: var(--fg);
+        word-break: break-word;
+    }
+    .meta em {
+        color: var(--fg-faint);
+        font-style: normal;
+    }
+
+    .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
+    .tag {
+        border: 1px solid var(--edge);
+        background: var(--paper);
+        color: var(--fg-dim);
+        padding: 0.15rem 0.55rem;
+        font-size: 0.8rem;
+    }
+
+    .preview {
+        color: var(--fg);
+        font-family: var(--sans);
+        font-size: 0.98rem;
+    }
+    .preview :is(h1, h2, h3, h4) {
+        font-family: var(--mono);
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 1.1rem 0 0.5rem;
+    }
+    .preview h1:first-child {
+        margin-top: 0;
+    }
+    .preview p {
+        margin: 0 0 0.9rem;
+        color: color-mix(in srgb, var(--fg) 92%, var(--fg-dim));
+    }
+    .preview pre {
+        background: #07080b;
+        border: 1px solid var(--edge-dim);
+        padding: 0.9rem;
+        overflow-x: auto;
+        margin: 0 0 1rem;
+        font-family: var(--mono);
+    }
+    .preview pre code {
+        border: none;
+        background: transparent;
+        color: var(--fg);
+        padding: 0;
+    }
+    .preview :is(ul, ol) {
+        margin: 0 0 1rem 1.25rem;
+        color: color-mix(in srgb, var(--fg) 90%, var(--fg-dim));
+    }
+    .preview blockquote {
+        margin: 0 0 1rem;
+        padding: 0.5rem 0.9rem;
+        border-left: 2px solid var(--edge);
+        color: var(--fg-dim);
+    }
+    .preview hr {
+        border: 0;
+        border-top: 1px solid var(--edge-dim);
+        margin: 1.25rem 0;
+    }
+
+    @media (max-width: 640px) {
+        body {
+            padding: 1.25rem 0.9rem;
+        }
+        .meta {
+            grid-template-columns: 11ch 1fr;
+        }
+    }
+</style>
+{{end}}

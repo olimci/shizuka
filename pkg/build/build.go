@@ -135,6 +135,7 @@ func Build(steps []Step, config *Config, opts ...Option) error {
 	}
 
 	if o.DiagnosticSink.HasLevel(failLevel) {
+
 		maxLevel := o.DiagnosticSink.MaxLevel()
 		return fmt.Errorf("%w: %s(s) reported during build",
 			ErrBuildFailed, maxLevel)

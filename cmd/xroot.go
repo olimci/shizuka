@@ -17,15 +17,6 @@ func xCmd() *cli.Command {
 	}
 }
 
-// xVersionCmd is an alias to versionCmd, since versionCmd is noninteractive by default
-func xVersionCmd() *cli.Command {
-	return &cli.Command{
-		Name:   "version",
-		Usage:  "Print version information",
-		Action: runVersion,
-	}
-}
-
 func xInitCmd() *cli.Command {
 	return &cli.Command{
 		Name:      "init",
@@ -71,53 +62,18 @@ func xInitCmd() *cli.Command {
 
 func xBuildCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "build",
-		Usage: "Build the site (non-interactive)",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "config",
-				Aliases: []string{"c"},
-				Value:   "shizuka.toml",
-				Usage:   "Config file path",
-			},
-			&cli.StringFlag{
-				Name:    "dist",
-				Aliases: []string{"d"},
-				Usage:   "Output directory (overrides config)",
-			},
-			&cli.BoolFlag{
-				Name:    "strict",
-				Aliases: []string{"s"},
-				Usage:   "Fail on warnings (strict mode)",
-			},
-		},
+		Name:   "build",
+		Usage:  "Build the site (non-interactive)",
+		Flags:  buildFlags(),
 		Action: runXBuild,
 	}
 }
 
 func xDevCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "dev",
-		Usage: "Start development server (non-interactive, logs to stdout)",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "config",
-				Aliases: []string{"c"},
-				Value:   "shizuka.toml",
-				Usage:   "Config file path",
-			},
-			&cli.StringFlag{
-				Name:    "dist",
-				Aliases: []string{"d"},
-				Usage:   "Output directory (overrides config)",
-			},
-			&cli.IntFlag{
-				Name:    "port",
-				Aliases: []string{"p"},
-				Value:   6767,
-				Usage:   "HTTP port",
-			},
-		},
+		Name:   "dev",
+		Usage:  "Start development server (non-interactive, logs to stdout)",
+		Flags:  devFlags(),
 		Action: runXDev,
 	}
 }

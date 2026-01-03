@@ -8,15 +8,44 @@ import (
 	"sync"
 
 	"github.com/olimci/shizuka/cmd/embed"
-	"github.com/olimci/shizuka/cmd/ui/init_ui"
 	"github.com/olimci/shizuka/pkg/scaffold"
 	"github.com/urfave/cli/v3"
 )
 
 var (
-	ErrorFailedToLoadTemplate = errors.New("failed to load template")
-	ErrTemplateNotFound       = errors.New("no template found")
+	ErrFailedToLoadTemplate = errors.New("failed to load template")
+	ErrTemplateNotFound     = errors.New("no template found")
 )
+
+func initCmd() *cli.Command {
+	return &cli.Command{
+		Name:      "init",
+		Usage:     "Scaffold a new Shizuka site (interactive)",
+		ArgsUsage: "[source] [directory]",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "template",
+				Aliases: []string{"t"},
+				Usage:   "Scaffold name (for collections)",
+			},
+			&cli.BoolFlag{
+				Name:    "list",
+				Aliases: []string{"l"},
+				Usage:   "List available templates",
+			},
+			&cli.BoolFlag{
+				Name:  "list-vars",
+				Usage: "List template variables",
+			},
+			&cli.BoolFlag{
+				Name:    "force",
+				Aliases: []string{"f"},
+				Usage:   "Overwrite existing files",
+			},
+		},
+		Action: runInit,
+	}
+}
 
 func runInit(ctx context.Context, cmd *cli.Command) error {
 	source := ""
@@ -61,12 +90,11 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 		return printTemplateVars(chosen)
 	}
 
-	result, err := init_ui.Run(ctx, init_ui.Params{
+	result, err := runInitInteractive(ctx, initInteractiveParams{
 		Template:   tmpl,
 		Collection: coll,
 		Selected:   selected,
 		Target:     target,
-		Force:      force,
 	})
 	if err != nil {
 		return err
@@ -80,7 +108,7 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	buildResult, err := result.Template.Build(ctx, result.Target,
-		scaffold.WithForce(result.Force),
+		scaffold.WithForce(force),
 		scaffold.WithVariables(result.Variables),
 	)
 	if err != nil {
@@ -101,7 +129,7 @@ func loadTemplate(ctx context.Context, source string) (tmpl *scaffold.Template, 
 	}
 
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("%w: %w", ErrorFailedToLoadTemplate, err)
+		return nil, nil, nil, fmt.Errorf("%w: %w", ErrFailedToLoadTemplate, err)
 	} else if tmpl == nil && coll == nil {
 		return nil, nil, nil, ErrTemplateNotFound
 	} else if tmpl != nil {
