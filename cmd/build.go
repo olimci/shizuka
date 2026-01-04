@@ -79,7 +79,7 @@ func runBuildWithStyle(ctx context.Context, cmd *cli.Command, style buildOutputS
 	}
 
 	start := time.Now()
-	err = build.Build(defaultBuildSteps(), cfg, opts...)
+	err = build.BuildSteps(defaultBuildSteps(), cfg, opts...)
 	elapsed := time.Since(start)
 
 	if err != nil {

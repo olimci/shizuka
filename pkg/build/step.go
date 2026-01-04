@@ -13,13 +13,6 @@ type StepContext struct {
 	Manifest *manifest.Manifest
 	Options  *Options
 	StepID   string
-
-	defers []Step
-}
-
-// Defer adds a step to be executed in the next phase of the build process
-func (ctx *StepContext) Defer(step Step) {
-	ctx.defers = append(ctx.defers, step)
 }
 
 // report is an internal method for reporting diagnostics

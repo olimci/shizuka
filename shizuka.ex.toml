@@ -1,0 +1,71 @@
+[shizuka]
+version = "1.2.3"
+
+[site]
+title = "Shizuka Example"
+description = "An example Shizuka site"
+url = "https://example.com"
+
+[build]
+output = "dist" # defaults to dist
+minify = true # defaults to true
+
+[build.steps.static] # exists by default
+source      = "static" # defaults to "static"
+destination = "." # defaults to .
+
+[build.steps.content] # exists by default
+template_glob = "templates/*.tmpl" # defaults to "templates/*.tmpl"
+source = "content" # defaults to "content"
+destination = "." # defaults to .
+
+# both defaults to {}
+default_params = { author = "Ada Lovelace", draft = false, reading_time = 5, tags = ["notes", "example"] }
+default_lite_params = { summary = "Short summary", featured = true, weight = 10 }
+
+goldmark_config = { # following is default:
+    extensions = ["gfm", "table", "strikethrough", "tasklist", "deflist", "footnotes", "typographer"]
+    parser = {
+        auto_heading_id = false
+        attribute = false
+    }
+    renderer = {
+        hardbreaks = false
+        XHTML = false
+    }
+}
+
+[build.steps.headers] # not defined by default
+headers = {
+    "/secure/page" = {
+        "X-Frame-Options" = "DENY"
+        "X-Content-Type-Options" = "nosniff"
+        "Referrer-Policy" = "no-referrer"
+    }
+    "/static/*" = {
+        "Access-Control-Allow-Origin" = "*"
+        "X-Robots-Tag" = "nosnippet"
+    }
+}
+output = "_headers" # default value
+
+[build.steps.redirects] # not defined by default
+redirects = [
+    { from = "/old-page", to = "/new-page" },
+    { from = "/another-old-page", to = "/another-new-page", status = 301 }
+]
+output = "_redirects" # default value
+
+# redirects should output in this format, per line
+# ```
+# [source] [destination] [code?]
+# ```
+# to _redirects (or wherever defined by config)
+
+
+# headers should output in this format, per header
+# ```
+# [url]
+#   [name]: [value]
+# ```
+# to _headers (or wherever defined by config)

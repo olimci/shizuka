@@ -49,7 +49,7 @@ func runBuildInteractive(ctx context.Context, cmd *cli.Command) error {
 		}
 
 		start := time.Now()
-		err = build.Build(defaultBuildSteps(), cfg, opts...)
+		err = build.BuildSteps(defaultBuildSteps(), cfg, opts...)
 		elapsed := time.Since(start)
 
 		if err != nil {

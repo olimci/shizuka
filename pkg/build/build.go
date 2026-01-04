@@ -18,110 +18,127 @@ var (
 	ErrBuildFailed          = fmt.Errorf("build failed")
 )
 
-// Build is a function that builds a site from a DAG of steps.
-func Build(steps []Step, config *Config, opts ...Option) error {
+func Build(opts ...Option) error {
 	o := defaultOptions().Apply(opts...)
 
+	config, err := LoadConfig(o.ConfigPath)
+	if err != nil {
+		return err
+	}
+
+	steps := make([]Step, 0)
+	if config.Build.Steps.Static != nil {
+		steps = append(steps, StepStatic())
+	}
+	if config.Build.Steps.Content != nil {
+		steps = append(steps, StepContent()...)
+	}
+	if config.Build.Steps.Headers != nil {
+		steps = append(steps, StepHeaders())
+	}
+	if config.Build.Steps.Redirects != nil {
+		steps = append(steps, StepRedirects())
+	}
+
+	return buildSteps(steps, config, o)
+}
+
+// BuildSteps is a function that builds a site from a DAG of steps.
+func buildSteps(steps []Step, config *Config, options *Options) error {
 	man := manifest.New()
-	man.Set(string(OptionsK), o)
+	man.Set(string(OptionsK), options)
 	man.Set(string(ConfigK), config)
 
-	for len(steps) > 0 {
-		dag, err := newDAG(steps)
-		if err != nil {
-			return err
-		}
+	dag, err := newDAG(steps)
+	if err != nil {
+		return err
+	}
 
-		var ready []string
+	var ready []string
+	for id, d := range dag.deg {
+		if d == 0 {
+			ready = append(ready, id)
+		}
+	}
+	if len(ready) == 0 {
+		return ErrCircularDependency
+	}
+
+	g, ctx := errgroup.WithContext(options.Context)
+	if options.MaxWorkers > 0 {
+		g.SetLimit(options.MaxWorkers)
+	}
+
+	var (
+		mu       sync.Mutex
+		done     int
+		schedule func(id string)
+	)
+
+	schedule = func(id string) {
+		step := dag.m[id]
+		g.Go(func() error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			sc := StepContext{
+				Ctx:      ctx,
+				Manifest: man,
+				Options:  options,
+				StepID:   step.ID,
+			}
+
+			if err := step.Fn(&sc); err != nil {
+				return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
+			}
+
+			var ready []string
+			mu.Lock()
+			done++
+			for _, req := range dag.adj[step.ID] {
+				dag.deg[req]--
+				if dag.deg[req] == 0 {
+					ready = append(ready, req)
+				}
+			}
+			mu.Unlock()
+
+			for _, id := range ready {
+				schedule(id)
+			}
+
+			return nil
+		})
+	}
+
+	for _, id := range ready {
+		schedule(id)
+	}
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("%w: %w", ErrBuildFailed, err)
+	}
+
+	if done != len(steps) {
+		var stuck []string
 		for id, d := range dag.deg {
-			if d == 0 {
-				ready = append(ready, id)
+			if d != 0 {
+				stuck = append(stuck, id)
 			}
 		}
-		if len(ready) == 0 {
-			return ErrCircularDependency
-		}
-
-		g, ctx := errgroup.WithContext(o.Context)
-		if o.MaxWorkers > 0 {
-			g.SetLimit(o.MaxWorkers)
-		}
-
-		var (
-			mu       sync.Mutex
-			done     int
-			next     []Step
-			schedule func(id string)
-		)
-
-		schedule = func(id string) {
-			step := dag.m[id]
-			g.Go(func() error {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				default:
-				}
-
-				sc := StepContext{
-					Ctx:      ctx,
-					Manifest: man,
-					Options:  o,
-					StepID:   step.ID,
-				}
-
-				if err := step.Fn(&sc); err != nil {
-					return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
-				}
-
-				var ready []string
-				mu.Lock()
-				done++
-				for _, req := range dag.adj[step.ID] {
-					dag.deg[req]--
-					if dag.deg[req] == 0 {
-						ready = append(ready, req)
-					}
-				}
-				next = append(next, sc.defers...)
-				mu.Unlock()
-
-				for _, id := range ready {
-					schedule(id)
-				}
-
-				return nil
-			})
-		}
-
-		for _, id := range ready {
-			schedule(id)
-		}
-
-		if err := g.Wait(); err != nil {
-			return fmt.Errorf("%w: %w", ErrBuildFailed, err)
-		}
-
-		if done != len(steps) {
-			var stuck []string
-			for id, d := range dag.deg {
-				if d != 0 {
-					stuck = append(stuck, id)
-				}
-			}
-			return fmt.Errorf("%w: %v", ErrCircularDependency, stuck)
-		}
-
-		steps = next
+		return fmt.Errorf("%w: %v", ErrCircularDependency, stuck)
 	}
 
 	manifestOpts := []manifest.Option{
-		manifest.WithBuildDir(config.Build.OutputDir),
-		manifest.WithContext(o.Context),
-		manifest.WithMaxWorkers(o.MaxWorkers),
+		manifest.WithBuildDir(config.Build.Output),
+		manifest.WithContext(options.Context),
+		manifest.WithMaxWorkers(options.MaxWorkers),
 	}
 
-	if o.Dev {
+	if options.Dev {
 		manifestOpts = append(manifestOpts, manifest.IgnoreConflicts())
 	}
 
@@ -130,17 +147,17 @@ func Build(steps []Step, config *Config, opts ...Option) error {
 	}
 
 	failLevel := LevelError
-	if o.FailOnWarn {
+	if options.FailOnWarn {
 		failLevel = LevelWarning
 	}
 
-	if o.DiagnosticSink.HasLevel(failLevel) {
-		maxLevel := o.DiagnosticSink.MaxLevel()
-		if a := devFailureArtefact(o, DevFailurePageData{
-			Summary:     summaryDiagnostics(o.DiagnosticSink),
+	if options.DiagnosticSink.HasLevel(failLevel) {
+		maxLevel := options.DiagnosticSink.MaxLevel()
+		if a := devFailureArtefact(options, DevFailurePageData{
+			Summary:     summaryDiagnostics(options.DiagnosticSink),
 			FailLevel:   failLevel,
 			MaxLevel:    maxLevel,
-			Diagnostics: o.DiagnosticSink.DiagnosticsAtLevel(failLevel),
+			Diagnostics: options.DiagnosticSink.DiagnosticsAtLevel(failLevel),
 		}); a != nil {
 			man.Emit(*a)
 			_ = man.Build(manifestOpts...)

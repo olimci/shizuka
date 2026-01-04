@@ -22,8 +22,9 @@ type Frontmatter struct {
 	Date    time.Time `toml:"date" yaml:"date"`
 	Updated time.Time `toml:"updated" yaml:"updated"`
 
-	Params     map[string]any `toml:"params" yaml:"params"`
-	LiteParams map[string]any `toml:"lite_params" yaml:"lite_params"`
+	Params     map[string]any    `toml:"params" yaml:"params"`
+	LiteParams map[string]any    `toml:"lite_params" yaml:"lite_params"`
+	Headers    map[string]string `toml:"headers" yaml:"headers"`
 
 	Template string `toml:"template" yaml:"template"`
 	Body     string `toml:"body" yaml:"body"`

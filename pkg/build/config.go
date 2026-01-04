@@ -18,123 +18,126 @@ import (
 
 // Config represents the configuration for the build process.
 type Config struct {
-	Shizuka ShizukaConfig `toml:"shizuka"`
-	Site    SiteConfig    `toml:"site"`
-	Content ContentConfig `toml:"content"`
-	Build   BuildConfig   `toml:"build"`
+	Shizuka ConfigShizuka `toml:"shizuka"`
+	Site    ConfigSite    `toml:"site"`
+	Build   ConfigBuild   `toml:"build"`
 }
 
-type ShizukaConfig struct {
+type ConfigShizuka struct {
 	Version string `toml:"version"`
 }
 
-type SiteConfig struct {
+type ConfigSite struct {
 	Title       string `toml:"title"`
 	Description string `toml:"description"`
 	URL         string `toml:"url"`
 }
 
-type ContentConfig struct {
+type ConfigBuild struct {
+	Output string `toml:"output"`
+	Minify bool   `toml:"minify"`
+
+	Steps ConfigBuildSteps `toml:"steps"`
+}
+
+type ConfigBuildSteps struct {
+	Static    *ConfigStepStatic    `toml:"static"`
+	Content   *ConfigStepContent   `toml:"content"`
+	Headers   *ConfigStepHeaders   `toml:"headers"`
+	Redirects *ConfigStepRedirects `toml:"redirects"`
+}
+
+type ConfigStepStatic struct {
+	Source      string `toml:"source"`
+	Destination string `toml:"destination"`
+}
+
+type ConfigStepContent struct {
+	TemplateGlob      string         `toml:"template_glob"`
+	Source            string         `toml:"source"`
+	Destination       string         `toml:"destination"`
 	DefaultParams     map[string]any `toml:"default_params"`
 	DefaultLiteParams map[string]any `toml:"default_lite_params"`
+	GoldmarkConfig    ConfigGoldmark `toml:"goldmark_config"`
 }
 
-type BuildConfig struct {
-	OutputDir     string `toml:"output_dir"`
-	TemplatesGlob string `toml:"templates_glob"`
-	StaticDir     string `toml:"static_dir"`
-	ContentDir    string `toml:"content_dir"`
-
-	Targets    BuildTargets    `toml:"targets"`
-	Transforms BuildTransforms `toml:"transforms"`
-	Goldmark   GoldmarkConfig  `toml:"goldmark"`
+type ConfigStepHeaders struct {
+	Headers map[string]map[string]string `toml:"headers"`
 }
 
-type BuildTargets struct {
-	RSS     BuildRSSConfig `toml:"rss"`
-	Sitemap BuildSiteMap   `toml:"sitemap"`
+type ConfigStepRedirects struct {
+	Shorten   string     `toml:"shorten"`
+	Redirects []Redirect `toml:"redirects"`
 }
 
-type BuildRSSConfig struct {
-	Enable      bool   `toml:"enable"`
-	Path        string `toml:"path"`
-	Title       string `toml:"title"`
-	Description string `toml:"description"`
+type Redirect struct {
+	From   string `toml:"from"`
+	To     string `toml:"to"`
+	Status int    `toml:"status"`
 }
 
-type BuildSiteMap struct {
-	Enable bool   `toml:"enable"`
-	Path   string `toml:"path"`
+type ConfigGoldmark struct {
+	Extensions []string               `toml:"extensions"`
+	Parser     ConfigGoldmarkParser   `toml:"parser"`
+	Renderer   ConfigGoldmarkRenderer `toml:"renderer"`
 }
 
-type BuildTransforms struct {
-	Minify bool `toml:"minify"`
-}
-
-type GoldmarkConfig struct {
-	Extensions []string         `toml:"extensions"`
-	Parser     GoldmarkParser   `toml:"parser"`
-	Renderer   GoldmarkRenderer `toml:"renderer"`
-}
-
-type GoldmarkParser struct {
+type ConfigGoldmarkParser struct {
 	AutoHeadingID bool `toml:"auto_heading_id"`
 	Attribute     bool `toml:"attribute"`
 }
 
-type GoldmarkRenderer struct {
+type ConfigGoldmarkRenderer struct {
 	Hardbreaks bool `toml:"hardbreaks"`
 	XHTML      bool `toml:"XHTML"`
 }
 
 // DefaultConfig constructs a new Config with default values.
 func DefaultConfig() *Config {
+	defaultGoldmark := ConfigGoldmark{
+		Extensions: []string{
+			"gfm",
+			"table",
+			"strikethrough",
+			"tasklist",
+			"deflist",
+			"footnotes",
+			"typographer",
+		},
+		Parser: ConfigGoldmarkParser{
+			AutoHeadingID: false,
+			Attribute:     false,
+		},
+		Renderer: ConfigGoldmarkRenderer{
+			Hardbreaks: false,
+			XHTML:      false,
+		},
+	}
+
 	return &Config{
-		Shizuka: ShizukaConfig{
+		Shizuka: ConfigShizuka{
 			Version: version.String(),
 		},
-		Site: SiteConfig{
+		Site: ConfigSite{
 			Title:       "Shizuka",
 			Description: "Shizuka site",
 			URL:         "https://example.com",
 		},
-		Build: BuildConfig{
-			OutputDir:     "dist",
-			TemplatesGlob: "templates/*.tmpl",
-			StaticDir:     "static",
-			ContentDir:    "content",
-			Targets: BuildTargets{
-				RSS: BuildRSSConfig{
-					Enable:      false,
-					Path:        "rss.xml",
-					Title:       "Shizuka RSS Feed",
-					Description: "Shizuka site RSS Feed",
+		Build: ConfigBuild{
+			Output: "dist",
+			Minify: true,
+			Steps: ConfigBuildSteps{
+				Static: &ConfigStepStatic{
+					Source:      "static",
+					Destination: ".",
 				},
-				Sitemap: BuildSiteMap{
-					Enable: false,
-					Path:   "sitemap.xml",
-				},
-			},
-			Transforms: BuildTransforms{
-				Minify: true,
-			},
-			Goldmark: GoldmarkConfig{
-				Extensions: []string{
-					"gfm",
-					"table",
-					"strikethrough",
-					"tasklist",
-					"deflist",
-					"footnotes",
-					"typographer",
-				},
-				Parser: GoldmarkParser{
-					AutoHeadingID: false,
-					Attribute:     false,
-				},
-				Renderer: GoldmarkRenderer{
-					Hardbreaks: false,
-					XHTML:      false,
+				Content: &ConfigStepContent{
+					TemplateGlob:      "templates/*.tmpl",
+					Source:            "content",
+					Destination:       ".",
+					DefaultParams:     map[string]any{},
+					DefaultLiteParams: map[string]any{},
+					GoldmarkConfig:    defaultGoldmark,
 				},
 			},
 		},
@@ -145,7 +148,7 @@ func DefaultConfig() *Config {
 func LoadConfig(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
-	md, err := toml.DecodeFile(path, &cfg)
+	md, err := toml.DecodeFile(path, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -170,18 +173,54 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("site.url must start with http:// or https:// (got %q)", c.Site.URL)
 	}
 
-	if c.Build.Targets.RSS.Enable && strings.TrimSpace(c.Build.Targets.RSS.Path) == "" {
-		c.Build.Targets.RSS.Path = "rss.xml"
+	if strings.TrimSpace(c.Build.Output) == "" {
+		c.Build.Output = "dist"
 	}
-	if c.Build.Targets.Sitemap.Enable && strings.TrimSpace(c.Build.Targets.Sitemap.Path) == "" {
-		c.Build.Targets.Sitemap.Path = "sitemap.xml"
+
+	if c.Build.Steps.Static != nil {
+		if strings.TrimSpace(c.Build.Steps.Static.Source) == "" {
+			c.Build.Steps.Static.Source = "static"
+		}
+		if strings.TrimSpace(c.Build.Steps.Static.Destination) == "" {
+			c.Build.Steps.Static.Destination = "."
+		}
+	}
+
+	if c.Build.Steps.Content != nil {
+		if strings.TrimSpace(c.Build.Steps.Content.TemplateGlob) == "" {
+			c.Build.Steps.Content.TemplateGlob = "templates/*.tmpl"
+		}
+		if strings.TrimSpace(c.Build.Steps.Content.Source) == "" {
+			c.Build.Steps.Content.Source = "content"
+		}
+		if strings.TrimSpace(c.Build.Steps.Content.Destination) == "" {
+			c.Build.Steps.Content.Destination = "."
+		}
+		if c.Build.Steps.Content.DefaultParams == nil {
+			c.Build.Steps.Content.DefaultParams = map[string]any{}
+		}
+		if c.Build.Steps.Content.DefaultLiteParams == nil {
+			c.Build.Steps.Content.DefaultLiteParams = map[string]any{}
+		}
+	}
+
+	if c.Build.Steps.Redirects != nil {
+		shorten := strings.TrimSpace(c.Build.Steps.Redirects.Shorten)
+		if shorten == "" {
+			shorten = "/s"
+		}
+		if !strings.HasPrefix(shorten, "/") {
+			shorten = "/" + shorten
+		}
+		shorten = strings.TrimSuffix(shorten, "/")
+		c.Build.Steps.Redirects.Shorten = shorten
 	}
 
 	return nil
 }
 
 // makeGoldmark constructs a new Goldmark instance with the given configuration.
-func makeGoldmark(cfg GoldmarkConfig) gm.Markdown {
+func makeGoldmark(cfg ConfigGoldmark) gm.Markdown {
 	var (
 		exts       []gm.Extender
 		parserOpts []gmparse.Option

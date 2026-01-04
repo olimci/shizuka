@@ -36,6 +36,7 @@ type Page struct {
 
 	Params     map[string]any
 	LiteParams map[string]any
+	Headers    map[string]string
 
 	Body template.HTML
 
@@ -131,6 +132,7 @@ func BuildPage(src string, md gm.Markdown) (*Page, error) {
 		Updated:     fm.Updated,
 		Params:      fm.Params,
 		LiteParams:  fm.LiteParams,
+		Headers:     fm.Headers,
 		Body:        template.HTML(body),
 		Featured:    fm.Featured,
 		Draft:       fm.Draft,

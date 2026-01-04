@@ -3,6 +3,7 @@ package build
 import (
 	"context"
 	"html/template"
+	"maps"
 	"runtime"
 )
 
@@ -124,9 +125,7 @@ func WithErrPages(pages map[error]*template.Template, defaultTemplate *template.
 			}
 		}
 
-		for match, tmpl := range pages {
-			o.ErrPages[match] = tmpl
-		}
+		maps.Copy(o.ErrPages, pages)
 	}
 }
 
