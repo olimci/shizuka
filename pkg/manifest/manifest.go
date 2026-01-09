@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/olimci/shizuka/pkg/config"
+	"github.com/olimci/shizuka/pkg/events.go"
 	"github.com/olimci/shizuka/pkg/utils/fileutils"
 	"golang.org/x/sync/errgroup"
 )
@@ -24,6 +26,13 @@ func GetAs[T any](m *Manifest, k K[T]) T {
 		}
 	}
 	return *new(T)
+}
+
+func SetAs[T any](m *Manifest, k K[T], v T) {
+	m.registryMu.Lock()
+	defer m.registryMu.Unlock()
+
+	m.registry[string(k)] = v
 }
 
 // New creates a new manifest
@@ -69,31 +78,41 @@ func (m *Manifest) Emit(a Artefact) {
 }
 
 // Build builds the manifest
-func (m *Manifest) Build(opts ...Option) error {
-	o := defaultOptions().apply(opts...)
-
+func (m *Manifest) Build(config *config.Config, options *config.Options, handler events.Handler) error {
 	m.artefactsMu.Lock()
 	defer m.artefactsMu.Unlock()
 
 	artefacts, conflicts := makeArtefacts(m.artefacts)
-	if !o.ignoreConflicts && len(conflicts) > 0 {
+	for conflict, files := range conflicts {
+		handler.Handle(events.Event{
+			Level:   events.Error,
+			Message: fmt.Sprintf("file conflict %s: %v", conflict, files),
+			Error:   fmt.Errorf("%w: %v", ErrConflicts, conflicts),
+		})
+	}
+	if !options.Dev && len(conflicts) > 0 {
 		return fmt.Errorf("%w: %v", ErrConflicts, conflicts)
 	}
 
-	info, err := os.Stat(o.BuildDir)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			if err := os.MkdirAll(o.BuildDir, 0755); err != nil {
-				return fmt.Errorf("failed to create build dir %q: %w", o.BuildDir, err)
-			}
-		} else {
-			return fmt.Errorf("failed to stat build dir %q: %w", o.BuildDir, err)
-		}
-	} else if !info.IsDir() {
-		return fmt.Errorf("build dir %q is not a directory", o.BuildDir)
+	var dist = config.Build.Output
+	if options.OutputPath != "" {
+		dist = options.OutputPath
 	}
 
-	gotFiles, gotDirs, err := fileutils.Walk(o.BuildDir)
+	info, err := os.Stat(dist)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.MkdirAll(dist, 0755); err != nil {
+				return fmt.Errorf("failed to create build dir %q: %w", dist, err)
+			}
+		} else {
+			return fmt.Errorf("failed to stat build dir %q: %w", dist, err)
+		}
+	} else if !info.IsDir() {
+		return fmt.Errorf("build dir %q is not a directory", dist)
+	}
+
+	gotFiles, gotDirs, err := fileutils.Walk(dist)
 	if err != nil {
 		return fmt.Errorf("walk dist: %w", err)
 	}
@@ -112,22 +131,22 @@ func (m *Manifest) Build(opts ...Option) error {
 
 	for _, rel := range gotFiles.Values() {
 		if _, wants := artefacts[rel]; !wants {
-			if err := os.Remove(filepath.Join(o.BuildDir, rel)); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("failed to remove %s: %w", filepath.Join(o.BuildDir, rel), err)
+			if err := os.Remove(filepath.Join(dist, rel)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("failed to remove %s: %w", filepath.Join(dist, rel), err)
 			}
 		}
 	}
 
 	for _, rel := range gotDirs.Values() {
 		if !wantDirs.Has(rel) {
-			if err := os.RemoveAll(filepath.Join(o.BuildDir, rel)); err != nil {
-				return fmt.Errorf("failed to remove %s: %w", filepath.Join(o.BuildDir, rel), err)
+			if err := os.RemoveAll(filepath.Join(dist, rel)); err != nil {
+				return fmt.Errorf("failed to remove %s: %w", filepath.Join(dist, rel), err)
 			}
 		}
 	}
 
 	for _, rel := range wantDirs.Values() {
-		full := filepath.Join(o.BuildDir, rel)
+		full := filepath.Join(dist, rel)
 		if !gotDirs.Has(rel) {
 			if err := os.MkdirAll(full, 0o755); err != nil {
 				return fmt.Errorf("failed to create %s: %w", full, err)
@@ -135,14 +154,14 @@ func (m *Manifest) Build(opts ...Option) error {
 		}
 	}
 
-	g, ctx := errgroup.WithContext(o.Context)
-	if o.maxWorkers > 0 {
-		g.SetLimit(o.maxWorkers)
+	g, ctx := errgroup.WithContext(options.Context)
+	if options.MaxWorkers > 0 {
+		g.SetLimit(options.MaxWorkers)
 	}
 
 	for target, artefact := range artefacts {
 		exists := gotFiles.Has(target)
-		full := filepath.Join(o.BuildDir, target)
+		full := filepath.Join(dist, target)
 
 		g.Go(func() error {
 			select {

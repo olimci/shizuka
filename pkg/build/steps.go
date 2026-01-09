@@ -6,11 +6,12 @@ import (
 	"html/template"
 	"io"
 	"maps"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
+	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/transforms"
 	"github.com/olimci/shizuka/pkg/utils/fileutils"
@@ -22,33 +23,36 @@ var (
 )
 
 const (
-	ConfigK    = manifest.K[*Config]("config")
-	OptionsK   = manifest.K[*Options]("options")
+	ConfigK    = manifest.K[*config.Config]("config")
+	OptionsK   = manifest.K[*config.Options]("options")
 	PagesK     = manifest.K[[]*transforms.Page]("pages")
-	SiteK      = manifest.K[transforms.Site]("site")
-	TemplatesK = manifest.K[template.Template]("templates")
+	SiteK      = manifest.K[*transforms.Site]("site")
+	TemplatesK = manifest.K[*template.Template]("templates")
+	BuildCtxK  = manifest.K[*BuildCtx]("buildctx")
 )
 
 // StepStatic attatches static files
 func StepStatic() Step {
 	return StepFunc("static", func(sc *StepContext) error {
-		config := manifest.GetAs(sc.Manifest, ConfigK)
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 
-		m := NewMinifier(config.Build.Minify)
+		m := NewMinifier(cfg.Build.Minify)
 
-		staticSource := config.Build.Steps.Static.Source
-		staticDestination := config.Build.Steps.Static.Destination
+		sourceRoot := cfg.Build.Steps.Static.Source
+		targetRoot := cfg.Build.Steps.Static.Destination
 
-		files, err := fileutils.WalkFiles(staticSource)
+		files, err := fileutils.WalkFiles(sourceRoot)
 		if err != nil {
 			return err
 		}
 
 		for _, rel := range files.Values() {
-			full := filepath.Join(staticSource, rel)
-			target := filepath.Join(staticDestination, rel)
-			artefact := makeStatic("static", full, target)
-			sc.Manifest.Emit(m.MinifyArtefact(rel, artefact))
+			sc.Manifest.Emit(manifest.StaticArtefact(manifest.Claim{
+				Owner:  "static",
+				Source: filepath.Join(sourceRoot, rel),
+				Target: filepath.Join(targetRoot, rel),
+				Canon:  filepath.Join(targetRoot, rel),
+			}).Post(m))
 		}
 
 		return nil
@@ -59,104 +63,75 @@ func StepStatic() Step {
 func StepContent() []Step {
 	// build creates the manifest artefacts for the pages
 	build := StepFunc("pages:build", func(sc *StepContext) error {
-		config := manifest.GetAs(sc.Manifest, ConfigK)
+		opts := manifest.GetAs(sc.Manifest, OptionsK)
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
 		site := manifest.GetAs(sc.Manifest, SiteK)
 		tmpl := manifest.GetAs(sc.Manifest, TemplatesK)
 
-		m := NewMinifier(config.Build.Minify)
-
-		buildTime := time.Now().Format(time.RFC3339)
-
-		siteMeta := transforms.SiteMeta{
-			BuildTime: buildTime,
-			Dev:       sc.Options.Dev,
-		}
-
-		makeArtefact := func(page *transforms.Page, claim manifest.Claim, useTemplate *template.Template, templateName string) manifest.Artefact {
-			pageForTemplate := *page
-			pageForTemplate.Meta.Template = templateName
-
-			siteForTemplate := site
-			siteForTemplate.Meta = siteMeta
-
-			a := manifest.Artefact{
-				Claim: claim,
-				Builder: func(w io.Writer) error {
-					data := transforms.PageTemplate{
-						Page: pageForTemplate,
-						Site: siteForTemplate,
-					}
-					return useTemplate.Execute(w, data)
-				},
-			}
-
-			return m.MinifyArtefact(page.Meta.Target, a)
-		}
+		m := NewMinifier(cfg.Build.Minify)
 
 		for _, page := range pages {
-			claim := manifest.Claim{
-				Source: page.Meta.Source,
-				Target: page.Meta.Target,
-				Owner:  "pages:build",
-			}
+			claim := page.Meta.Claim.Own("pages:build")
 
 			if page.Meta.Err != nil {
-				if errTmpl := lookupErrPage(sc.Options, page.Meta.Err); errTmpl != nil {
-					sc.Manifest.Emit(makeArtefact(page, claim, errTmpl, page.Meta.Template))
+				if errTmpl := lookupErrPage(opts.PageErrTemplates, page.Meta.Err); errTmpl != nil {
+					sc.Manifest.Emit(manifest.TemplateArtefact(claim, errTmpl, transforms.PageTemplate{
+						Page: *page,
+						Site: *site,
+					}).Post(m))
 				}
+
 				continue
 			}
 
-			pageTmpl := tmpl.Lookup(page.Meta.Template)
-			templateName := page.Meta.Template
-
-			if pageTmpl == nil {
+			if tmpl.Lookup(page.Meta.Template) == nil {
 				if page.Meta.Template == "" {
 					page.Meta.Err = errors.Join(ErrNoTemplate, errors.New("no template specified"))
-					_ = sc.Error(page.Meta.Source, "no template specified", page.Meta.Err)
+					sc.Errorf(page.Meta.Err, "page %s: no template specified", claim)
 				} else {
 					page.Meta.Err = errors.Join(ErrTemplateNotFound, fmt.Errorf("template %q not found", page.Meta.Template))
-					_ = sc.Error(page.Meta.Source, fmt.Sprintf("template %q not found", page.Meta.Template), page.Meta.Err)
+					sc.Errorf(page.Meta.Err, "template %q not found", page.Meta.Template)
 				}
 
-				if errTmpl := lookupErrPage(sc.Options, page.Meta.Err); errTmpl != nil {
-					sc.Manifest.Emit(makeArtefact(page, claim, errTmpl, page.Meta.Template))
+				if errTmpl := lookupErrPage(opts.PageErrTemplates, page.Meta.Err); errTmpl != nil {
+					sc.Manifest.Emit(manifest.TemplateArtefact(claim, errTmpl, transforms.PageTemplate{
+						Page: *page,
+						Site: *site,
+					}).Post(m))
 				}
+
 				continue
 			}
 
-			pageForTemplate := *page
-			templateNameForTemplate := templateName
-
-			artefact := manifest.Artefact{
-				Claim: claim,
-				Builder: func(w io.Writer) error {
-					siteForTemplate := site
-					siteForTemplate.Meta = siteMeta
-
-					data := transforms.PageTemplate{
-						Page: pageForTemplate,
-						Site: siteForTemplate,
-					}
-					return tmpl.ExecuteTemplate(w, templateNameForTemplate, data)
-				},
-			}
-			sc.Manifest.Emit(m.MinifyArtefact(page.Meta.Target, artefact))
+			sc.Manifest.Emit(manifest.NamedTemplateArtefact(claim, page.Meta.Template, tmpl, transforms.PageTemplate{
+				Page: *page,
+				Site: *site,
+			}).Post(m))
 		}
 
 		return nil
-	}, "pages:resolve")
+	}, "pages:resolve", "pages:templates")
 
 	// resolve creates the manifest registry entries for site information.
 	resolve := StepFunc("pages:resolve", func(sc *StepContext) error {
-		config := manifest.GetAs(sc.Manifest, ConfigK)
+		opts := manifest.GetAs(sc.Manifest, OptionsK)
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
+		buildCtx := manifest.GetAs(sc.Manifest, BuildCtxK)
 
-		site := transforms.Site{
-			Title:       config.Site.Title,
-			Description: config.Site.Description,
-			URL:         config.Site.URL,
+		site := &transforms.Site{
+			Title:       cfg.Site.Title,
+			Description: cfg.Site.Description,
+			URL:         cfg.Site.URL,
+
+			Meta: transforms.SiteMeta{
+				ConfigPath: opts.ConfigPath,
+				IsDev:      opts.Dev,
+
+				BuildTime:       buildCtx.StartTime,
+				BuildTimeString: buildCtx.StartTimestring,
+			},
 		}
 
 		for _, page := range pages {
@@ -195,30 +170,34 @@ func StepContent() []Step {
 			return 0
 		})
 
-		sc.Manifest.Set(string(SiteK), site)
+		manifest.SetAs(sc.Manifest, SiteK, site)
 
 		return nil
 	}, "pages:index")
 
-	// index indexes pages and creates the manifest registry entries for page information.
-	index := StepFunc("pages:index", func(sc *StepContext) error {
+	templates := StepFunc("pages:templates", func(sc *StepContext) error {
 		config := manifest.GetAs(sc.Manifest, ConfigK)
 
-		tmpl, err := parseTemplateGlob(config.Build.Steps.Content.TemplateGlob, WithTemplateFuncs(transforms.DefaultTemplateFuncs()))
+		tmpl, err := parseTemplates(config.Build.Steps.Content.TemplateGlob, transforms.DefaultTemplateFuncs())
 		if err != nil {
 			return fmt.Errorf("failed to parse templates: %w", err)
 		}
 
-		sc.Manifest.Set(string(TemplatesK), tmpl)
+		manifest.SetAs(sc.Manifest, TemplatesK, tmpl)
 
-		contentSource := config.Build.Steps.Content.Source
-		contentDestination := config.Build.Steps.Content.Destination
-		defaultParams := config.Build.Steps.Content.DefaultParams
-		defaultLiteParams := config.Build.Steps.Content.DefaultLiteParams
+		return nil
+	})
 
-		md := makeGoldmark(config.Build.Steps.Content.GoldmarkConfig)
+	// index indexes pages and creates the manifest registry entries for page information.
+	index := StepFunc("pages:index", func(sc *StepContext) error {
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 
-		files, err := fileutils.WalkFiles(contentSource)
+		sourceRoot := cfg.Build.Steps.Content.Source
+		targetRoot := cfg.Build.Steps.Content.Destination
+
+		md := cfg.Build.Steps.Content.GoldmarkConfig.Build()
+
+		files, err := fileutils.WalkFiles(sourceRoot)
 		if err != nil {
 			return err
 		}
@@ -226,39 +205,30 @@ func StepContent() []Step {
 		pages := make([]*transforms.Page, 0, len(files.Values()))
 
 		for _, rel := range files.Values() {
-			source, target, err := makeTarget(contentSource, rel)
+			claim := manifest.NewPageClaim(sourceRoot, targetRoot, rel).Own("build:index")
+
+			if filepath.Ext(rel) == ".html" {
+				sc.Manifest.Emit(manifest.StaticArtefact(claim))
+				continue
+			}
+
+			page, err := transforms.BuildPage(claim, md)
 			if err != nil {
-				sc.Warn(rel, "invalid target path, skipping", err)
-				continue
-			}
-			target = filepath.Join(contentDestination, target)
+				pages = append(pages, &transforms.Page{
+					Meta: transforms.PageMeta{
+						Claim: claim,
+						Err:   err,
+					},
+				})
 
-			if filepath.Ext(source) == ".html" {
-				sc.Manifest.Emit(makeStatic("pages:index", source, target))
-				continue
-			}
+				sc.Errorf(err, "failed to build page %s", claim)
 
-			page, err := transforms.BuildPage(source, md)
-			if err != nil {
-				pageErr := errors.Join(ErrPageBuild, err)
-				if sc.Options.Dev {
-					pages = append(pages, &transforms.Page{
-						Meta: transforms.PageMeta{
-							Source: source,
-							Target: target,
-							Err:    pageErr,
-						},
-					})
-				}
-
-				_ = sc.Error(source, "failed to build page", err)
 				continue
 			}
 
-			page.Meta.Target = target
+			params := maps.Clone(cfg.Build.Steps.Content.DefaultParams)
+			liteParams := maps.Clone(cfg.Build.Steps.Content.DefaultLiteParams)
 
-			params := maps.Clone(defaultParams)
-			liteParams := maps.Clone(defaultLiteParams)
 			maps.Copy(params, page.Params)
 			maps.Copy(liteParams, page.LiteParams)
 
@@ -268,13 +238,14 @@ func StepContent() []Step {
 			pages = append(pages, page)
 		}
 
-		sc.Manifest.Set(string(PagesK), pages)
+		manifest.SetAs(sc.Manifest, PagesK, pages)
 
 		return nil
 	})
 
 	return []Step{
 		index,
+		templates,
 		resolve,
 		build,
 	}
@@ -283,25 +254,21 @@ func StepContent() []Step {
 // StepHeaders writes a headers file from config.
 func StepHeaders() Step {
 	return StepFunc("headers", func(sc *StepContext) error {
-		config := manifest.GetAs(sc.Manifest, ConfigK)
-		headersCfg := config.Build.Steps.Headers
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
-		if headersCfg == nil && len(pages) == 0 {
+
+		headersCfg := cfg.Build.Steps.Headers
+		if headersCfg == nil {
 			return nil
 		}
 
-		headers := make(map[string]map[string]string)
-		if headersCfg != nil {
-			for path, entries := range headersCfg.Headers {
-				headers[path] = maps.Clone(entries)
-			}
-		}
+		headers := headersCfg.Headers
 
 		for _, page := range pages {
 			if len(page.Headers) == 0 {
 				continue
 			}
-			path := targetToPath(page.Meta.Target)
+			path := page.Meta.Claim.Canon
 			if _, ok := headers[path]; !ok {
 				headers[path] = make(map[string]string, len(page.Headers))
 			}
@@ -314,9 +281,21 @@ func StepHeaders() Step {
 			return nil
 		}
 
-		content := renderHeaders(headers)
-		artefact := makeTextArtefact("headers", "_headers", content)
-		sc.Manifest.Emit(artefact)
+		sc.Manifest.Emit(manifest.Artefact{
+			Claim: manifest.NewInternalClaim("headers", headersCfg.Output),
+			Builder: func(w io.Writer) error {
+				for path, kvs := range headers {
+					fmt.Fprintf(w, "%s\n", path)
+					for k, v := range kvs {
+						fmt.Fprintf(w, "  %s: %s\n", k, v)
+					}
+					fmt.Fprintf(w, "\n")
+				}
+
+				return nil
+			},
+		})
+
 		return nil
 	}, "pages:index")
 }
@@ -324,30 +303,48 @@ func StepHeaders() Step {
 // StepRedirects writes a redirects file from config.
 func StepRedirects() Step {
 	return StepFunc("redirects", func(sc *StepContext) error {
-		config := manifest.GetAs(sc.Manifest, ConfigK)
-		redirectsCfg := config.Build.Steps.Redirects
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
-		if redirectsCfg == nil && len(pages) == 0 {
+
+		redirectsCfg := cfg.Build.Steps.Redirects
+
+		if redirectsCfg == nil {
 			return nil
 		}
 
-		redirects := make([]Redirect, 0)
-		if redirectsCfg != nil {
-			redirects = append(redirects, redirectsCfg.Redirects...)
+		shortSlugForRedirect := func(slug string) string {
+			slug = strings.TrimSpace(slug)
+			slug = strings.Trim(slug, "/")
+			if slug == "" {
+				return ""
+			}
+			if i := strings.LastIndex(slug, "/"); i >= 0 && i < len(slug)-1 {
+				return slug[i+1:]
+			}
+			return slug
 		}
 
-		shortenRoot := ""
-		if redirectsCfg != nil {
-			shortenRoot = redirectsCfg.Shorten
-		}
+		redirects := make([]config.Redirect, 0)
+		redirects = append(redirects, redirectsCfg.Redirects...)
 
 		for _, page := range pages {
-			if strings.TrimSpace(page.Slug) == "" {
+			if page.Meta.Err != nil {
 				continue
 			}
-			redirects = append(redirects, Redirect{
-				From:   shortenPath(shortenRoot, page.Slug),
-				To:     targetToPath(page.Meta.Target),
+			if page.Section != "posts" {
+				continue
+			}
+
+			shortSlug := shortSlugForRedirect(page.Slug)
+			if shortSlug == "" {
+				continue
+			}
+
+			path, _ := url.JoinPath(cfg.Site.URL, redirectsCfg.Shorten, shortSlug)
+
+			redirects = append(redirects, config.Redirect{
+				From:   path,
+				To:     page.Meta.Claim.Canon,
 				Status: 0,
 			})
 		}
@@ -356,9 +353,63 @@ func StepRedirects() Step {
 			return nil
 		}
 
-		content := renderRedirects(redirects)
-		artefact := makeTextArtefact("redirects", "_redirects", content)
-		sc.Manifest.Emit(artefact)
+		sc.Manifest.Emit(manifest.Artefact{
+			Claim: manifest.NewInternalClaim("redirects", redirectsCfg.Output),
+			Builder: func(w io.Writer) error {
+				for _, redirect := range redirects {
+					fmt.Fprintf(w, "%s %s", redirect.From, redirect.To)
+					if redirect.Status != 0 {
+						fmt.Fprintf(w, " %d", redirect.Status)
+					}
+					fmt.Fprintf(w, "\n")
+				}
+
+				return nil
+			},
+		})
+
 		return nil
 	}, "pages:index")
+}
+
+func StepRSS() Step {
+	return StepFunc("rss", func(sc *StepContext) error {
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
+		pages := manifest.GetAs(sc.Manifest, PagesK)
+		site := manifest.GetAs(sc.Manifest, SiteK)
+
+		cfgRSS := cfg.Build.Steps.RSS
+		if cfgRSS == nil {
+			return nil
+		}
+
+		sc.Manifest.Emit(manifest.TemplateArtefact(manifest.Claim{
+			Owner:  "rss",
+			Target: cfgRSS.Output,
+			Canon:  cfgRSS.Output,
+		}, transforms.RSSTemplate, transforms.BuildRSS(pages, site, cfgRSS)))
+
+		return nil
+	}, "pages:resolve")
+}
+
+func StepSitemap() Step {
+	return StepFunc("sitemap", func(sc *StepContext) error {
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
+		pages := manifest.GetAs(sc.Manifest, PagesK)
+		site := manifest.GetAs(sc.Manifest, SiteK)
+
+		cfgSitemap := cfg.Build.Steps.Sitemap
+		if cfgSitemap == nil {
+			return nil
+		}
+
+		sc.Manifest.Emit(manifest.TemplateArtefact(manifest.Claim{
+			Owner:  "sitemap",
+			Target: cfgSitemap.Output,
+			Canon:  cfgSitemap.Output,
+		}, transforms.SitemapTemplate, transforms.BuildSitemap(pages, site, cfgSitemap)))
+
+		return nil
+	}, "pages:resolve")
 }

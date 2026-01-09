@@ -1,8 +1,9 @@
-package build
+package config
 
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/olimci/shizuka/pkg/version"
@@ -45,6 +46,8 @@ type ConfigBuildSteps struct {
 	Content   *ConfigStepContent   `toml:"content"`
 	Headers   *ConfigStepHeaders   `toml:"headers"`
 	Redirects *ConfigStepRedirects `toml:"redirects"`
+	RSS       *ConfigStepRSS       `toml:"rss"`
+	Sitemap   *ConfigStepSitemap   `toml:"sitemap"`
 }
 
 type ConfigStepStatic struct {
@@ -63,11 +66,25 @@ type ConfigStepContent struct {
 
 type ConfigStepHeaders struct {
 	Headers map[string]map[string]string `toml:"headers"`
+	Output  string                       `toml:"output"`
 }
 
 type ConfigStepRedirects struct {
 	Shorten   string     `toml:"shorten"`
 	Redirects []Redirect `toml:"redirects"`
+	Output    string     `toml:"output"`
+}
+
+type ConfigStepRSS struct {
+	Output        string   `toml:"output"`
+	Sections      []string `toml:"sections"`
+	Limit         int      `toml:"limit"`
+	IncludeDrafts bool     `toml:"include_drafts"`
+}
+
+type ConfigStepSitemap struct {
+	Output        string `toml:"output"`
+	IncludeDrafts bool   `toml:"include_drafts"`
 }
 
 type Redirect struct {
@@ -144,8 +161,8 @@ func DefaultConfig() *Config {
 	}
 }
 
-// LoadConfig loads a Config from a file.
-func LoadConfig(path string) (*Config, error) {
+// Load loads a Config from a file.
+func Load(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
 	md, err := toml.DecodeFile(path, cfg)
@@ -171,6 +188,9 @@ func (c *Config) Validate() error {
 	}
 	if !(strings.HasPrefix(c.Site.URL, "http://") || strings.HasPrefix(c.Site.URL, "https://")) {
 		return fmt.Errorf("site.url must start with http:// or https:// (got %q)", c.Site.URL)
+	}
+	if _, err := url.Parse(c.Site.URL); err != nil {
+		return fmt.Errorf("site.url is not a valid URL (got %q): %w", c.Site.URL, err)
 	}
 
 	if strings.TrimSpace(c.Build.Output) == "" {
@@ -204,6 +224,15 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if c.Build.Steps.Headers != nil {
+		if c.Build.Steps.Headers.Headers == nil {
+			c.Build.Steps.Headers.Headers = make(map[string]map[string]string)
+		}
+		if c.Build.Steps.Headers.Output == "" {
+			c.Build.Steps.Headers.Output = "_headers"
+		}
+	}
+
 	if c.Build.Steps.Redirects != nil {
 		shorten := strings.TrimSpace(c.Build.Steps.Redirects.Shorten)
 		if shorten == "" {
@@ -214,13 +243,48 @@ func (c *Config) Validate() error {
 		}
 		shorten = strings.TrimSuffix(shorten, "/")
 		c.Build.Steps.Redirects.Shorten = shorten
+
+		if c.Build.Steps.Redirects.Output == "" {
+			c.Build.Steps.Redirects.Output = "_redirects"
+		}
+	}
+
+	if c.Build.Steps.RSS != nil {
+		if strings.TrimSpace(c.Build.Steps.RSS.Output) == "" {
+			c.Build.Steps.RSS.Output = "rss.xml"
+		}
+	}
+
+	if c.Build.Steps.Sitemap != nil {
+		if strings.TrimSpace(c.Build.Steps.Sitemap.Output) == "" {
+			c.Build.Steps.Sitemap.Output = "sitemap.xml"
+		}
 	}
 
 	return nil
 }
 
-// makeGoldmark constructs a new Goldmark instance with the given configuration.
-func makeGoldmark(cfg ConfigGoldmark) gm.Markdown {
+func (c *Config) WatchedPaths() (paths []string, globs []string) {
+	paths = make([]string, 0)
+	globs = make([]string, 0)
+
+	if c.Build.Steps.Static != nil && c.Build.Steps.Static.Source != "" {
+		paths = append(paths, c.Build.Steps.Static.Source)
+	}
+
+	if c.Build.Steps.Content != nil {
+		if c.Build.Steps.Content.Source != "" {
+			paths = append(paths, c.Build.Steps.Content.Source)
+		}
+		if c.Build.Steps.Content.TemplateGlob != "" {
+			globs = append(globs, c.Build.Steps.Content.TemplateGlob)
+		}
+	}
+
+	return paths, globs
+}
+
+func (cfg ConfigGoldmark) Build() gm.Markdown {
 	var (
 		exts       []gm.Extender
 		parserOpts []gmparse.Option

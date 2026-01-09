@@ -8,17 +8,15 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var Version = version.String()
+var Version = version.Current()
 
 func versionCmd() *cli.Command {
 	return &cli.Command{
-		Name:   "version",
-		Usage:  "Print version information",
-		Action: runVersion,
+		Name:  "version",
+		Usage: "Print the version of shizuka",
+		Action: func(ctx context.Context, c *cli.Command) error {
+			fmt.Printf("shizuka version %s\n", Version)
+			return nil
+		},
 	}
-}
-
-func runVersion(ctx context.Context, cmd *cli.Command) error {
-	fmt.Printf("shizuka version %s\n", Version)
-	return nil
 }

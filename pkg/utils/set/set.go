@@ -5,6 +5,14 @@ func New[T comparable]() *Set[T] {
 	return &Set[T]{m: make(map[T]struct{})}
 }
 
+func FromSlice[T comparable](s []T) *Set[T] {
+	m := make(map[T]struct{}, len(s))
+	for _, t := range s {
+		m[t] = struct{}{}
+	}
+	return &Set[T]{m: m}
+}
+
 // Set represents a set of elements of type T
 type Set[T comparable] struct {
 	m map[T]struct{}
@@ -18,6 +26,13 @@ func (s *Set[T]) Add(t T) {
 // Has checks if the set contains an element
 func (s *Set[T]) Has(t T) bool {
 	_, ok := s.m[t]
+	return ok
+}
+
+// HasAdd is equivalent to Has(T) then Add(t)
+func (s *Set[T]) HasAdd(t T) bool {
+	_, ok := s.m[t]
+	s.m[t] = struct{}{}
 	return ok
 }
 

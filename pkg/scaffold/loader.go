@@ -23,16 +23,20 @@ var gitKnownHosts = []string{
 	"codeberg.org/",
 }
 
+var (
+	ErrFailedToLoad = fmt.Errorf("failed to load scaffold")
+)
+
 func Load(ctx context.Context, target string) (*Template, *Collection, error) {
 	src, err := resolve(target)
 	if err != nil {
-		return nil, nil, fmt.Errorf("resolving source: %w", err)
+		return nil, nil, fmt.Errorf("%w: resolving source: %w", ErrFailedToLoad, err)
 	}
 
 	fsy, err := src.FS(ctx)
 	if err != nil {
 		src.Close()
-		return nil, nil, fmt.Errorf("accessing source: %w", err)
+		return nil, nil, fmt.Errorf("%w: accessing source: %w", ErrFailedToLoad, err)
 	}
 
 	root := src.Root()
@@ -55,8 +59,7 @@ func Load(ctx context.Context, target string) (*Template, *Collection, error) {
 		return template, nil, nil
 	}
 
-	src.Close()
-	return nil, nil, fmt.Errorf("no %s or %s found at %s", TemplateFile, CollectionFile, target)
+	return nil, nil, fmt.Errorf("%w: no %s or %s found at %s", ErrFailedToLoad, TemplateFile, CollectionFile, target)
 }
 
 func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection, error) {
@@ -66,7 +69,7 @@ func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection
 		collection, err := LoadCollection(ctx, src, ".")
 		if err != nil {
 			src.Close()
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("%w: %w", ErrFailedToLoad, err)
 		}
 		return nil, collection, nil
 	}
@@ -75,13 +78,12 @@ func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection
 		template, err := LoadTemplate(ctx, src, ".")
 		if err != nil {
 			src.Close()
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("%w: %w", ErrFailedToLoad, err)
 		}
 		return template, nil, nil
 	}
 
-	src.Close()
-	return nil, nil, fmt.Errorf("no %s or %s found in %s", TemplateFile, CollectionFile, root)
+	return nil, nil, fmt.Errorf("%w: no %s or %s found in %s", ErrFailedToLoad, TemplateFile, CollectionFile, root)
 }
 
 func LoadTemplate(ctx context.Context, src Source, p string) (*Template, error) {
@@ -185,7 +187,6 @@ func isRemoteURL(target string) bool {
 }
 
 func looksLikeGitShorthand(target string) bool {
-
 	for _, host := range gitKnownHosts {
 		if strings.HasPrefix(target, host) {
 			return true

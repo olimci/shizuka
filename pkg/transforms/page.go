@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/olimci/shizuka/pkg/manifest"
 	gm "github.com/yuin/goldmark"
 	"gopkg.in/yaml.v3"
 )
@@ -31,8 +32,12 @@ type Page struct {
 	Section     string
 	Tags        []string
 
+	RSS     RSSMeta
+	Sitemap SitemapMeta
+
 	Date    time.Time
 	Updated time.Time
+	PubDate time.Time
 
 	Params     map[string]any
 	LiteParams map[string]any
@@ -54,6 +59,7 @@ func (p *Page) Lite() *PageLite {
 		Tags:        p.Tags,
 		Date:        p.Date,
 		Updated:     p.Updated,
+		PubDate:     p.PubDate,
 		LiteParams:  p.LiteParams,
 		Featured:    p.Featured,
 		Draft:       p.Draft,
@@ -71,6 +77,7 @@ type PageLite struct {
 
 	Date    time.Time
 	Updated time.Time
+	PubDate time.Time
 
 	LiteParams map[string]any
 
@@ -80,9 +87,11 @@ type PageLite struct {
 
 // PageMeta represents metadata for a page
 type PageMeta struct {
-	Source   string
-	Target   string
+	Claim    manifest.Claim
 	Template string
+
+	BuildTime       time.Time
+	BuildTimeString string
 
 	Err error
 }
@@ -94,22 +103,22 @@ type PageTemplate struct {
 }
 
 // BuildPage builds a page from a file
-func BuildPage(src string, md gm.Markdown) (*Page, error) {
+func BuildPage(claim manifest.Claim, md gm.Markdown) (*Page, error) {
 	var (
 		fm   *Frontmatter
 		body string
 		err  error
 	)
 
-	switch ext := filepath.Ext(filepath.Base(src)); ext {
+	switch ext := filepath.Ext(filepath.Base(claim.Source)); ext {
 	case ".md":
-		fm, body, err = buildMD(src, md)
+		fm, body, err = buildMD(claim.Source, md)
 	case ".toml":
-		fm, body, err = buildTOML(src)
+		fm, body, err = buildTOML(claim.Source)
 	case ".yaml", ".yml":
-		fm, body, err = buildYaml(src)
+		fm, body, err = buildYaml(claim.Source)
 	case ".json":
-		fm, body, err = buildJSON(src)
+		fm, body, err = buildJSON(claim.Source)
 	default:
 		return nil, fmt.Errorf("unsupported file extension: %s", ext)
 	}
@@ -120,7 +129,7 @@ func BuildPage(src string, md gm.Markdown) (*Page, error) {
 
 	return &Page{
 		Meta: PageMeta{
-			Source:   src,
+			Claim:    claim,
 			Template: fm.Template,
 		},
 		Slug:        fm.Slug,
@@ -130,9 +139,12 @@ func BuildPage(src string, md gm.Markdown) (*Page, error) {
 		Tags:        fm.Tags,
 		Date:        fm.Date,
 		Updated:     fm.Updated,
+		PubDate:     firstNonzero(fm.Updated, fm.Date, time.Now()),
 		Params:      fm.Params,
 		LiteParams:  fm.LiteParams,
 		Headers:     fm.Headers,
+		RSS:         fm.RSS,
+		Sitemap:     fm.Sitemap,
 		Body:        template.HTML(body),
 		Featured:    fm.Featured,
 		Draft:       fm.Draft,

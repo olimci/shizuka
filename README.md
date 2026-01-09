@@ -1,3 +1,3 @@
-# shizuka
+# shizuka (wip)
 
-my custom static site generator
+my static site generator

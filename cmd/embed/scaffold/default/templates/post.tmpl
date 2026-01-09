@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{{.Page.Title}} | {{.Site.Title}}</title>
         <meta name="description" content="{{.Page.Description}}" />
-        <link rel="stylesheet" href="{{.Site.URL}}style.css" />
+        <link rel="stylesheet" href="/style.css" />
     </head>
     <body>
         <div class="page">
@@ -32,8 +32,7 @@
                             {{if not (.Page.Date.IsZero)}}<span
                                 >{{.Page.Date.Format "January 2, 2006"}}</span
                             >{{end}} {{if not (.Page.Updated.IsZero)}}<span
-                                >Updated {{.Page.Updated.Format "January 2,
-                                2006"}}</span
+                                >Updated {{.Page.Updated.Format "January 2, 2006"}}</span
                             >{{end}}
                         </div>
                         {{ if .Page.Tags }}

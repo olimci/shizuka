@@ -3,12 +3,37 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
+	"html/template"
 	"time"
 
+	"github.com/olimci/prompter"
 	"github.com/olimci/shizuka/pkg/build"
+	"github.com/olimci/shizuka/pkg/config"
+	"github.com/olimci/shizuka/pkg/events.go"
 	"github.com/urfave/cli/v3"
 )
+
+func buildFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:    "config",
+			Aliases: []string{"c"},
+			Value:   DefaultConfigPath,
+			Usage:   "Config file path",
+		},
+		&cli.BoolFlag{
+			Name:    "dev",
+			Aliases: []string{"d"},
+			Usage:   "Run in development mode",
+		},
+		&cli.IntFlag{
+			Name:    "workers",
+			Aliases: []string{"w"},
+			Value:   0,
+			Usage:   "Number of workers to use for building",
+		},
+	}
+}
 
 func buildCmd() *cli.Command {
 	return &cli.Command{
@@ -19,90 +44,106 @@ func buildCmd() *cli.Command {
 	}
 }
 
-func buildFlags() []cli.Flag {
-	return []cli.Flag{
-		&cli.StringFlag{
-			Name:    "config",
-			Aliases: []string{"c"},
-			Value:   defaultConfigPath,
-			Usage:   "Config file path",
-		},
-		&cli.StringFlag{
-			Name:    "dist",
-			Aliases: []string{"d"},
-			Usage:   "Output directory (overrides config)",
-		},
-		&cli.BoolFlag{
-			Name:    "strict",
-			Aliases: []string{"s"},
-			Usage:   "Fail on warnings (strict mode)",
-		},
+func xBuildCmd() *cli.Command {
+	return &cli.Command{
+		Name:   "build",
+		Usage:  "Build the site (non-interactive)",
+		Flags:  buildFlags(),
+		Action: runXBuild,
 	}
 }
 
 func runBuild(ctx context.Context, cmd *cli.Command) error {
-	return runBuildInteractive(ctx, cmd)
+	return prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
+		opts := config.DefaultOptions().WithContext(ctx)
+
+		if cmd.Bool("dev") {
+			opts.
+				WithDev().
+				WithPageErrorTemplates(map[error]*template.Template{
+					build.ErrNoTemplate:       templateFallback.Get(),
+					build.ErrTemplateNotFound: templateFallback.Get(),
+					nil:                       templateError.Get(),
+				}).
+				WithErrTemplate(templateBuildError.Get())
+		}
+
+		if n := cmd.Int("workers"); n > 0 {
+			opts.WithMaxWorkers(n)
+		}
+
+		opts.WithEventHandler(events.NewHandlerFunc(func(event events.Event) {
+			p.Log(formatEvent(event))
+		}))
+
+		status, err := p.Status("building...")
+		if err != nil {
+			return err
+		}
+
+		start := time.Now()
+		buildErr, summary := build.Build(opts)
+		elapsed := time.Since(start).Truncate(time.Millisecond)
+
+		if buildErr != nil {
+			_ = status.Error(fmt.Sprintf("build failed (%s)", elapsed))
+			if !hasSummaryEvents(summary) {
+				p.Log(buildErr.Error())
+			}
+		} else {
+			_ = status.Success(fmt.Sprintf("built (%s)", elapsed))
+		}
+
+		for _, line := range formatSummary(summary) {
+			p.Log(line)
+		}
+
+		_ = status.Clear()
+
+		if buildErr != nil {
+			return buildErr
+		}
+		return nil
+	}, prompter.WithContext(ctx), prompter.WithStyles(styles))
 }
 
 func runXBuild(ctx context.Context, cmd *cli.Command) error {
-	return runBuildWithStyle(ctx, cmd, buildOutputPlain)
-}
+	opts := config.DefaultOptions().WithContext(ctx)
 
-func runBuildWithStyle(ctx context.Context, cmd *cli.Command, style buildOutputStyle) error {
-	configPath, cfg, err := loadBuildConfig(cmd)
-	if err != nil {
-		return err
+	if cmd.Bool("dev") {
+		opts.
+			WithDev().
+			WithPageErrorTemplates(map[error]*template.Template{
+				build.ErrNoTemplate:       templateFallback.Get(),
+				build.ErrTemplateNotFound: templateFallback.Get(),
+				nil:                       templateError.Get(),
+			}).
+			WithErrTemplate(templateBuildError.Get())
 	}
 
-	strict := cmd.Bool("strict")
-
-	out := os.Stdout
-	printer := newLogPrinter(style, out)
-
-	collector := build.NewDiagnosticCollector(
-		build.WithMinLevel(build.LevelDebug),
-		build.WithOnReport(func(d build.Diagnostic) {
-			if d.Level < build.LevelInfo {
-				return
-			}
-			printer.Print(d)
-		}),
-	)
-
-	opts := []build.Option{
-		build.WithContext(ctx),
-		build.WithConfig(configPath),
-		build.WithDiagnosticSink(collector),
-	}
-	if strict {
-		opts = append(opts, build.WithFailOnWarn())
+	if n := cmd.Int("workers"); n > 0 {
+		opts.WithMaxWorkers(n)
 	}
 
-	start := time.Now()
-	err = build.BuildSteps(defaultBuildSteps(), cfg, opts...)
-	elapsed := time.Since(start)
+	opts.WithEventHandler(events.NewHandlerFunc(func(event events.Event) {
+		fmt.Println(formatEvent(event))
+	}))
 
-	if err != nil {
-		if style == buildOutputRich {
-			fmt.Fprintf(out, "Build failed (%s)\n", elapsed.Truncate(time.Millisecond))
-			// fmt.Fprintf(out, "Logs: %s\n", collector.Summary())
+	fmt.Println("building...")
+
+	buildErr, summary := build.Build(opts)
+	if buildErr != nil {
+		fmt.Printf("build failed: %s\n", buildErr)
+		for _, line := range formatSummary(summary) {
+			fmt.Println(line)
 		}
-		if style != buildOutputRich && collector.HasLevel(build.LevelInfo) {
-			// fmt.Fprintf(out, "logs: %s\n", collector.Summary())
-		}
-		return err
+		return buildErr
 	}
 
-	if style == buildOutputRich {
-		fmt.Fprintf(out, "Build complete (%s)\n", elapsed.Truncate(time.Millisecond))
-		// fmt.Fprintf(out, "Logs: %s\n", collector.Summary())
-		return nil
+	fmt.Println("built")
+	for _, line := range formatSummary(summary) {
+		fmt.Println(line)
 	}
-
-	if collector.HasLevel(build.LevelInfo) {
-		fmt.Fprintf(out, "logs: %s\n", collector.Summary())
-	}
-	fmt.Fprintf(out, "built: %s (%s)\n", cfg.Build.OutputDir, elapsed.Truncate(time.Millisecond))
 
 	return nil
 }

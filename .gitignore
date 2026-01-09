@@ -53,6 +53,7 @@ pids
 tmp/
 temp/
 .tmp/
+_scripts/
 
 # Backup files
 *.bak

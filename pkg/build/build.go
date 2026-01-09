@@ -3,7 +3,10 @@ package build
 import (
 	"fmt"
 	"sync"
+	"time"
 
+	"github.com/olimci/shizuka/pkg/config"
+	"github.com/olimci/shizuka/pkg/events.go"
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/utils/set"
 	"golang.org/x/sync/errgroup"
@@ -18,12 +21,18 @@ var (
 	ErrBuildFailed          = fmt.Errorf("build failed")
 )
 
-func Build(opts ...Option) error {
-	o := defaultOptions().Apply(opts...)
+type BuildCtx struct {
+	StartTime       time.Time
+	StartTimestring string
 
-	config, err := LoadConfig(o.ConfigPath)
+	ConfigPath string
+	Dev        bool
+}
+
+func Build(opts *config.Options) (error, *events.Summary) {
+	config, err := config.Load(opts.ConfigPath)
 	if err != nil {
-		return err
+		return err, nil
 	}
 
 	steps := make([]Step, 0)
@@ -39,19 +48,42 @@ func Build(opts ...Option) error {
 	if config.Build.Steps.Redirects != nil {
 		steps = append(steps, StepRedirects())
 	}
+	if config.Build.Steps.RSS != nil {
+		steps = append(steps, StepRSS())
+	}
+	if config.Build.Steps.Sitemap != nil {
+		steps = append(steps, StepSitemap())
+	}
 
-	return buildSteps(steps, config, o)
+	if opts.OutputPath != "" {
+
+	}
+
+	return build(steps, config, opts)
 }
 
 // BuildSteps is a function that builds a site from a DAG of steps.
-func buildSteps(steps []Step, config *Config, options *Options) error {
+func build(steps []Step, config *config.Config, options *config.Options) (error, *events.Summary) {
+	startTime := time.Now()
+
 	man := manifest.New()
 	man.Set(string(OptionsK), options)
 	man.Set(string(ConfigK), config)
+	man.Set(string(BuildCtxK), &BuildCtx{
+		StartTime:       startTime,
+		StartTimestring: startTime.String(),
+		ConfigPath:      options.ConfigPath,
+		Dev:             options.Dev,
+	})
+
+	collector := events.NewCollector(options.EventHandler)
+	summary := func() *events.Summary {
+		return collector.Summary()
+	}
 
 	dag, err := newDAG(steps)
 	if err != nil {
-		return err
+		return err, summary()
 	}
 
 	var ready []string
@@ -61,7 +93,7 @@ func buildSteps(steps []Step, config *Config, options *Options) error {
 		}
 	}
 	if len(ready) == 0 {
-		return ErrCircularDependency
+		return ErrCircularDependency, summary()
 	}
 
 	g, ctx := errgroup.WithContext(options.Context)
@@ -85,10 +117,9 @@ func buildSteps(steps []Step, config *Config, options *Options) error {
 			}
 
 			sc := StepContext{
-				Ctx:      ctx,
-				Manifest: man,
-				Options:  options,
-				StepID:   step.ID,
+				Ctx:          ctx,
+				Manifest:     man,
+				eventHandler: collector,
 			}
 
 			if err := step.Fn(&sc); err != nil {
@@ -119,7 +150,7 @@ func buildSteps(steps []Step, config *Config, options *Options) error {
 	}
 
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("%w: %w", ErrBuildFailed, err)
+		return fmt.Errorf("%w: %w", ErrBuildFailed, err), summary()
 	}
 
 	if done != len(steps) {
@@ -129,44 +160,30 @@ func buildSteps(steps []Step, config *Config, options *Options) error {
 				stuck = append(stuck, id)
 			}
 		}
-		return fmt.Errorf("%w: %v", ErrCircularDependency, stuck)
+		return fmt.Errorf("%w: %v", ErrCircularDependency, stuck), summary()
 	}
 
-	manifestOpts := []manifest.Option{
-		manifest.WithBuildDir(config.Build.Output),
-		manifest.WithContext(options.Context),
-		manifest.WithMaxWorkers(options.MaxWorkers),
-	}
-
-	if options.Dev {
-		manifestOpts = append(manifestOpts, manifest.IgnoreConflicts())
-	}
-
-	if err := man.Build(manifestOpts...); err != nil {
-		return fmt.Errorf("%w: %w", ErrBuildFailed, err)
-	}
-
-	failLevel := LevelError
-	if options.FailOnWarn {
-		failLevel = LevelWarning
-	}
-
-	if options.DiagnosticSink.HasLevel(failLevel) {
-		maxLevel := options.DiagnosticSink.MaxLevel()
-		if a := devFailureArtefact(options, DevFailurePageData{
-			Summary:     summaryDiagnostics(options.DiagnosticSink),
-			FailLevel:   failLevel,
-			MaxLevel:    maxLevel,
-			Diagnostics: options.DiagnosticSink.DiagnosticsAtLevel(failLevel),
-		}); a != nil {
-			man.Emit(*a)
-			_ = man.Build(manifestOpts...)
+	if !collector.HasLevel(events.Error) {
+		if err := man.Build(config, options, collector); err != nil {
+			return fmt.Errorf("%w: %w", ErrBuildFailed, err), summary()
 		}
-
-		return fmt.Errorf("%w: %s(s) reported during build", ErrBuildFailed, maxLevel)
 	}
 
-	return nil
+	if collector.HasLevel(events.Error) {
+		if options.Dev && options.ErrTemplate != nil {
+			man := manifest.New()
+			man.Emit(manifest.TemplateArtefact(
+				manifest.Claim{Owner: "build", Target: "index.html", Canon: "/"},
+				options.ErrTemplate,
+				collector.Summary(),
+			))
+			_ = man.Build(config, options, new(events.NoopHandler))
+		}
+		summary := summary()
+		return fmt.Errorf("%w: %v", ErrBuildFailed, summary), summary
+	}
+
+	return nil, summary()
 }
 
 // newDAG constructs a DAG from a slice of steps.

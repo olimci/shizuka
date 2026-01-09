@@ -10,6 +10,11 @@ import (
 	"strings"
 )
 
+type BuildOptions struct {
+	Variables map[string]any
+	Force     bool
+}
+
 type Template struct {
 	Config TemplateCfg
 	source Source
@@ -27,9 +32,7 @@ type BuildResult struct {
 }
 
 // Build scaffolds the template to the target directory.
-func (t *Template) Build(ctx context.Context, targetPath string, opts ...Option) (*BuildResult, error) {
-	o := defaultOptions().apply(opts...)
-
+func (t *Template) Build(ctx context.Context, targetPath string, opts BuildOptions) (*BuildResult, error) {
 	fsy, err := t.source.FS(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("accessing source: %w", err)
@@ -69,7 +72,7 @@ func (t *Template) Build(ctx context.Context, targetPath string, opts ...Option)
 			return nil
 		}
 
-		if !o.force {
+		if !opts.Force {
 			if _, err := os.Stat(destPath); err == nil {
 				return fmt.Errorf("file %s already exists (use force to overwrite)", destRelPath)
 			}
@@ -90,7 +93,7 @@ func (t *Template) Build(ctx context.Context, targetPath string, opts ...Option)
 		}
 
 		if matchesGlobs(rel, t.Config.Files.Templates) {
-			if err := processTemplate(source, target, o.variables); err != nil {
+			if err := processTemplate(source, target, opts.Variables); err != nil {
 				return fmt.Errorf("processing template %s: %w", rel, err)
 			}
 		} else {

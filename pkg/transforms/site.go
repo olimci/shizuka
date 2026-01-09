@@ -1,5 +1,7 @@
 package transforms
 
+import "time"
+
 // Site represents the global data for the site
 type Site struct {
 	Title       string
@@ -10,6 +12,8 @@ type Site struct {
 
 	Collections Collections
 }
+
+// TODO: page tree collection
 
 // Collections store collections of pages for Site
 type Collections struct {
@@ -24,6 +28,9 @@ type Collections struct {
 
 // SiteMeta stores metadata for the site
 type SiteMeta struct {
-	BuildTime string
-	Dev       bool
+	ConfigPath string
+	IsDev      bool
+
+	BuildTime       time.Time
+	BuildTimeString string
 }

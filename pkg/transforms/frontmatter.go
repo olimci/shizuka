@@ -22,6 +22,9 @@ type Frontmatter struct {
 	Date    time.Time `toml:"date" yaml:"date"`
 	Updated time.Time `toml:"updated" yaml:"updated"`
 
+	RSS     RSSMeta     `toml:"rss" yaml:"rss"`
+	Sitemap SitemapMeta `toml:"sitemap" yaml:"sitemap"`
+
 	Params     map[string]any    `toml:"params" yaml:"params"`
 	LiteParams map[string]any    `toml:"lite_params" yaml:"lite_params"`
 	Headers    map[string]string `toml:"headers" yaml:"headers"`
@@ -31,6 +34,19 @@ type Frontmatter struct {
 
 	Featured bool `toml:"featured" yaml:"featured"`
 	Draft    bool `toml:"draft" yaml:"draft"`
+}
+
+type RSSMeta struct {
+	Include     bool   `toml:"include" yaml:"include"`
+	Title       string `toml:"title" yaml:"title"`
+	Description string `toml:"description" yaml:"description"`
+	GUID        string `toml:"guid" yaml:"guid"`
+}
+
+type SitemapMeta struct {
+	Include    bool    `toml:"include" yaml:"include"`
+	ChangeFreq string  `toml:"changefreq" yaml:"changefreq"`
+	Priority   float64 `toml:"priority" yaml:"priority"`
 }
 
 var (
