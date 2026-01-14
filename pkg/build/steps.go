@@ -133,6 +133,7 @@ func StepContent() []Step {
 			Title:       cfg.Site.Title,
 			Description: cfg.Site.Description,
 			URL:         cfg.Site.URL,
+			Params:      maps.Clone(cfg.Site.Params),
 
 			Meta: transforms.SiteMeta{
 				ConfigPath: opts.ConfigPath,
@@ -141,6 +142,22 @@ func StepContent() []Step {
 				BuildTime:       buildCtx.StartTime,
 				BuildTimeString: buildCtx.StartTimestring,
 			},
+		}
+
+		if cfg.Site.Cascade != nil {
+			var cascade func(*transforms.PageNode, map[string]any)
+			cascade = func(node *transforms.PageNode, params map[string]any) {
+				temp := maps.Clone(params)
+				if node.Page != nil {
+					maps.Copy(temp, node.Page.Cascade)
+					node.Page.Cascade = temp
+				}
+				for _, child := range node.Children {
+					cascade(child, temp)
+				}
+			}
+
+			cascade(pages.Root, cfg.Site.Cascade)
 		}
 
 		site.Tree = pages
@@ -308,13 +325,8 @@ func StepContent() []Step {
 
 			if err == nil {
 				params := maps.Clone(cfg.Build.Steps.Content.DefaultParams)
-				liteParams := maps.Clone(cfg.Build.Steps.Content.DefaultLiteParams)
-
 				maps.Copy(params, page.Params)
-				maps.Copy(liteParams, page.LiteParams)
-
 				page.Params = params
-				page.LiteParams = liteParams
 			}
 
 			// If name == index, then the page corresponds to the current directory

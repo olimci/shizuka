@@ -30,6 +30,9 @@ type ConfigSite struct {
 	Title       string `toml:"title" yaml:"title" json:"title"`
 	Description string `toml:"description" yaml:"description" json:"description"`
 	URL         string `toml:"url" yaml:"url" json:"url"`
+
+	Params  map[string]any `toml:"params" yaml:"params" json:"params"`
+	Cascade map[string]any `toml:"cascade" yaml:"cascade" json:"cascade"`
 }
 
 type ConfigBuild struct {
@@ -54,12 +57,11 @@ type ConfigStepStatic struct {
 }
 
 type ConfigStepContent struct {
-	TemplateGlob      string         `toml:"template_glob" yaml:"template_glob" json:"template_glob"`
-	Source            string         `toml:"source" yaml:"source" json:"source"`
-	Destination       string         `toml:"destination" yaml:"destination" json:"destination"`
-	DefaultParams     map[string]any `toml:"default_params" yaml:"default_params" json:"default_params"`
-	DefaultLiteParams map[string]any `toml:"default_lite_params" yaml:"default_lite_params" json:"default_lite_params"`
-	GoldmarkConfig    ConfigGoldmark `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
+	TemplateGlob   string         `toml:"template_glob" yaml:"template_glob" json:"template_glob"`
+	Source         string         `toml:"source" yaml:"source" json:"source"`
+	Destination    string         `toml:"destination" yaml:"destination" json:"destination"`
+	DefaultParams  map[string]any `toml:"default_params" yaml:"default_params" json:"default_params"`
+	GoldmarkConfig ConfigGoldmark `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
 }
 
 type ConfigStepHeaders struct {
@@ -147,12 +149,11 @@ func DefaultConfig() *Config {
 					Destination: ".",
 				},
 				Content: &ConfigStepContent{
-					TemplateGlob:      "templates/*.tmpl",
-					Source:            "content",
-					Destination:       ".",
-					DefaultParams:     map[string]any{},
-					DefaultLiteParams: map[string]any{},
-					GoldmarkConfig:    defaultGoldmark,
+					TemplateGlob:   "templates/*.tmpl",
+					Source:         "content",
+					Destination:    ".",
+					DefaultParams:  map[string]any{},
+					GoldmarkConfig: defaultGoldmark,
 				},
 			},
 		},
@@ -186,6 +187,14 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("site.url is not a valid URL (got %q): %w", c.Site.URL, err)
 	}
 
+	if c.Site.Params == nil {
+		c.Site.Params = map[string]any{}
+	}
+
+	if c.Site.Cascade == nil {
+		c.Site.Cascade = map[string]any{}
+	}
+
 	if strings.TrimSpace(c.Build.Output) == "" {
 		c.Build.Output = "dist"
 	}
@@ -211,9 +220,6 @@ func (c *Config) Validate() error {
 		}
 		if c.Build.Steps.Content.DefaultParams == nil {
 			c.Build.Steps.Content.DefaultParams = map[string]any{}
-		}
-		if c.Build.Steps.Content.DefaultLiteParams == nil {
-			c.Build.Steps.Content.DefaultLiteParams = map[string]any{}
 		}
 	}
 

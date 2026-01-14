@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,9 +41,10 @@ type Page struct {
 	Updated time.Time
 	PubDate time.Time
 
-	Params     map[string]any
-	LiteParams map[string]any
-	Headers    map[string]string
+	Params  map[string]any
+	Cascade map[string]any
+
+	Headers map[string]string
 
 	Body template.HTML
 
@@ -52,6 +54,13 @@ type Page struct {
 
 // Lite returns a lite representation of the page
 func (p *Page) Lite() *PageLite {
+	params := maps.Clone(p.Params)
+	for k, _ := range params {
+		if !strings.HasPrefix(k, "_") {
+			delete(params, k)
+		}
+	}
+
 	return &PageLite{
 		Slug:        p.Slug,
 		Canon:       p.Canon,
@@ -62,7 +71,7 @@ func (p *Page) Lite() *PageLite {
 		Date:        p.Date,
 		Updated:     p.Updated,
 		PubDate:     p.PubDate,
-		LiteParams:  p.LiteParams,
+		Params:      params,
 		Featured:    p.Featured,
 		Draft:       p.Draft,
 	}
@@ -82,7 +91,7 @@ type PageLite struct {
 	Updated time.Time
 	PubDate time.Time
 
-	LiteParams map[string]any
+	Params map[string]any
 
 	Featured bool
 	Draft    bool
@@ -146,7 +155,6 @@ func BuildPage(source string, md gm.Markdown) (*Page, error) {
 		Updated:     fm.Updated,
 		PubDate:     firstNonzero(fm.Updated, fm.Date, time.Now()),
 		Params:      fm.Params,
-		LiteParams:  fm.LiteParams,
 		Headers:     fm.Headers,
 		RSS:         fm.RSS,
 		Sitemap:     fm.Sitemap,

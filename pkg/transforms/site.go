@@ -8,6 +8,8 @@ type Site struct {
 	Description string
 	URL         string
 
+	Params map[string]any
+
 	Tree *PageTree
 
 	Meta SiteMeta
