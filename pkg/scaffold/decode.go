@@ -15,17 +15,13 @@ func decodeConfigFile(filename string, r io.Reader, v any) error {
 	ext := strings.ToLower(path.Ext(filename))
 	switch ext {
 	case ".toml":
-		md, err := toml.NewDecoder(r).Decode(v)
+		_, err := toml.NewDecoder(r).Decode(v)
 		if err != nil {
 			return err
-		}
-		if undec := md.Undecoded(); len(undec) > 0 {
-			return fmt.Errorf("unknown keys in config: %v", undec)
 		}
 		return nil
 	case ".yaml", ".yml":
 		dec := yaml.NewDecoder(r)
-		dec.KnownFields(true)
 		if err := dec.Decode(v); err != nil {
 			return err
 		}
@@ -38,7 +34,6 @@ func decodeConfigFile(filename string, r io.Reader, v any) error {
 		return nil
 	case ".json":
 		dec := json.NewDecoder(r)
-		dec.DisallowUnknownFields()
 		if err := dec.Decode(v); err != nil {
 			return err
 		}
