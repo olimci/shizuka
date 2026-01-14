@@ -87,6 +87,7 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
+		defer p.Clear()
 		tmpl, coll, close, err := initResolve(ctx, source)
 		if err != nil {
 			return err

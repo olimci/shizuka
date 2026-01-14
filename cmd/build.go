@@ -55,6 +55,7 @@ func xBuildCmd() *cli.Command {
 
 func runBuild(ctx context.Context, cmd *cli.Command) error {
 	return prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
+		defer p.Clear()
 		opts := config.DefaultOptions().WithContext(ctx)
 
 		if cmd.Bool("dev") {

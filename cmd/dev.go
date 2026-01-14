@@ -123,6 +123,7 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
+		defer p.Clear()
 		opts.WithEventHandler(events.NewHandlerFunc(func(event events.Event) {
 			p.Log(formatEvent(event))
 		}))
