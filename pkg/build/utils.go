@@ -122,3 +122,13 @@ func shortSlugForRedirect(slug string) string {
 	}
 	return slug
 }
+
+func ensureLeadingSlash(target string) string {
+	if target == "" {
+		return "/"
+	}
+	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+		return target
+	}
+	return "/" + target
+}

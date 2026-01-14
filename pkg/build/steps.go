@@ -456,7 +456,7 @@ func StepRedirects() Step {
 
 			redirects = append(redirects, config.Redirect{
 				From:   shortPath,
-				To:     page.Meta.URLPath,
+				To:     ensureLeadingSlash(page.Meta.URLPath),
 				Status: 0,
 			})
 		}
