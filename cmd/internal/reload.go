@@ -3,6 +3,7 @@ package internal
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -112,12 +113,25 @@ func injectReloadScript(html string) string {
 func ReloadMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body bytes.Buffer
+		statusCode := http.StatusOK
+		wroteHeader := false
 
 		hooks := httpsnoop.Hooks{
+			WriteHeader: func(original httpsnoop.WriteHeaderFunc) httpsnoop.WriteHeaderFunc {
+				return func(code int) {
+					statusCode = code
+					wroteHeader = true
+				}
+			},
 			Write: func(original httpsnoop.WriteFunc) httpsnoop.WriteFunc {
 				return func(b []byte) (int, error) {
 					body.Write(b)
 					return len(b), nil
+				}
+			},
+			ReadFrom: func(original httpsnoop.ReadFromFunc) httpsnoop.ReadFromFunc {
+				return func(src io.Reader) (int64, error) {
+					return io.Copy(&body, src)
 				}
 			},
 		}
@@ -126,11 +140,26 @@ func ReloadMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(wrapped, r)
 
 		contentType := w.Header().Get("Content-Type")
+		if contentType == "" && body.Len() > 0 {
+			contentType = http.DetectContentType(body.Bytes())
+			if contentType != "" {
+				w.Header().Set("Content-Type", contentType)
+			}
+		}
 		if strings.Contains(contentType, "text/html") {
 			injected := injectReloadScript(body.String())
 			w.Header().Set("Content-Length", strconv.Itoa(len(injected)))
+			if wroteHeader {
+				w.WriteHeader(statusCode)
+			}
 			w.Write([]byte(injected))
 		} else {
+			if body.Len() > 0 {
+				w.Header().Set("Content-Length", strconv.Itoa(body.Len()))
+			}
+			if wroteHeader {
+				w.WriteHeader(statusCode)
+			}
 			w.Write(body.Bytes())
 		}
 	})
