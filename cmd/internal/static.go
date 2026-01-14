@@ -290,6 +290,9 @@ func matchRedirect(reqPath string, rules []redirectRule) (redirectAction, bool) 
 			target = strings.ReplaceAll(target, ":splat", splat)
 			target = strings.ReplaceAll(target, "*", splat)
 		}
+		if target != "" && !strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "?") && !strings.HasPrefix(target, "#") && !isExternalURL(target) {
+			target = "/" + target
+		}
 
 		status := rule.status
 		if status == 0 {
