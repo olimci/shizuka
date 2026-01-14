@@ -29,8 +29,7 @@ draft: false
 
 params:
   hero_image: "/img/hello.jpg"
-lite_params:
-  card_style: "compact"
+  _card_style: "compact"
 
 headers:
   Cache-Control: "public, max-age=3600"
@@ -106,8 +105,7 @@ Top-level:
 
 Nested / maps:
 
-- `params` (map): merged into `.Page.Params` (overrides config defaults)
-- `lite_params` (map): merged into `.Page.LiteParams` (overrides config defaults)
+- `params` (map): merged into `.Page.Params` (overrides config defaults); keys starting with `_` are not exported to `PageLite`
 - `headers` (map string->string): per-page headers for the headers build step (keyed by URL path)
 - `rss`:
   - `include` (bool), `title`, `description`, `guid`

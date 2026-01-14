@@ -144,7 +144,7 @@ func StepContent() []Step {
 			},
 		}
 
-		if cfg.Site.Cascade != nil {
+		if cfg.Build.Steps.Content != nil && cfg.Build.Steps.Content.Cascade != nil {
 			var cascade func(*transforms.PageNode, map[string]any)
 			cascade = func(node *transforms.PageNode, params map[string]any) {
 				temp := maps.Clone(params)
@@ -157,7 +157,7 @@ func StepContent() []Step {
 				}
 			}
 
-			cascade(pages.Root, cfg.Site.Cascade)
+			cascade(pages.Root, cfg.Build.Steps.Content.Cascade)
 		}
 
 		site.Tree = pages

@@ -31,8 +31,7 @@ type ConfigSite struct {
 	Description string `toml:"description" yaml:"description" json:"description"`
 	URL         string `toml:"url" yaml:"url" json:"url"`
 
-	Params  map[string]any `toml:"params" yaml:"params" json:"params"`
-	Cascade map[string]any `toml:"cascade" yaml:"cascade" json:"cascade"`
+	Params map[string]any `toml:"params" yaml:"params" json:"params"`
 }
 
 type ConfigBuild struct {
@@ -61,6 +60,7 @@ type ConfigStepContent struct {
 	Source         string         `toml:"source" yaml:"source" json:"source"`
 	Destination    string         `toml:"destination" yaml:"destination" json:"destination"`
 	DefaultParams  map[string]any `toml:"default_params" yaml:"default_params" json:"default_params"`
+	Cascade        map[string]any `toml:"cascade" yaml:"cascade" json:"cascade"`
 	GoldmarkConfig ConfigGoldmark `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
 }
 
@@ -153,6 +153,7 @@ func DefaultConfig() *Config {
 					Source:         "content",
 					Destination:    ".",
 					DefaultParams:  map[string]any{},
+					Cascade:        map[string]any{},
 					GoldmarkConfig: defaultGoldmark,
 				},
 			},
@@ -191,10 +192,6 @@ func (c *Config) Validate() error {
 		c.Site.Params = map[string]any{}
 	}
 
-	if c.Site.Cascade == nil {
-		c.Site.Cascade = map[string]any{}
-	}
-
 	if strings.TrimSpace(c.Build.Output) == "" {
 		c.Build.Output = "dist"
 	}
@@ -220,6 +217,9 @@ func (c *Config) Validate() error {
 		}
 		if c.Build.Steps.Content.DefaultParams == nil {
 			c.Build.Steps.Content.DefaultParams = map[string]any{}
+		}
+		if c.Build.Steps.Content.Cascade == nil {
+			c.Build.Steps.Content.Cascade = map[string]any{}
 		}
 	}
 
