@@ -15,7 +15,7 @@ func (pn *PageNode) AddChild(name string, child *PageNode) bool {
 	if pn.Children == nil {
 		pn.Children = make(map[string]*PageNode)
 	}
-	if _, exists := pn.Children[name]; exists {
+	if child, exists := pn.Children[name]; exists && child.Page != nil {
 		return false
 	}
 	if child != nil {
