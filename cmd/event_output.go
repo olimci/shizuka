@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/olimci/shizuka/pkg/events.go"
+	"github.com/olimci/shizuka/pkg/events"
 )
 
 type eventCounts struct {

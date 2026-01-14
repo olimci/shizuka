@@ -8,12 +8,12 @@ type Site struct {
 	Description string
 	URL         string
 
+	Tree *PageTree
+
 	Meta SiteMeta
 
 	Collections Collections
 }
-
-// TODO: page tree collection
 
 // Collections store collections of pages for Site
 type Collections struct {

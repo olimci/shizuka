@@ -8,6 +8,7 @@ Markdown files must start with a fenced frontmatter block:
 
 - YAML frontmatter: fence with `---`
 - TOML frontmatter: fence with `+++`
+- JSON frontmatter: a JSON object at the very start of the file (no fence)
 
 The fence line must be the very first line of the file (no leading whitespace, no content before it).
 
@@ -47,6 +48,25 @@ sitemap:
 Markdown content here.
 ```
 
+### Example (JSON)
+
+```json
+{
+  "title": "Hello",
+  "description": "A short post.",
+  "template": "post",
+  "sections": "posts",
+  "slug": "posts/hello",
+  "tags": ["intro", "shizuka"],
+  "featured": true,
+  "draft": false,
+  "rss": { "include": true },
+  "sitemap": { "include": true, "changefreq": "monthly", "priority": 0.7 }
+}
+
+Markdown content here.
+```
+
 ## Structured pages (`*.toml`, `*.yaml`/`*.yml`, `*.json`)
 
 Non-Markdown content files are parsed as a single object and must include:
@@ -73,13 +93,14 @@ body = """
 
 Top-level:
 
-- `slug` (string): used for redirects and for linking if your templates use it
+- `slug` (string): used for redirects and linking; if empty, defaults to the page URL path (no leading/trailing `/`)
 - `title` (string)
 - `description` (string)
 - `sections` (string): becomes `.Page.Section` (note the key name is plural)
 - `tags` ([]string)
 - `date` / `updated` (timestamps)
 - `template` (string): required for rendering
+- `body` (string): only for structured pages (`*.toml`/`*.yaml`/`*.json`)
 - `featured` (bool)
 - `draft` (bool)
 
@@ -87,9 +108,8 @@ Nested / maps:
 
 - `params` (map): merged into `.Page.Params` (overrides config defaults)
 - `lite_params` (map): merged into `.Page.LiteParams` (overrides config defaults)
-- `headers` (map string->string): per-page headers for the headers build step
+- `headers` (map string->string): per-page headers for the headers build step (keyed by URL path)
 - `rss`:
   - `include` (bool), `title`, `description`, `guid`
 - `sitemap`:
   - `include` (bool), `changefreq`, `priority`
-

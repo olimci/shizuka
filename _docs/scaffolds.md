@@ -4,7 +4,7 @@ Shizuka can scaffold a new site from a “template” directory, or from a “co
 
 ## Template scaffold layout
 
-A scaffold template is a directory containing `shizuka.template.toml` plus the files you want copied into the new project:
+A scaffold template is a directory containing `shizuka.template.*` (`.toml`, `.yaml`/`.yml`, or `.json`) plus the files you want copied into the new project:
 
 ```
 my-template/
@@ -19,7 +19,7 @@ my-template/
    └─ style.css
 ```
 
-## `shizuka.template.toml`
+## `shizuka.template.*`
 
 ```toml
 [metadata]
@@ -48,7 +48,7 @@ default = "My site"
 
 When scaffolding:
 
-- everything under the template directory is copied (except `shizuka.template.toml`)
+- everything under the template directory is copied (except the `shizuka.template.*` config)
 - any path matching `files.templates` is processed as a Go `text/template` with your variables (e.g. `{{.SiteName}}`)
 - filenames are transformed:
   - `files.renames` matches by basename (e.g. `_gitignore` -> `.gitignore`)
@@ -59,7 +59,7 @@ Note: `files.files` exists in the config schema, but is not currently used to fi
 
 ## Collection scaffold layout
 
-A scaffold collection is a directory containing `shizuka.collection.toml` and one subdirectory per template:
+A scaffold collection is a directory containing `shizuka.collection.*` (`.toml`, `.yaml`/`.yml`, or `.json`) and one subdirectory per template:
 
 ```
 my-collection/
@@ -74,7 +74,7 @@ my-collection/
 
 In a collection, each template’s `metadata.slug` must match its directory name.
 
-## `shizuka.collection.toml`
+## `shizuka.collection.*`
 
 ```toml
 [metadata]
@@ -87,4 +87,3 @@ shizuka_version = "0.1.0"
 items = ["default", "minimal"]
 default = "default"
 ```
-

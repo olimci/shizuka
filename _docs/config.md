@@ -1,6 +1,8 @@
-# `shizuka.toml` config
+# Config (`shizuka.*`)
 
-Shizuka loads configuration from a TOML file (default path: `shizuka.toml`).
+Shizuka loads configuration from a config file (default path: `shizuka.toml`).
+
+Supported formats: TOML (`.toml`), YAML (`.yaml` / `.yml`), JSON (`.json`).
 
 Unknown keys are treated as errors.
 
@@ -55,12 +57,14 @@ hardbreaks = false
 XHTML = false
 ```
 
+`default_params` and `default_lite_params` are merged into each page’s frontmatter `params` / `lite_params` (frontmatter wins).
+
 ### `build.steps.headers`
 
 Writes a Netlify-style `_headers` file. The final headers are:
 
 - whatever you put in config, plus
-- per-page `headers` from frontmatter (merged under that page’s canonical path)
+- per-page `headers` from frontmatter (merged under that page’s URL path, e.g. `posts/hello`)
 
 ```toml
 [build.steps.headers]
@@ -75,8 +79,10 @@ output = "_headers"
 Writes a Netlify-style `_redirects` file.
 
 - `shorten` defaults to `"/s"` (normalized to a leading `/` with no trailing `/`)
-- every page with a non-empty `slug` gets a generated short redirect: `{site.url}{shorten}/{slug} -> {page.canon}`
+- for pages in section `"posts"`, a non-empty `slug` generates a short redirect: `{site.url}{shorten}/{last-slug-segment} -> {page.url_path}`
 - you can also specify explicit redirects in config
+
+URL paths are site-relative and do not include a leading `/` (for example `posts/hello`).
 
 ```toml
 [build.steps.redirects]
@@ -118,4 +124,3 @@ Only pages with `sitemap.include = true` are included, and drafts are excluded u
 output = "sitemap.xml"
 include_drafts = false
 ```
-

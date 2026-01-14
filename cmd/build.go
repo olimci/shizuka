@@ -9,7 +9,7 @@ import (
 	"github.com/olimci/prompter"
 	"github.com/olimci/shizuka/pkg/build"
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/events.go"
+	"github.com/olimci/shizuka/pkg/events"
 	"github.com/urfave/cli/v3"
 )
 

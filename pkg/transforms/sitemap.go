@@ -3,16 +3,16 @@ package transforms
 import (
 	"fmt"
 	"html/template"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
+	"github.com/olimci/shizuka/pkg/utils/lazy"
 )
 
-var SitemapTemplate = template.Must(template.New("sitemap").
-	Parse(
+var SitemapTemplate = lazy.New(func() *template.Template {
+	return template.Must(template.New("sitemap").Parse(
 		`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 {{- range .Items }}
@@ -25,6 +25,7 @@ var SitemapTemplate = template.Must(template.New("sitemap").
 {{- end }}
 </urlset>
 `))
+})
 
 type SitemapItem struct {
 	Loc        string
@@ -40,9 +41,6 @@ type SitemapTemplateData struct {
 func BuildSitemap(pages []*Page, site *Site, cfg *config.ConfigStepSitemap) SitemapTemplateData {
 	items := make([]SitemapItem, 0, len(pages))
 	for _, page := range pages {
-		if page.Meta.Err != nil {
-			continue
-		}
 		if !cfg.IncludeDrafts && page.Draft {
 			continue
 		}
@@ -52,7 +50,10 @@ func BuildSitemap(pages []*Page, site *Site, cfg *config.ConfigStepSitemap) Site
 
 		lastMod := firstNonzero(page.Updated, page.Date, time.Now())
 
-		loc, _ := url.JoinPath(site.URL, page.Meta.Claim.Canon)
+		loc := page.Canon
+		if loc == "" {
+			loc = site.URL
+		}
 
 		items = append(items, SitemapItem{
 			Loc:        loc,

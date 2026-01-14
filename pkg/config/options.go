@@ -6,7 +6,7 @@ import (
 	"maps"
 	"runtime"
 
-	"github.com/olimci/shizuka/pkg/events.go"
+	"github.com/olimci/shizuka/pkg/events"
 )
 
 // DefaultOptions constructs an Options with default values.
@@ -25,6 +25,7 @@ type Options struct {
 	Context    context.Context
 	ConfigPath string
 	OutputPath string
+	SiteURL    string
 
 	MaxWorkers int
 	Dev        bool
@@ -49,6 +50,12 @@ func (o *Options) WithConfig(path string) *Options {
 // WithOutput sets the path to the output directory, overriding config
 func (o *Options) WithOutput(path string) *Options {
 	o.OutputPath = path
+	return o
+}
+
+// WithSiteURL sets the site base URL, overriding config.
+func (o *Options) WithSiteURL(url string) *Options {
+	o.SiteURL = url
 	return o
 }
 

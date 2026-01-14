@@ -8,8 +8,6 @@ import (
 
 	"github.com/olimci/shizuka/pkg/version"
 
-	"github.com/BurntSushi/toml"
-
 	gm "github.com/yuin/goldmark"
 	gmext "github.com/yuin/goldmark/extension"
 	gmparse "github.com/yuin/goldmark/parser"
@@ -19,94 +17,94 @@ import (
 
 // Config represents the configuration for the build process.
 type Config struct {
-	Shizuka ConfigShizuka `toml:"shizuka"`
-	Site    ConfigSite    `toml:"site"`
-	Build   ConfigBuild   `toml:"build"`
+	Shizuka ConfigShizuka `toml:"shizuka" yaml:"shizuka" json:"shizuka"`
+	Site    ConfigSite    `toml:"site" yaml:"site" json:"site"`
+	Build   ConfigBuild   `toml:"build" yaml:"build" json:"build"`
 }
 
 type ConfigShizuka struct {
-	Version string `toml:"version"`
+	Version string `toml:"version" yaml:"version" json:"version"`
 }
 
 type ConfigSite struct {
-	Title       string `toml:"title"`
-	Description string `toml:"description"`
-	URL         string `toml:"url"`
+	Title       string `toml:"title" yaml:"title" json:"title"`
+	Description string `toml:"description" yaml:"description" json:"description"`
+	URL         string `toml:"url" yaml:"url" json:"url"`
 }
 
 type ConfigBuild struct {
-	Output string `toml:"output"`
-	Minify bool   `toml:"minify"`
+	Output string `toml:"output" yaml:"output" json:"output"`
+	Minify bool   `toml:"minify" yaml:"minify" json:"minify"`
 
-	Steps ConfigBuildSteps `toml:"steps"`
+	Steps ConfigBuildSteps `toml:"steps" yaml:"steps" json:"steps"`
 }
 
 type ConfigBuildSteps struct {
-	Static    *ConfigStepStatic    `toml:"static"`
-	Content   *ConfigStepContent   `toml:"content"`
-	Headers   *ConfigStepHeaders   `toml:"headers"`
-	Redirects *ConfigStepRedirects `toml:"redirects"`
-	RSS       *ConfigStepRSS       `toml:"rss"`
-	Sitemap   *ConfigStepSitemap   `toml:"sitemap"`
+	Static    *ConfigStepStatic    `toml:"static" yaml:"static" json:"static"`
+	Content   *ConfigStepContent   `toml:"content" yaml:"content" json:"content"`
+	Headers   *ConfigStepHeaders   `toml:"headers" yaml:"headers" json:"headers"`
+	Redirects *ConfigStepRedirects `toml:"redirects" yaml:"redirects" json:"redirects"`
+	RSS       *ConfigStepRSS       `toml:"rss" yaml:"rss" json:"rss"`
+	Sitemap   *ConfigStepSitemap   `toml:"sitemap" yaml:"sitemap" json:"sitemap"`
 }
 
 type ConfigStepStatic struct {
-	Source      string `toml:"source"`
-	Destination string `toml:"destination"`
+	Source      string `toml:"source" yaml:"source" json:"source"`
+	Destination string `toml:"destination" yaml:"destination" json:"destination"`
 }
 
 type ConfigStepContent struct {
-	TemplateGlob      string         `toml:"template_glob"`
-	Source            string         `toml:"source"`
-	Destination       string         `toml:"destination"`
-	DefaultParams     map[string]any `toml:"default_params"`
-	DefaultLiteParams map[string]any `toml:"default_lite_params"`
-	GoldmarkConfig    ConfigGoldmark `toml:"goldmark_config"`
+	TemplateGlob      string         `toml:"template_glob" yaml:"template_glob" json:"template_glob"`
+	Source            string         `toml:"source" yaml:"source" json:"source"`
+	Destination       string         `toml:"destination" yaml:"destination" json:"destination"`
+	DefaultParams     map[string]any `toml:"default_params" yaml:"default_params" json:"default_params"`
+	DefaultLiteParams map[string]any `toml:"default_lite_params" yaml:"default_lite_params" json:"default_lite_params"`
+	GoldmarkConfig    ConfigGoldmark `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
 }
 
 type ConfigStepHeaders struct {
-	Headers map[string]map[string]string `toml:"headers"`
-	Output  string                       `toml:"output"`
+	Headers map[string]map[string]string `toml:"headers" yaml:"headers" json:"headers"`
+	Output  string                       `toml:"output" yaml:"output" json:"output"`
 }
 
 type ConfigStepRedirects struct {
-	Shorten   string     `toml:"shorten"`
-	Redirects []Redirect `toml:"redirects"`
-	Output    string     `toml:"output"`
+	Shorten   string     `toml:"shorten" yaml:"shorten" json:"shorten"`
+	Redirects []Redirect `toml:"redirects" yaml:"redirects" json:"redirects"`
+	Output    string     `toml:"output" yaml:"output" json:"output"`
 }
 
 type ConfigStepRSS struct {
-	Output        string   `toml:"output"`
-	Sections      []string `toml:"sections"`
-	Limit         int      `toml:"limit"`
-	IncludeDrafts bool     `toml:"include_drafts"`
+	Output        string   `toml:"output" yaml:"output" json:"output"`
+	Sections      []string `toml:"sections" yaml:"sections" json:"sections"`
+	Limit         int      `toml:"limit" yaml:"limit" json:"limit"`
+	IncludeDrafts bool     `toml:"include_drafts" yaml:"include_drafts" json:"include_drafts"`
 }
 
 type ConfigStepSitemap struct {
-	Output        string `toml:"output"`
-	IncludeDrafts bool   `toml:"include_drafts"`
+	Output        string `toml:"output" yaml:"output" json:"output"`
+	IncludeDrafts bool   `toml:"include_drafts" yaml:"include_drafts" json:"include_drafts"`
 }
 
 type Redirect struct {
-	From   string `toml:"from"`
-	To     string `toml:"to"`
-	Status int    `toml:"status"`
+	From   string `toml:"from" yaml:"from" json:"from"`
+	To     string `toml:"to" yaml:"to" json:"to"`
+	Status int    `toml:"status" yaml:"status" json:"status"`
 }
 
 type ConfigGoldmark struct {
-	Extensions []string               `toml:"extensions"`
-	Parser     ConfigGoldmarkParser   `toml:"parser"`
-	Renderer   ConfigGoldmarkRenderer `toml:"renderer"`
+	Extensions []string               `toml:"extensions" yaml:"extensions" json:"extensions"`
+	Parser     ConfigGoldmarkParser   `toml:"parser" yaml:"parser" json:"parser"`
+	Renderer   ConfigGoldmarkRenderer `toml:"renderer" yaml:"renderer" json:"renderer"`
 }
 
 type ConfigGoldmarkParser struct {
-	AutoHeadingID bool `toml:"auto_heading_id"`
-	Attribute     bool `toml:"attribute"`
+	AutoHeadingID bool `toml:"auto_heading_id" yaml:"auto_heading_id" json:"auto_heading_id"`
+	Attribute     bool `toml:"attribute" yaml:"attribute" json:"attribute"`
 }
 
 type ConfigGoldmarkRenderer struct {
-	Hardbreaks bool `toml:"hardbreaks"`
-	XHTML      bool `toml:"XHTML"`
+	Hardbreaks bool `toml:"hardbreaks" yaml:"hardbreaks" json:"hardbreaks"`
+	XHTML      bool `toml:"XHTML" yaml:"XHTML" json:"XHTML"`
 }
 
 // DefaultConfig constructs a new Config with default values.
@@ -165,13 +163,8 @@ func DefaultConfig() *Config {
 func Load(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
-	md, err := toml.DecodeFile(path, cfg)
-	if err != nil {
+	if err := decodeFile(path, cfg); err != nil {
 		return nil, err
-	}
-
-	if undec := md.Undecoded(); len(undec) > 0 {
-		return nil, fmt.Errorf("unknown config keys: %v", undec)
 	}
 
 	if err := cfg.Validate(); err != nil {

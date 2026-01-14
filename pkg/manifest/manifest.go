@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/events.go"
+	"github.com/olimci/shizuka/pkg/events"
 	"github.com/olimci/shizuka/pkg/utils/fileutils"
 	"golang.org/x/sync/errgroup"
 )

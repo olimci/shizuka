@@ -9,12 +9,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/olimci/prompter"
 	"github.com/olimci/shizuka/cmd/internal"
 	"github.com/olimci/shizuka/pkg/build"
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/events.go"
+	"github.com/olimci/shizuka/pkg/events"
 	"github.com/olimci/shizuka/pkg/watcher"
 	"github.com/urfave/cli/v3"
 )
@@ -63,6 +62,12 @@ func xDevCmd() *cli.Command {
 func runDev(ctx context.Context, cmd *cli.Command) error {
 	port := fmt.Sprintf(":%d", cmd.Int("port"))
 	configPath := cmd.String("config")
+	siteURL := fmt.Sprintf("http://localhost:%d/", cmd.Int("port"))
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return err
+	}
 
 	dist, err := os.MkdirTemp("", "shizuka-*")
 	if err != nil {
@@ -74,6 +79,7 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 		WithContext(ctx).
 		WithConfig(configPath).
 		WithOutput(dist).
+		WithSiteURL(siteURL).
 		WithDev().
 		WithPageErrorTemplates(map[error]*template.Template{
 			build.ErrNoTemplate:       templateFallback.Get(),
@@ -88,19 +94,32 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 
 	hub := internal.NewReloadHub()
 
-	r := chi.NewRouter()
-	r.Get("/_shizuka/reload", hub.Serve)
-	fileServer := http.FileServer(http.Dir(dist))
-	r.Handle("/*", internal.ReloadMiddleware(fileServer))
-	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		if err := templateNotFound.Get().Execute(w, nil); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+	headersFile := "_headers"
+	if cfg.Build.Steps.Headers != nil && cfg.Build.Steps.Headers.Output != "" {
+		headersFile = cfg.Build.Steps.Headers.Output
+	}
+	redirectsFile := "_redirects"
+	if cfg.Build.Steps.Redirects != nil && cfg.Build.Steps.Redirects.Output != "" {
+		redirectsFile = cfg.Build.Steps.Redirects.Output
+	}
+
+	staticHandler := internal.NewStaticHandler(dist, internal.StaticHandlerOptions{
+		HeadersFile:   headersFile,
+		RedirectsFile: redirectsFile,
+		NotFound: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if err := templateNotFound.Get().Execute(w, nil); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		}),
 	})
+
+	mux := http.NewServeMux()
+	mux.Handle("/_shizuka/reload", http.HandlerFunc(hub.Serve))
+	mux.Handle("/", internal.ReloadMiddleware(staticHandler))
 
 	server := &http.Server{
 		Addr:    port,
-		Handler: r,
+		Handler: mux,
 	}
 
 	return prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
@@ -199,6 +218,12 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 func runXDev(ctx context.Context, cmd *cli.Command) error {
 	port := fmt.Sprintf(":%d", cmd.Int("port"))
 	configPath := cmd.String("config")
+	siteURL := fmt.Sprintf("http://localhost:%d/", cmd.Int("port"))
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return err
+	}
 
 	dist, err := os.MkdirTemp("", "shizuka-*")
 	if err != nil {
@@ -210,6 +235,7 @@ func runXDev(ctx context.Context, cmd *cli.Command) error {
 		WithContext(ctx).
 		WithConfig(configPath).
 		WithOutput(dist).
+		WithSiteURL(siteURL).
 		WithDev().
 		WithPageErrorTemplates(map[error]*template.Template{
 			build.ErrNoTemplate:       templateFallback.Get(),
@@ -224,19 +250,32 @@ func runXDev(ctx context.Context, cmd *cli.Command) error {
 
 	hub := internal.NewReloadHub()
 
-	r := chi.NewRouter()
-	r.Get("/_shizuka/reload", hub.Serve)
-	fileServer := http.FileServer(http.Dir(dist))
-	r.Handle("/*", internal.ReloadMiddleware(fileServer))
-	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		if err := templateNotFound.Get().Execute(w, nil); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+	headersFile := "_headers"
+	if cfg.Build.Steps.Headers != nil && cfg.Build.Steps.Headers.Output != "" {
+		headersFile = cfg.Build.Steps.Headers.Output
+	}
+	redirectsFile := "_redirects"
+	if cfg.Build.Steps.Redirects != nil && cfg.Build.Steps.Redirects.Output != "" {
+		redirectsFile = cfg.Build.Steps.Redirects.Output
+	}
+
+	staticHandler := internal.NewStaticHandler(dist, internal.StaticHandlerOptions{
+		HeadersFile:   headersFile,
+		RedirectsFile: redirectsFile,
+		NotFound: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if err := templateNotFound.Get().Execute(w, nil); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		}),
 	})
+
+	mux := http.NewServeMux()
+	mux.Handle("/_shizuka/reload", http.HandlerFunc(hub.Serve))
+	mux.Handle("/", internal.ReloadMiddleware(staticHandler))
 
 	server := &http.Server{
 		Addr:    port,
-		Handler: r,
+		Handler: mux,
 	}
 
 	opts.WithEventHandler(events.NewHandlerFunc(func(event events.Event) {

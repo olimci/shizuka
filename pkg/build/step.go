@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/olimci/shizuka/pkg/events.go"
+	"github.com/olimci/shizuka/pkg/events"
 	"github.com/olimci/shizuka/pkg/manifest"
 )
 

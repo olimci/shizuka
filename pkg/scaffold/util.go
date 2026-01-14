@@ -3,6 +3,7 @@ package scaffold
 import (
 	"fmt"
 	"io"
+	"strings"
 	"text/template"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -34,4 +35,8 @@ func matchesGlobs(relPath string, patterns []string) bool {
 	}
 
 	return false
+}
+
+func isScaffoldConfigFile(rel string) bool {
+	return strings.HasPrefix(rel, TemplateFileBase+".") || strings.HasPrefix(rel, CollectionFileBase+".")
 }

@@ -2,6 +2,7 @@ package transforms
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -12,41 +13,41 @@ import (
 
 // Frontmatter represents the frontmatter of a document
 type Frontmatter struct {
-	Slug string `toml:"slug" yaml:"slug"`
+	Slug string `toml:"slug" yaml:"slug" json:"slug"`
 
-	Title       string   `toml:"title" yaml:"title"`
-	Description string   `toml:"description" yaml:"description"`
-	Section     string   `toml:"sections" yaml:"sections"`
-	Tags        []string `toml:"tags" yaml:"tags"`
+	Title       string   `toml:"title" yaml:"title" json:"title"`
+	Description string   `toml:"description" yaml:"description" json:"description"`
+	Section     string   `toml:"sections" yaml:"sections" json:"sections"`
+	Tags        []string `toml:"tags" yaml:"tags" json:"tags"`
 
-	Date    time.Time `toml:"date" yaml:"date"`
-	Updated time.Time `toml:"updated" yaml:"updated"`
+	Date    time.Time `toml:"date" yaml:"date" json:"date"`
+	Updated time.Time `toml:"updated" yaml:"updated" json:"updated"`
 
-	RSS     RSSMeta     `toml:"rss" yaml:"rss"`
-	Sitemap SitemapMeta `toml:"sitemap" yaml:"sitemap"`
+	RSS     RSSMeta     `toml:"rss" yaml:"rss" json:"rss"`
+	Sitemap SitemapMeta `toml:"sitemap" yaml:"sitemap" json:"sitemap"`
 
-	Params     map[string]any    `toml:"params" yaml:"params"`
-	LiteParams map[string]any    `toml:"lite_params" yaml:"lite_params"`
-	Headers    map[string]string `toml:"headers" yaml:"headers"`
+	Params     map[string]any    `toml:"params" yaml:"params" json:"params"`
+	LiteParams map[string]any    `toml:"lite_params" yaml:"lite_params" json:"lite_params"`
+	Headers    map[string]string `toml:"headers" yaml:"headers" json:"headers"`
 
-	Template string `toml:"template" yaml:"template"`
-	Body     string `toml:"body" yaml:"body"`
+	Template string `toml:"template" yaml:"template" json:"template"`
+	Body     string `toml:"body" yaml:"body" json:"body"`
 
-	Featured bool `toml:"featured" yaml:"featured"`
-	Draft    bool `toml:"draft" yaml:"draft"`
+	Featured bool `toml:"featured" yaml:"featured" json:"featured"`
+	Draft    bool `toml:"draft" yaml:"draft" json:"draft"`
 }
 
 type RSSMeta struct {
-	Include     bool   `toml:"include" yaml:"include"`
-	Title       string `toml:"title" yaml:"title"`
-	Description string `toml:"description" yaml:"description"`
-	GUID        string `toml:"guid" yaml:"guid"`
+	Include     bool   `toml:"include" yaml:"include" json:"include"`
+	Title       string `toml:"title" yaml:"title" json:"title"`
+	Description string `toml:"description" yaml:"description" json:"description"`
+	GUID        string `toml:"guid" yaml:"guid" json:"guid"`
 }
 
 type SitemapMeta struct {
-	Include    bool    `toml:"include" yaml:"include"`
-	ChangeFreq string  `toml:"changefreq" yaml:"changefreq"`
-	Priority   float64 `toml:"priority" yaml:"priority"`
+	Include    bool    `toml:"include" yaml:"include" json:"include"`
+	ChangeFreq string  `toml:"changefreq" yaml:"changefreq" json:"changefreq"`
+	Priority   float64 `toml:"priority" yaml:"priority" json:"priority"`
 }
 
 var (
@@ -72,6 +73,12 @@ func ExtractFrontmatter(doc []byte) (*Frontmatter, []byte, error) {
 			return nil, doc, fmt.Errorf("%w: %w", ErrFailedToParseFrontmatter, err)
 		}
 		return &fm, b[bodyStart:], nil
+	case "json":
+		var fm Frontmatter
+		if err := json.Unmarshal(b[start:end], &fm); err != nil {
+			return nil, doc, fmt.Errorf("%w: %w", ErrFailedToParseFrontmatter, err)
+		}
+		return &fm, b[bodyStart:], nil
 	case "":
 		return nil, nil, ErrNoFrontmatter
 	default:
@@ -91,6 +98,10 @@ func detectFrontmatterBlock(b []byte) (string, int, int, int) {
 	case hasPrefixAtLineStart(b, []byte("+++")):
 		return scanFencedBlock(b, []byte("+++"), "toml")
 	default:
+		// JSON frontmatter can be a raw JSON object at the very start of the file.
+		if kind, start, end, bodyStart := scanJSONObjectPrefix(b); kind != "" {
+			return kind, start, end, bodyStart
+		}
 		return "", 0, 0, 0
 	}
 }
@@ -118,6 +129,66 @@ func scanFencedBlock(b []byte, fence []byte, kind string) (string, int, int, int
 		i = nextEnd
 	}
 	return "", 0, 0, 0
+}
+
+// scanJSONObjectPrefix scans a JSON object from the start of b, returning (kind, start, end, bodyStart).
+func scanJSONObjectPrefix(b []byte) (string, int, int, int) {
+	if len(b) == 0 || b[0] != '{' {
+		return "", 0, 0, 0
+	}
+
+	var (
+		depth   = 0
+		inStr   = false
+		escaped = false
+	)
+
+	for i := range b {
+		c := b[i]
+
+		if inStr {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch c {
+			case '\\':
+				escaped = true
+			case '"':
+				inStr = false
+			}
+			continue
+		}
+
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				end := i + 1
+				bodyStart := skipSingleLineEnding(b, end)
+				return "json", 0, end, bodyStart
+			}
+			if depth < 0 {
+				return "", 0, 0, 0
+			}
+		}
+	}
+
+	return "", 0, 0, 0
+}
+
+func skipSingleLineEnding(b []byte, i int) int {
+	if i < len(b) && b[i] == '\r' {
+		i++
+	}
+	if i < len(b) && b[i] == '\n' {
+		i++
+	}
+	return i
 }
 
 // hasPrefixAtLineStart detects if a line starts with a prefix

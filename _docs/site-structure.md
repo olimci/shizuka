@@ -44,9 +44,8 @@ This mapping is based on the file path and name, not frontmatter.
 
 ## What gets built (high level)
 
-The build is a set of steps configured in `shizuka.toml` (see `_docs/config.md`):
+The build is a set of steps configured in your config file (see `_docs/config.md`):
 
 - `static`: copy `static/` into the output
 - `content`: build pages from `content/` and render with `templates/`
 - optional: `_headers`, `_redirects`, `rss.xml`, `sitemap.xml`
-

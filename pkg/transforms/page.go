@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/olimci/shizuka/pkg/manifest"
 	gm "github.com/yuin/goldmark"
 	"gopkg.in/yaml.v3"
 )
@@ -24,8 +23,10 @@ var (
 // Page represents a page in the site
 type Page struct {
 	Meta PageMeta
+	Tree *PageNode
 
-	Slug string
+	Slug  string
+	Canon string
 
 	Title       string
 	Description string
@@ -53,6 +54,7 @@ type Page struct {
 func (p *Page) Lite() *PageLite {
 	return &PageLite{
 		Slug:        p.Slug,
+		Canon:       p.Canon,
 		Title:       p.Title,
 		Description: p.Description,
 		Section:     p.Section,
@@ -68,7 +70,8 @@ func (p *Page) Lite() *PageLite {
 
 // PageLite is a lite representation of a page, used for links etc
 type PageLite struct {
-	Slug string
+	Slug  string
+	Canon string
 
 	Title       string
 	Description string
@@ -87,38 +90,40 @@ type PageLite struct {
 
 // PageMeta represents metadata for a page
 type PageMeta struct {
-	Claim    manifest.Claim
+	Source  string
+	URLPath string
+	Target  string
+
 	Template string
 
 	BuildTime       time.Time
 	BuildTimeString string
-
-	Err error
 }
 
 // PageTemplate is the struct from which page templates are built
 type PageTemplate struct {
-	Page Page
-	Site Site
+	Page  Page
+	Site  Site
+	Error error
 }
 
 // BuildPage builds a page from a file
-func BuildPage(claim manifest.Claim, md gm.Markdown) (*Page, error) {
+func BuildPage(source string, md gm.Markdown) (*Page, error) {
 	var (
 		fm   *Frontmatter
 		body string
 		err  error
 	)
 
-	switch ext := filepath.Ext(filepath.Base(claim.Source)); ext {
+	switch ext := filepath.Ext(filepath.Base(source)); ext {
 	case ".md":
-		fm, body, err = buildMD(claim.Source, md)
+		fm, body, err = buildMD(source, md)
 	case ".toml":
-		fm, body, err = buildTOML(claim.Source)
+		fm, body, err = buildTOML(source)
 	case ".yaml", ".yml":
-		fm, body, err = buildYaml(claim.Source)
+		fm, body, err = buildYaml(source)
 	case ".json":
-		fm, body, err = buildJSON(claim.Source)
+		fm, body, err = buildJSON(source)
 	default:
 		return nil, fmt.Errorf("unsupported file extension: %s", ext)
 	}
@@ -129,8 +134,8 @@ func BuildPage(claim manifest.Claim, md gm.Markdown) (*Page, error) {
 
 	return &Page{
 		Meta: PageMeta{
-			Claim:    claim,
 			Template: fm.Template,
+			Source:   source,
 		},
 		Slug:        fm.Slug,
 		Title:       fm.Title,

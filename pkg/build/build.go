@@ -2,11 +2,12 @@ package build
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/events.go"
+	"github.com/olimci/shizuka/pkg/events"
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/utils/set"
 	"golang.org/x/sync/errgroup"
@@ -33,6 +34,13 @@ func Build(opts *config.Options) (error, *events.Summary) {
 	config, err := config.Load(opts.ConfigPath)
 	if err != nil {
 		return err, nil
+	}
+
+	if strings.TrimSpace(opts.SiteURL) != "" {
+		config.Site.URL = strings.TrimSpace(opts.SiteURL)
+		if err := config.Validate(); err != nil {
+			return err, nil
+		}
 	}
 
 	steps := make([]Step, 0)

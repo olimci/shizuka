@@ -29,25 +29,30 @@ Each page is rendered with this root object:
 Key fields you can use in templates:
 
 - `.Page.Title`, `.Page.Description`, `.Page.Tags`, `.Page.Featured`, `.Page.Draft`
+- `.Page.Slug` (clean slug without leading slash)
+- `.Page.Canon` (absolute canonical URL)
 - `.Page.Section` (populated from frontmatter key `sections`)
 - `.Page.Date`, `.Page.Updated`, `.Page.PubDate` (`time.Time`; use `.IsZero`, `.Format`, etc)
 - `.Page.Body` (`template.HTML`; rendered Markdown output or `body` from structured pages)
 - `.Page.Params` (arbitrary map for full page templates)
 - `.Page.LiteParams` (arbitrary map intended for list views / cards)
 - `.Page.Headers` (used by the headers build step; see `_docs/config.md`)
-- `.Page.Meta.Claim.Target` / `.Page.Meta.Claim.Canon` (where it will be written / its canonical path)
+- `.Page.Meta.Source` (source file path)
+- `.Page.Meta.URLPath` (site-relative URL path without a leading slash)
+- `.Page.Meta.Target` (output path, usually `{url_path}/index.html`)
 - `.Page.Meta.Template` (the template name requested by frontmatter)
 
 ### `.Site` fields
 
 - `.Site.Title`, `.Site.Description`, `.Site.URL`
-- `.Site.Meta.IsDev`, `.Site.Meta.ConfigPath`
+- `.Site.Meta.IsDev`, `.Site.Meta.ConfigPath`, `.Site.Meta.BuildTime`, `.Site.Meta.BuildTimeString`
+- `.Site.Tree` (page tree for hierarchical navigation)
 - `.Site.Collections`:
   - `.All` (`[]*PageLite`)
   - `.Drafts`, `.Featured`
   - `.Latest`, `.RecentlyUpdated`
 
-`PageLite` contains: `Slug`, `Title`, `Description`, `Section`, `Tags`, `Date`, `Updated`, `PubDate`, `LiteParams`, `Featured`, `Draft`.
+`PageLite` contains: `Slug`, `Canon`, `Title`, `Description`, `Section`, `Tags`, `Date`, `Updated`, `PubDate`, `LiteParams`, `Featured`, `Draft`.
 
 ## Built-in template functions
 
@@ -65,4 +70,3 @@ Everything else is standard Go template behavior (`range`, `if`, `len`, `index`,
 ## Recommended template shape
 
 Shizuka executes the template by name (derived from the filename). The simplest pattern is: put the full HTML document directly in the file (like the built-in scaffold templates do), and reference `.Page` / `.Site` as needed.
-

@@ -2,26 +2,15 @@ package manifest
 
 import (
 	"fmt"
-	"path/filepath"
-	"strings"
+	"path"
 )
 
-func NewPageClaim(sourceRoot, targetRoot, rel string) Claim {
-	dir, base := filepath.Split(rel)
-	name := strings.TrimSuffix(base, filepath.Ext(base))
-
-	if name == "index" {
-		return Claim{
-			Source: filepath.Join(sourceRoot, rel),
-			Target: filepath.Join(targetRoot, dir, "index.html"),
-			Canon:  filepath.Join(targetRoot, dir),
-		}
-	} else {
-		return Claim{
-			Source: filepath.Join(sourceRoot, rel),
-			Target: filepath.Join(targetRoot, dir, name, "index.html"),
-			Canon:  filepath.Join(targetRoot, dir, name),
-		}
+func NewPageClaim(source, url string) Claim {
+	target := path.Join(url, "index.html")
+	return Claim{
+		Source: source,
+		Target: target,
+		Canon:  url,
 	}
 }
 

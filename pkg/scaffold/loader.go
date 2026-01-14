@@ -2,18 +2,17 @@ package scaffold
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path"
 	"strings"
-
-	"github.com/BurntSushi/toml"
 )
 
 const (
-	TemplateFile   = "shizuka.template.toml"
-	CollectionFile = "shizuka.collection.toml"
+	TemplateFileBase   = "shizuka.template"
+	CollectionFileBase = "shizuka.collection"
 )
 
 var gitKnownHosts = []string{
@@ -26,6 +25,32 @@ var gitKnownHosts = []string{
 var (
 	ErrFailedToLoad = fmt.Errorf("failed to load scaffold")
 )
+
+var (
+	preferredConfigExts = []string{".toml", ".yaml", ".yml", ".json"}
+)
+
+func configCandidates(base string) []string {
+	out := make([]string, 0, len(preferredConfigExts))
+	for _, ext := range preferredConfigExts {
+		out = append(out, base+ext)
+	}
+	return out
+}
+
+func findConfigFile(fsy fs.FS, base string) (string, bool, error) {
+	for _, candidate := range configCandidates(base) {
+		_, err := fs.Stat(fsy, candidate)
+		if err == nil {
+			return candidate, true, nil
+		}
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		return "", false, err
+	}
+	return "", false, nil
+}
 
 func Load(ctx context.Context, target string) (*Template, *Collection, error) {
 	src, err := resolve(target)
@@ -41,7 +66,9 @@ func Load(ctx context.Context, target string) (*Template, *Collection, error) {
 
 	root := src.Root()
 
-	if _, err := fs.Stat(fsy, path.Join(root, CollectionFile)); err == nil {
+	if _, ok, err := findConfigFile(fsy, path.Join(root, CollectionFileBase)); err != nil {
+		return nil, nil, fmt.Errorf("%w: checking collection config: %w", ErrFailedToLoad, err)
+	} else if ok {
 		collection, err := LoadCollection(ctx, src, ".")
 		if err != nil {
 			src.Close()
@@ -50,7 +77,9 @@ func Load(ctx context.Context, target string) (*Template, *Collection, error) {
 		return nil, collection, nil
 	}
 
-	if _, err := fs.Stat(fsy, path.Join(root, TemplateFile)); err == nil {
+	if _, ok, err := findConfigFile(fsy, path.Join(root, TemplateFileBase)); err != nil {
+		return nil, nil, fmt.Errorf("%w: checking template config: %w", ErrFailedToLoad, err)
+	} else if ok {
 		template, err := LoadTemplate(ctx, src, ".")
 		if err != nil {
 			src.Close()
@@ -59,13 +88,16 @@ func Load(ctx context.Context, target string) (*Template, *Collection, error) {
 		return template, nil, nil
 	}
 
-	return nil, nil, fmt.Errorf("%w: no %s or %s found at %s", ErrFailedToLoad, TemplateFile, CollectionFile, target)
+	return nil, nil, fmt.Errorf("%w: no %v or %v found at %s", ErrFailedToLoad, configCandidates(TemplateFileBase), configCandidates(CollectionFileBase), target)
 }
 
 func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection, error) {
 	src := NewFSSource(fsy, root)
 
-	if _, err := fs.Stat(fsy, path.Join(root, CollectionFile)); err == nil {
+	if _, ok, err := findConfigFile(fsy, path.Join(root, CollectionFileBase)); err != nil {
+		src.Close()
+		return nil, nil, fmt.Errorf("%w: checking collection config: %w", ErrFailedToLoad, err)
+	} else if ok {
 		collection, err := LoadCollection(ctx, src, ".")
 		if err != nil {
 			src.Close()
@@ -74,7 +106,10 @@ func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection
 		return nil, collection, nil
 	}
 
-	if _, err := fs.Stat(fsy, path.Join(root, TemplateFile)); err == nil {
+	if _, ok, err := findConfigFile(fsy, path.Join(root, TemplateFileBase)); err != nil {
+		src.Close()
+		return nil, nil, fmt.Errorf("%w: checking template config: %w", ErrFailedToLoad, err)
+	} else if ok {
 		template, err := LoadTemplate(ctx, src, ".")
 		if err != nil {
 			src.Close()
@@ -83,7 +118,7 @@ func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection
 		return template, nil, nil
 	}
 
-	return nil, nil, fmt.Errorf("%w: no %s or %s found in %s", ErrFailedToLoad, TemplateFile, CollectionFile, root)
+	return nil, nil, fmt.Errorf("%w: no %v or %v found in %s", ErrFailedToLoad, configCandidates(TemplateFileBase), configCandidates(CollectionFileBase), root)
 }
 
 func LoadTemplate(ctx context.Context, src Source, p string) (*Template, error) {
@@ -94,17 +129,23 @@ func LoadTemplate(ctx context.Context, src Source, p string) (*Template, error) 
 
 	base := path.Join(src.Root(), p)
 
-	file, err := fsy.Open(path.Join(base, TemplateFile))
+	cfgPath, ok, err := findConfigFile(fsy, path.Join(base, TemplateFileBase))
+	if err != nil {
+		return nil, fmt.Errorf("finding template config file: %w", err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("no template config found (expected one of %v)", configCandidates(TemplateFileBase))
+	}
+
+	file, err := fsy.Open(cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening template config file: %w", err)
 	}
 	defer file.Close()
 
 	var config TemplateCfg
-	if md, err := toml.NewDecoder(file).Decode(&config); err != nil {
+	if err := decodeConfigFile(cfgPath, file, &config); err != nil {
 		return nil, fmt.Errorf("decoding template config: %w", err)
-	} else if len(md.Undecoded()) > 0 {
-		return nil, fmt.Errorf("unknown keys in template config: %v", md.Undecoded())
 	}
 
 	return &Template{
@@ -122,17 +163,23 @@ func LoadCollection(ctx context.Context, src Source, p string) (*Collection, err
 
 	base := path.Join(src.Root(), p)
 
-	file, err := fsy.Open(path.Join(base, CollectionFile))
+	cfgPath, ok, err := findConfigFile(fsy, path.Join(base, CollectionFileBase))
+	if err != nil {
+		return nil, fmt.Errorf("finding collection config file: %w", err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("no collection config found (expected one of %v)", configCandidates(CollectionFileBase))
+	}
+
+	file, err := fsy.Open(cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening collection config file: %w", err)
 	}
 	defer file.Close()
 
 	var config CollectionCfg
-	if md, err := toml.NewDecoder(file).Decode(&config); err != nil {
+	if err := decodeConfigFile(cfgPath, file, &config); err != nil {
 		return nil, fmt.Errorf("decoding collection config: %w", err)
-	} else if len(md.Undecoded()) > 0 {
-		return nil, fmt.Errorf("unknown keys in collection config: %v", md.Undecoded())
 	}
 
 	templates := make([]*Template, len(config.Templates.Items))

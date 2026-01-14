@@ -57,7 +57,7 @@ func (t *Template) Build(ctx context.Context, targetPath string, opts BuildOptio
 			return err
 		}
 
-		if rel == "." || rel == TemplateFile {
+		if rel == "." || isScaffoldConfigFile(rel) {
 			return nil
 		}
 

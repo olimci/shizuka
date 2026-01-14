@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
+	"github.com/olimci/shizuka/pkg/utils/lazy"
 	"github.com/olimci/shizuka/pkg/utils/set"
 )
 
-var RSSTemplate = template.Must(template.New("rss").
-	Parse(
+var RSSTemplate = lazy.New(func() *template.Template {
+	return template.Must(template.New("rss").Parse(
 		`<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
 <channel>
@@ -30,6 +31,7 @@ var RSSTemplate = template.Must(template.New("rss").
 </channel>
 </rss>
 `))
+})
 
 type RSSItem struct {
 	Title       string
@@ -52,9 +54,6 @@ func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigStepRSS) RSSTemplateD
 	sectionFilter := set.FromSlice(cfg.Sections)
 	items := make([]RSSItem, 0, len(pages))
 	for _, page := range pages {
-		if page.Meta.Err != nil {
-			continue
-		}
 		if !cfg.IncludeDrafts && page.Draft {
 			continue
 		}
@@ -67,11 +66,16 @@ func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigStepRSS) RSSTemplateD
 
 		pubDate := firstNonzero(page.Date, page.Updated, time.Now())
 
+		link := page.Canon
+		if link == "" {
+			link = page.Meta.URLPath
+		}
+
 		items = append(items, RSSItem{
 			Title:       firstNonzero(page.RSS.Title, page.Title),
-			Link:        page.Meta.Claim.Canon,
+			Link:        link,
 			Description: firstNonzero(page.RSS.Description, page.Description),
-			GUID:        firstNonzero(page.RSS.GUID, page.Meta.Claim.Canon),
+			GUID:        firstNonzero(page.RSS.GUID, link),
 			PubDate:     pubDate.Format(time.RFC1123Z),
 			sortDate:    pubDate,
 		})

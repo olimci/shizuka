@@ -13,7 +13,7 @@
             <div class="banner" role="status" aria-live="polite">
                 <div class="k">error page</div>
                 <div class="msg">
-                    {{- if .Page.Meta.Err -}} {{ .Page.Meta.Err }} {{- else -}}
+                    {{- if .Error -}} {{ .Error }} {{- else -}}
                     unknown error {{- end -}}
                 </div>
             </div>
