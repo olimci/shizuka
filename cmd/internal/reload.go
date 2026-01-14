@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/felixge/httpsnoop"
 	"github.com/olimci/shizuka/pkg/utils/set"
@@ -68,22 +70,37 @@ func (h *ReloadHub) Serve(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	client := h.Subscribe()
 	defer h.Unsubscribe(client)
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-r.Context().Done():
 			return
-		case msg := <-client.Send:
-			fmt.Fprintf(w, "data: %s\n\n", msg)
+		case <-ticker.C:
+			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+				return
+			}
 			flusher.Flush()
+		case msg := <-client.Send:
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", msg); err != nil {
+				return
+			}
+			flusher.Flush()
+			if msg == "reload" {
+				return
+			}
 		}
 	}
 }
@@ -94,9 +111,13 @@ func injectReloadScript(html string) string {
   const es = new EventSource("/_shizuka/reload");
   es.onmessage = (event) => {
     if (event.data === "reload") {
+      es.close();
       window.location.reload();
     }
   };
+  window.addEventListener("beforeunload", () => {
+    es.close();
+  });
 })();
 </script>`
 
@@ -112,6 +133,11 @@ func injectReloadScript(html string) string {
 
 func ReloadMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !shouldInjectReload(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		var body bytes.Buffer
 		statusCode := http.StatusOK
 		wroteHeader := false
@@ -163,4 +189,22 @@ func ReloadMiddleware(next http.Handler) http.Handler {
 			w.Write(body.Bytes())
 		}
 	})
+}
+
+func shouldInjectReload(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+
+	ext := strings.ToLower(path.Ext(r.URL.Path))
+	if ext != "" && ext != ".html" && ext != ".htm" {
+		return false
+	}
+
+	accept := r.Header.Get("Accept")
+	if accept == "" {
+		return true
+	}
+
+	return strings.Contains(accept, "text/html")
 }
