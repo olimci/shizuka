@@ -440,10 +440,10 @@ func StepRedirects() Step {
 				continue
 			}
 
-			path, _ := url.JoinPath(cfg.Site.URL, redirectsCfg.Shorten, shortSlug)
+			shortPath := path.Join(redirectsCfg.Shorten, shortSlug)
 
 			redirects = append(redirects, config.Redirect{
-				From:   path,
+				From:   shortPath,
 				To:     page.Meta.URLPath,
 				Status: 0,
 			})
