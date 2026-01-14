@@ -144,8 +144,9 @@ func (h *StaticHandler) serveNotFound(w http.ResponseWriter, r *http.Request, he
 	customPath := filepath.Join(h.dist, "404.html")
 	if info, err := os.Stat(customPath); err == nil && !info.IsDir() {
 		h.applyHeaders(w, headersPath)
-		w.WriteHeader(status)
-		http.ServeFile(w, r, customPath)
+		sw := &statusWriter{ResponseWriter: w}
+		sw.WriteHeader(status)
+		http.ServeFile(sw, r, customPath)
 		return
 	}
 
@@ -155,6 +156,19 @@ func (h *StaticHandler) serveNotFound(w http.ResponseWriter, r *http.Request, he
 	}
 
 	http.NotFound(w, r)
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	wrote bool
+}
+
+func (s *statusWriter) WriteHeader(code int) {
+	if s.wrote {
+		return
+	}
+	s.wrote = true
+	s.ResponseWriter.WriteHeader(code)
 }
 
 func (h *StaticHandler) resolvePath(urlPath string) (string, string, bool) {
