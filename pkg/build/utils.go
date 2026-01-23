@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -68,8 +70,11 @@ func lookupErrPage(pageErrTemplates map[error]*template.Template, err error) *te
 	return pageErrTemplates[nil] // deeply cursed but i like it
 }
 
-func parseTemplates(pattern string, funcs template.FuncMap) (*template.Template, error) {
-	files, err := doublestar.Glob(os.DirFS("."), pattern)
+func parseTemplates(fsys fs.FS, pattern string, funcs template.FuncMap) (*template.Template, error) {
+	if fsys == nil {
+		fsys = os.DirFS(".")
+	}
+	files, err := doublestar.Glob(fsys, pattern)
 	if err != nil {
 		return nil, err
 	}
@@ -82,12 +87,12 @@ func parseTemplates(pattern string, funcs template.FuncMap) (*template.Template,
 	seen := set.New[string]()
 
 	for _, file := range files {
-		content, err := os.ReadFile(file)
+		content, err := fs.ReadFile(fsys, file)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read template file %s: %w", file, err)
 		}
 
-		name := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+		name := strings.TrimSuffix(path.Base(file), path.Ext(file))
 
 		if seen.HasAdd(name) {
 			return nil, fmt.Errorf("duplicate template name: %s", name)
@@ -103,8 +108,8 @@ func parseTemplates(pattern string, funcs template.FuncMap) (*template.Template,
 }
 
 func url2dir(dir string) string {
-	dir = strings.TrimSuffix(dir, string(filepath.Separator))
 	dir = filepath.ToSlash(dir)
+	dir = strings.TrimSuffix(dir, "/")
 	if dir == "." {
 		return ""
 	}
@@ -131,4 +136,46 @@ func ensureLeadingSlash(target string) string {
 		return target
 	}
 	return "/" + target
+}
+
+func cleanFSPath(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return "", fmt.Errorf("empty path")
+	}
+	if filepath.IsAbs(p) {
+		return "", fmt.Errorf("absolute paths are not supported: %q", p)
+	}
+	p = filepath.ToSlash(p)
+	p = path.Clean(p)
+	if p == "." {
+		return ".", nil
+	}
+	if strings.HasPrefix(p, "../") || p == ".." {
+		return "", fmt.Errorf("path %q escapes source root", p)
+	}
+	p = strings.TrimPrefix(p, "/")
+	if p == "" {
+		return ".", nil
+	}
+	return p, nil
+}
+
+func cleanFSGlob(pattern string) (string, error) {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return "", fmt.Errorf("empty glob")
+	}
+	if filepath.IsAbs(pattern) {
+		return "", fmt.Errorf("absolute globs are not supported: %q", pattern)
+	}
+	pattern = filepath.ToSlash(pattern)
+	if strings.HasPrefix(pattern, "../") || pattern == ".." {
+		return "", fmt.Errorf("glob %q escapes source root", pattern)
+	}
+	pattern = strings.TrimPrefix(pattern, "/")
+	if pattern == "" {
+		return "", fmt.Errorf("empty glob")
+	}
+	return pattern, nil
 }

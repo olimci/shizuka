@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"strings"
 
@@ -166,6 +167,20 @@ func Load(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
 	if err := decodeFile(path, cfg); err != nil {
+		return nil, err
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// LoadFS loads a Config from a file within the provided fs.FS.
+func LoadFS(fsys fs.FS, path string) (*Config, error) {
+	cfg := DefaultConfig()
+
+	if err := decodeFS(fsys, path, cfg); err != nil {
 		return nil, err
 	}
 

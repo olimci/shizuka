@@ -8,6 +8,8 @@ import (
 	"os"
 	"path"
 	"strings"
+
+	"github.com/olimci/shizuka/pkg/iofs"
 )
 
 const (
@@ -92,7 +94,7 @@ func Load(ctx context.Context, target string) (*Template, *Collection, error) {
 }
 
 func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection, error) {
-	src := NewFSSource(fsy, root)
+	src := iofs.FromFS(fsy, root)
 
 	if _, ok, err := findConfigFile(fsy, path.Join(root, CollectionFileBase)); err != nil {
 		src.Close()
@@ -121,7 +123,7 @@ func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection
 	return nil, nil, fmt.Errorf("%w: no %v or %v found in %s", ErrFailedToLoad, configCandidates(TemplateFileBase), configCandidates(CollectionFileBase), root)
 }
 
-func LoadTemplate(ctx context.Context, src Source, p string) (*Template, error) {
+func LoadTemplate(ctx context.Context, src iofs.Readable, p string) (*Template, error) {
 	fsy, err := src.FS(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("accessing source: %w", err)
@@ -155,7 +157,7 @@ func LoadTemplate(ctx context.Context, src Source, p string) (*Template, error) 
 	}, nil
 }
 
-func LoadCollection(ctx context.Context, src Source, p string) (*Collection, error) {
+func LoadCollection(ctx context.Context, src iofs.Readable, p string) (*Collection, error) {
 	fsy, err := src.FS(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("accessing source: %w", err)
@@ -207,20 +209,20 @@ func LoadCollection(ctx context.Context, src Source, p string) (*Collection, err
 }
 
 // resolve determines the source type from the target string and returns the appropriate source
-func resolve(target string) (Source, error) {
+func resolve(target string) (iofs.Readable, error) {
 	if isRemoteURL(target) {
-		return NewRemoteSource(target), nil
+		return iofs.FromRemote(target), nil
 	}
 
 	if info, err := os.Stat(target); err == nil {
 		if !info.IsDir() {
 			return nil, fmt.Errorf("%s is not a directory", target)
 		}
-		return NewOSSource(target), nil
+		return iofs.FromOS(target), nil
 	}
 
 	if looksLikeGitShorthand(target) {
-		return NewRemoteSource("https://" + target), nil
+		return iofs.FromRemote("https://" + target), nil
 	}
 
 	return nil, fmt.Errorf("cannot resolve %s: path does not exist and is not a valid remote URL", target)

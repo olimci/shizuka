@@ -3,6 +3,7 @@ package build
 import (
 	"context"
 	"fmt"
+	"io/fs"
 
 	"github.com/olimci/shizuka/pkg/events"
 	"github.com/olimci/shizuka/pkg/manifest"
@@ -32,6 +33,8 @@ func StepFunc(id string, fn func(*StepContext) error, deps ...string) Step {
 type StepContext struct {
 	Ctx          context.Context
 	Manifest     *manifest.Manifest
+	SourceFS     fs.FS
+	SourceRoot   string
 	eventHandler events.Handler
 }
 

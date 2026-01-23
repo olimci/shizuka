@@ -1,7 +1,9 @@
 package fileutils
 
 import (
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 )
 
@@ -134,6 +136,99 @@ func WalkTree(root string) (*FSTree, error) {
 		}
 
 		parent := ensureDir(filepath.Dir(rel))
+
+		if existing, ok := tree.Nodes[rel]; ok {
+			existing.Name = d.Name()
+			existing.IsDir = d.IsDir()
+			if existing.Parent == nil {
+				existing.Parent = parent
+				parent.Children = append(parent.Children, existing)
+			}
+			return nil
+		}
+
+		n := &FSNode{
+			Path:   rel,
+			Name:   d.Name(),
+			IsDir:  d.IsDir(),
+			Parent: parent,
+		}
+		parent.Children = append(parent.Children, n)
+		tree.Nodes[rel] = n
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tree, nil
+}
+
+// WalkTreeFS walks a filesystem and returns a hierarchical representation of files and directories.
+// The returned tree always contains a root node with Path ".".
+func WalkTreeFS(fsys fs.FS, root string) (*FSTree, error) {
+	root = path.Clean(root)
+
+	rootNode := &FSNode{
+		Path:  ".",
+		Name:  path.Base(root),
+		IsDir: true,
+	}
+	if root == "." || root == "" {
+		rootNode.Name = "."
+	}
+
+	tree := &FSTree{
+		Root:  rootNode,
+		Nodes: map[string]*FSNode{".": rootNode},
+	}
+
+	var ensureDir func(rel string) *FSNode
+	ensureDir = func(rel string) *FSNode {
+		rel = path.Clean(rel)
+		if rel == "." {
+			return rootNode
+		}
+
+		if n, ok := tree.Nodes[rel]; ok {
+			return n
+		}
+
+		parentRel := path.Dir(rel)
+		parent := ensureDir(parentRel)
+
+		n := &FSNode{
+			Path:   rel,
+			Name:   path.Base(rel),
+			IsDir:  true,
+			Parent: parent,
+		}
+
+		parent.Children = append(parent.Children, n)
+		tree.Nodes[rel] = n
+		return n
+	}
+
+	err := fs.WalkDir(fsys, root, func(current string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		if current == root {
+			return nil
+		}
+
+		rel, err := filepath.Rel(root, current)
+		if err != nil {
+			return err
+		}
+		rel = path.Clean(rel)
+		if rel == "." {
+			return nil
+		}
+
+		parent := ensureDir(path.Dir(rel))
 
 		if existing, ok := tree.Nodes[rel]; ok {
 			existing.Name = d.Name()

@@ -1,9 +1,13 @@
 package manifest
 
 import (
+	"context"
+	"io/fs"
+	"path"
 	"path/filepath"
 	"strings"
 
+	"github.com/olimci/shizuka/pkg/iofs"
 	"github.com/olimci/shizuka/pkg/utils/set"
 )
 
@@ -13,14 +17,14 @@ func isRel(p string) bool {
 		if p == ".." {
 			return true
 		}
-		dir, base := filepath.Split(p)
+		dir, base := path.Split(p)
 		if base == ".." {
 			return true
 		}
-		if dir == "" || dir == string(filepath.Separator) {
+		if dir == "" || dir == "/" {
 			return false
 		}
-		p = strings.TrimSuffix(dir, string(filepath.Separator))
+		p = strings.TrimSuffix(dir, "/")
 	}
 }
 
@@ -28,15 +32,15 @@ func isRel(p string) bool {
 func manifestDirs(m map[string]ArtefactBuilder) *set.Set[string] {
 	out := set.New[string]()
 	for claim := range m {
-		claim = filepath.Clean(claim)
-		if filepath.IsAbs(claim) || isRel(claim) {
+		claim = path.Clean(filepath.ToSlash(claim))
+		if path.IsAbs(claim) || isRel(claim) {
 			continue
 		}
 
-		dir := filepath.Dir(claim)
-		for dir != "." && dir != string(filepath.Separator) {
+		dir := path.Dir(claim)
+		for dir != "." && dir != "/" {
 			out.Add(dir)
-			dir = filepath.Dir(dir)
+			dir = path.Dir(dir)
 		}
 	}
 
@@ -61,4 +65,54 @@ func makeArtefacts(as []Artefact) (artefacts map[string]ArtefactBuilder, conflic
 	}
 
 	return artefacts, conflicts
+}
+
+func walkDestination(ctx context.Context, out iofs.Writable) (*set.Set[string], *set.Set[string], error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	fsys, err := out.FS(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	files := set.New[string]()
+	dirs := set.New[string]()
+
+	err = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		p = path.Clean(p)
+		if p == "." {
+			dirs.Add(".")
+			return nil
+		}
+
+		if d.IsDir() {
+			dirs.Add(p)
+			return nil
+		}
+
+		files.Add(p)
+		return nil
+	})
+
+	return files, dirs, err
+}
+
+func displayPath(out iofs.Writable, rel string) string {
+	type displayer interface {
+		DisplayPath(string) string
+	}
+	if d, ok := out.(displayer); ok {
+		return d.DisplayPath(rel)
+	}
+
+	root := strings.TrimSpace(out.Root())
+	if root == "" || root == "." {
+		return rel
+	}
+	return path.Join(root, rel)
 }

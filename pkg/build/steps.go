@@ -8,7 +8,6 @@ import (
 	"maps"
 	"net/url"
 	"path"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -40,20 +39,28 @@ func StepStatic() Step {
 
 		m := NewMinifier(cfg.Build.Minify)
 
-		sourceRoot := cfg.Build.Steps.Static.Source
-		targetRoot := cfg.Build.Steps.Static.Destination
+		sourceRoot, err := cleanFSPath(cfg.Build.Steps.Static.Source)
+		if err != nil {
+			return fmt.Errorf("static source: %w", err)
+		}
+		targetRoot, err := cleanFSPath(cfg.Build.Steps.Static.Destination)
+		if err != nil {
+			return fmt.Errorf("static destination: %w", err)
+		}
 
-		files, err := fileutils.WalkFiles(sourceRoot)
+		files, err := fileutils.WalkFilesFS(sc.SourceFS, sourceRoot)
 		if err != nil {
 			return err
 		}
 
 		for _, rel := range files.Values() {
+			source := path.Join(sourceRoot, rel)
+			target := path.Join(targetRoot, rel)
 			sc.Manifest.Emit(manifest.StaticArtefact(manifest.Claim{
 				Owner:  "static",
-				Source: filepath.Join(sourceRoot, rel),
-				Target: filepath.Join(targetRoot, rel),
-				Canon:  path.Join(filepath.ToSlash(targetRoot), filepath.ToSlash(rel)),
+				Source: source,
+				Target: target,
+				Canon:  path.Join(targetRoot, rel),
 			}).Post(m))
 		}
 
@@ -251,7 +258,12 @@ func StepContent() []Step {
 	templates := StepFunc("pages:templates", func(sc *StepContext) error {
 		config := manifest.GetAs(sc.Manifest, ConfigK)
 
-		tmpl, err := parseTemplates(config.Build.Steps.Content.TemplateGlob, transforms.DefaultTemplateFuncs())
+		glob, err := cleanFSGlob(config.Build.Steps.Content.TemplateGlob)
+		if err != nil {
+			return fmt.Errorf("template glob: %w", err)
+		}
+
+		tmpl, err := parseTemplates(sc.SourceFS, glob, transforms.DefaultTemplateFuncs())
 		if err != nil {
 			return fmt.Errorf("failed to parse templates: %w", err)
 		}
@@ -265,9 +277,12 @@ func StepContent() []Step {
 	index := StepFunc("pages:index", func(sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 
-		root := cfg.Build.Steps.Content.Source
+		root, err := cleanFSPath(cfg.Build.Steps.Content.Source)
+		if err != nil {
+			return fmt.Errorf("content source: %w", err)
+		}
 
-		tree, err := fileutils.WalkTree(root)
+		tree, err := fileutils.WalkTreeFS(sc.SourceFS, root)
 		if err != nil {
 			return fmt.Errorf("failed to walk files: %w", err)
 		}
@@ -299,10 +314,10 @@ func StepContent() []Step {
 				return
 			}
 
-			dir, base := filepath.Split(node.Path)
-			ext := filepath.Ext(base)
+			dir, base := path.Split(node.Path)
+			ext := path.Ext(base)
 			name := strings.TrimSuffix(base, ext)
-			source := filepath.Join(root, node.Path)
+			source := path.Join(root, node.Path)
 
 			if ext == ".html" {
 				var url string
@@ -311,13 +326,11 @@ func StepContent() []Step {
 				} else {
 					url = path.Join(url2dir(dir), name)
 				}
-				sc.Manifest.Emit(manifest.StaticArtefact(manifest.NewPageClaim(
-					filepath.Join(root, node.Path), url,
-				)))
+				sc.Manifest.Emit(manifest.StaticArtefact(manifest.NewPageClaim(source, url)))
 				return
 			}
 
-			page, err := transforms.BuildPage(source, md)
+			page, err := transforms.BuildPageFS(sc.SourceFS, source, md)
 			if err != nil {
 				// if we get an error, emit an error and create an empty page node where Error is set
 				sc.Error(err, "failed to build page")

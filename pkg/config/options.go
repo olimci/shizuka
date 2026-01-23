@@ -7,6 +7,7 @@ import (
 	"runtime"
 
 	"github.com/olimci/shizuka/pkg/events"
+	"github.com/olimci/shizuka/pkg/iofs"
 )
 
 // DefaultOptions constructs an Options with default values.
@@ -29,6 +30,9 @@ type Options struct {
 
 	MaxWorkers int
 	Dev        bool
+
+	Source      iofs.Readable
+	Destination iofs.Writable
 
 	PageErrTemplates map[error]*template.Template
 	ErrTemplate      *template.Template
@@ -72,6 +76,30 @@ func (o *Options) WithMaxWorkers(n int) *Options {
 // WithDev enables development mode
 func (o *Options) WithDev() *Options {
 	o.Dev = true
+	return o
+}
+
+// WithSource sets the input source for building.
+func (o *Options) WithSource(source iofs.Readable) *Options {
+	o.Source = source
+	return o
+}
+
+// WithDestination sets the output destination for building.
+func (o *Options) WithDestination(dest iofs.Writable) *Options {
+	o.Destination = dest
+	return o
+}
+
+// WithSourcePath sets the input source using an OS path.
+func (o *Options) WithSourcePath(path string) *Options {
+	o.Source = iofs.FromOS(path)
+	return o
+}
+
+// WithDestinationPath sets the output destination using an OS path.
+func (o *Options) WithDestinationPath(path string) *Options {
+	o.Destination = iofs.FromOS(path)
 	return o
 }
 

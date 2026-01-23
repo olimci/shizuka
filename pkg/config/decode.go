@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,56 @@ func decodeFile(path string, v any) error {
 		return nil
 	case ".json":
 		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		dec := json.NewDecoder(bytes.NewReader(b))
+		if err := dec.Decode(v); err != nil {
+			return err
+		}
+		if err := dec.Decode(&struct{}{}); err != io.EOF {
+			if err == nil {
+				return fmt.Errorf("unexpected extra content after JSON document")
+			}
+			return err
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported config file type %q (supported: .toml, .yaml, .yml, .json)", ext)
+	}
+}
+
+func decodeFS(fsys fs.FS, path string, v any) error {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case "", ".toml":
+		b, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return err
+		}
+		if _, err := toml.Decode(string(b), v); err != nil {
+			return err
+		}
+		return nil
+	case ".yaml", ".yml":
+		b, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return err
+		}
+		dec := yaml.NewDecoder(bytes.NewReader(b))
+		if err := dec.Decode(v); err != nil {
+			return err
+		}
+		if err := dec.Decode(&struct{}{}); err != io.EOF {
+			if err == nil {
+				return fmt.Errorf("unexpected extra YAML document")
+			}
+			return err
+		}
+		return nil
+	case ".json":
+		b, err := fs.ReadFile(fsys, path)
 		if err != nil {
 			return err
 		}

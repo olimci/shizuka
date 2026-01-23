@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"maps"
-	"os"
-	"path/filepath"
+	"path"
 	"strings"
 	"time"
 
@@ -55,7 +55,7 @@ type Page struct {
 // Lite returns a lite representation of the page
 func (p *Page) Lite() *PageLite {
 	params := maps.Clone(p.Params)
-	for k, _ := range params {
+	for k := range params {
 		if !strings.HasPrefix(k, "_") {
 			delete(params, k)
 		}
@@ -116,23 +116,23 @@ type PageTemplate struct {
 	Error error
 }
 
-// BuildPage builds a page from a file
-func BuildPage(source string, md gm.Markdown) (*Page, error) {
+// BuildPageFS builds a page from a file within the provided fs.FS.
+func BuildPageFS(fsys fs.FS, source string, md gm.Markdown) (*Page, error) {
 	var (
 		fm   *Frontmatter
 		body string
 		err  error
 	)
 
-	switch ext := filepath.Ext(filepath.Base(source)); ext {
+	switch ext := path.Ext(path.Base(source)); ext {
 	case ".md":
-		fm, body, err = buildMD(source, md)
+		fm, body, err = buildMDFromFS(fsys, source, md)
 	case ".toml":
-		fm, body, err = buildTOML(source)
+		fm, body, err = buildTOMLFromFS(fsys, source)
 	case ".yaml", ".yml":
-		fm, body, err = buildYaml(source)
+		fm, body, err = buildYamlFromFS(fsys, source)
 	case ".json":
-		fm, body, err = buildJSON(source)
+		fm, body, err = buildJSONFromFS(fsys, source)
 	default:
 		return nil, fmt.Errorf("unsupported file extension: %s", ext)
 	}
@@ -164,9 +164,8 @@ func BuildPage(source string, md gm.Markdown) (*Page, error) {
 	}, nil
 }
 
-// buildMD builds a page from a markdown file
-func buildMD(path string, md gm.Markdown) (*Frontmatter, string, error) {
-	doc, err := os.ReadFile(path)
+func buildMDFromFS(fsys fs.FS, path string, md gm.Markdown) (*Frontmatter, string, error) {
+	doc, err := fs.ReadFile(fsys, path)
 	if err != nil {
 		return nil, "", err
 	}
@@ -184,9 +183,8 @@ func buildMD(path string, md gm.Markdown) (*Frontmatter, string, error) {
 	return fm, buf.String(), nil
 }
 
-// buildTOML builds a page from a TOML file
-func buildTOML(path string) (*Frontmatter, string, error) {
-	file, err := os.Open(path)
+func buildTOMLFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
+	file, err := fsys.Open(path)
 	if err != nil {
 		return nil, "", err
 	}
@@ -201,9 +199,8 @@ func buildTOML(path string) (*Frontmatter, string, error) {
 	return fm, fm.Body, nil
 }
 
-// buildYaml builds a page from a YAML file
-func buildYaml(path string) (*Frontmatter, string, error) {
-	file, err := os.Open(path)
+func buildYamlFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
+	file, err := fsys.Open(path)
 	if err != nil {
 		return nil, "", err
 	}
@@ -218,9 +215,8 @@ func buildYaml(path string) (*Frontmatter, string, error) {
 	return fm, fm.Body, nil
 }
 
-// buildJSON builds a page from a JSON file
-func buildJSON(path string) (*Frontmatter, string, error) {
-	file, err := os.Open(path)
+func buildJSONFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
+	file, err := fsys.Open(path)
 	if err != nil {
 		return nil, "", err
 	}

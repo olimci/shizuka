@@ -60,3 +60,6 @@ _docs_int/
 *.backup
 
 AGENTS.md
+CLAUDE.md
+.claude/
+TODO.md

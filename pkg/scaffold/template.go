@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/olimci/shizuka/pkg/iofs"
 )
 
 type BuildOptions struct {
@@ -17,7 +19,7 @@ type BuildOptions struct {
 
 type Template struct {
 	Config TemplateCfg
-	source Source
+	source iofs.Readable
 	Base   string
 }
 

@@ -3,13 +3,14 @@ package manifest
 import (
 	"errors"
 	"fmt"
-	"os"
+	"io/fs"
+	"path"
 	"path/filepath"
 	"sync"
 
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/events"
-	"github.com/olimci/shizuka/pkg/utils/fileutils"
+	"github.com/olimci/shizuka/pkg/iofs"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -78,7 +79,7 @@ func (m *Manifest) Emit(a Artefact) {
 }
 
 // Build builds the manifest
-func (m *Manifest) Build(config *config.Config, options *config.Options, handler events.Handler) error {
+func (m *Manifest) Build(config *config.Config, options *config.Options, handler events.Handler, out iofs.Writable) error {
 	m.artefactsMu.Lock()
 	defer m.artefactsMu.Unlock()
 
@@ -94,33 +95,28 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, handler
 		return fmt.Errorf("%w: %v", ErrConflicts, conflicts)
 	}
 
-	var dist = config.Build.Output
-	if options.OutputPath != "" {
-		dist = options.OutputPath
-	}
-
-	info, err := os.Stat(dist)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			if err := os.MkdirAll(dist, 0755); err != nil {
-				return fmt.Errorf("failed to create build dir %q: %w", dist, err)
-			}
-		} else {
-			return fmt.Errorf("failed to stat build dir %q: %w", dist, err)
+	// Ensure we have a valid destination
+	if out == nil {
+		dist := config.Build.Output
+		if options.OutputPath != "" {
+			dist = options.OutputPath
 		}
-	} else if !info.IsDir() {
-		return fmt.Errorf("build dir %q is not a directory", dist)
+		out = iofs.FromOS(dist)
 	}
 
-	gotFiles, gotDirs, err := fileutils.Walk(dist)
+	if err := out.EnsureRoot(); err != nil {
+		return err
+	}
+
+	gotFiles, gotDirs, err := walkDestination(options.Context, out)
 	if err != nil {
 		return fmt.Errorf("walk dist: %w", err)
 	}
 
 	cleaned := make(map[string]ArtefactBuilder, len(artefacts))
 	for dest, a := range artefacts {
-		rel := filepath.Clean(dest)
-		if filepath.IsAbs(rel) || isRel(rel) {
+		rel := path.Clean(filepath.ToSlash(dest))
+		if path.IsAbs(rel) || isRel(rel) {
 			return fmt.Errorf("unsafe artefact path %q escapes dist", dest)
 		}
 		cleaned[rel] = a
@@ -131,25 +127,24 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, handler
 
 	for _, rel := range gotFiles.Values() {
 		if _, wants := artefacts[rel]; !wants {
-			if err := os.Remove(filepath.Join(dist, rel)); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("failed to remove %s: %w", filepath.Join(dist, rel), err)
+			if err := out.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("failed to remove %s: %w", displayPath(out, rel), err)
 			}
 		}
 	}
 
 	for _, rel := range gotDirs.Values() {
 		if !wantDirs.Has(rel) {
-			if err := os.RemoveAll(filepath.Join(dist, rel)); err != nil {
-				return fmt.Errorf("failed to remove %s: %w", filepath.Join(dist, rel), err)
+			if err := out.RemoveAll(rel); err != nil {
+				return fmt.Errorf("failed to remove %s: %w", displayPath(out, rel), err)
 			}
 		}
 	}
 
 	for _, rel := range wantDirs.Values() {
-		full := filepath.Join(dist, rel)
 		if !gotDirs.Has(rel) {
-			if err := os.MkdirAll(full, 0o755); err != nil {
-				return fmt.Errorf("failed to create %s: %w", full, err)
+			if err := out.MkdirAll(rel, 0o755); err != nil {
+				return fmt.Errorf("failed to create %s: %w", displayPath(out, rel), err)
 			}
 		}
 	}
@@ -161,7 +156,6 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, handler
 
 	for target, artefact := range artefacts {
 		exists := gotFiles.Has(target)
-		full := filepath.Join(dist, target)
 
 		g.Go(func() error {
 			select {
@@ -170,14 +164,11 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, handler
 			default:
 			}
 
-			if exists {
-				if err := fileutils.AtomicEdit(full, artefact); err != nil {
-					return fmt.Errorf("failed to edit %s: %w", full, err)
+			if err := out.Write(target, artefact, exists); err != nil {
+				if exists {
+					return fmt.Errorf("failed to edit %s: %w", displayPath(out, target), err)
 				}
-			} else {
-				if err := fileutils.AtomicWrite(full, artefact); err != nil {
-					return fmt.Errorf("failed to write %s: %w", full, err)
-				}
+				return fmt.Errorf("failed to write %s: %w", displayPath(out, target), err)
 			}
 
 			return nil
