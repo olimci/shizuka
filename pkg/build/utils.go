@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -72,7 +71,7 @@ func lookupErrPage(pageErrTemplates map[error]*template.Template, err error) *te
 
 func parseTemplates(fsys fs.FS, pattern string, funcs template.FuncMap) (*template.Template, error) {
 	if fsys == nil {
-		fsys = os.DirFS(".")
+		return nil, fmt.Errorf("fsys must not be nil")
 	}
 	files, err := doublestar.Glob(fsys, pattern)
 	if err != nil {
@@ -92,13 +91,11 @@ func parseTemplates(fsys fs.FS, pattern string, funcs template.FuncMap) (*templa
 			return nil, fmt.Errorf("failed to read template file %s: %w", file, err)
 		}
 
-		name := strings.TrimSuffix(path.Base(file), path.Ext(file))
-
-		if seen.HasAdd(name) {
-			return nil, fmt.Errorf("duplicate template name: %s", name)
+		if seen.HasAdd(file) {
+			return nil, fmt.Errorf("duplicate template name: %s", file)
 		}
 
-		_, err = tmpl.New(name).Parse(string(content))
+		_, err = tmpl.New(file).Parse(string(content))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse template %s: %w", file, err)
 		}
