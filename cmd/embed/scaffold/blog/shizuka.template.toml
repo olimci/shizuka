@@ -1,13 +1,11 @@
 [metadata]
-name = "Default"
-slug = "default"
-description = "A clean, minimal site with dark mode support"
+name = "Blog"
+slug = "blog"
+description = "A modern programming blog with code highlighting and clean typography"
 version = "1.0.0"
 shizuka_version = "0.1.0"
 
 [files]
-# Only strip .tmpl suffix from files that are scaffold templates (processed with variables)
-# Site template files like templates/page.tmpl should keep their extension
 strip_suffixes = []
 templates = ["_shizuka.toml.tmpl", "content/**/*.md"]
 files = ["**/*"]
@@ -19,12 +17,12 @@ files = ["**/*"]
 [variables.SiteName]
 name = "Site name"
 description = "Used for the site title and starter content."
-default = "My Shizuka Site"
+default = "Dev Blog"
 
 [variables.SiteDescription]
 name = "Site description"
 description = "Shown in metadata and site templates."
-default = "A clean, fast static site."
+default = "Thoughts on code, systems, and building things."
 
 [variables.SiteURL]
 name = "Site URL"
@@ -35,3 +33,8 @@ default = "https://example.com/"
 name = "Shizuka version"
 description = "Version to write into shizuka.toml."
 default = "0.1.0"
+
+[variables.AuthorName]
+name = "Author name"
+description = "Your name for the about section."
+default = "Your Name"

@@ -10,33 +10,28 @@
     <body>
         <div class="page">
             <header class="site-header">
-                <div class="brand">
-                    <a class="logo" href="{{.Site.URL}}">{{.Site.Title}}</a>
-                    <p class="tagline">{{.Site.Description}}</p>
+                <div class="header-inner">
+                    <div class="brand">
+                        <a class="logo" href="{{.Site.URL}}">{{.Site.Title}}</a>
+                        <p class="tagline">{{.Site.Description}}</p>
+                    </div>
+                    <nav class="nav">
+                        <a href="{{.Site.URL}}">Home</a>
+                        <a href="#posts">Posts</a>
+                    </nav>
                 </div>
-                <nav class="nav">
-                    <a href="{{.Site.URL}}">Home</a>
-                    <a href="#posts">Posts</a>
-                </nav>
             </header>
 
             <main>
                 <section class="hero">
-                    <div class="hero-text">
-                        <p class="eyebrow">Fresh start</p>
-                        <h1>{{.Page.Title}}</h1>
-                        {{if .Page.Description}}
-                        <p class="lead">{{.Page.Description}}</p>
-                        {{end}}
-                        <div class="content">{{.Page.Body}}</div>
-                        <div class="hero-actions">
-                            <a class="button" href="#posts">Read the posts</a>
-                            <a
-                                class="button ghost"
-                                href="https://github.com/olimci/shizuka"
-                                >Shizuka docs</a
-                            >
-                        </div>
+                    <h1>{{.Page.Title}}</h1>
+                    {{if .Page.Description}}
+                    <p class="lead">{{.Page.Description}}</p>
+                    {{end}}
+                    <div class="content">{{.Page.Body}}</div>
+                    <div class="hero-actions">
+                        <a class="button" href="#posts">Read the posts</a>
+                        <a class="button secondary" href="https://github.com/olimci/shizuka">Shizuka docs</a>
                     </div>
                 </section>
 

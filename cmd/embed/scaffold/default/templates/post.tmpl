@@ -10,36 +10,32 @@
     <body>
         <div class="page">
             <header class="site-header">
-                <div class="brand">
-                    <a class="logo" href="{{.Site.URL}}">{{.Site.Title}}</a>
-                    <p class="tagline">{{.Site.Description}}</p>
+                <div class="header-inner">
+                    <div class="brand">
+                        <a class="logo" href="{{.Site.URL}}">{{.Site.Title}}</a>
+                        <p class="tagline">{{.Site.Description}}</p>
+                    </div>
+                    <nav class="nav">
+                        <a href="{{.Site.URL}}">Home</a>
+                        <a href="{{.Site.URL}}#posts">Posts</a>
+                    </nav>
                 </div>
-                <nav class="nav">
-                    <a href="{{.Site.URL}}">Home</a>
-                    <a href="{{.Site.URL}}#posts">Posts</a>
-                </nav>
             </header>
 
             <main>
                 <article class="article">
                     <div class="article-header">
-                        <p class="eyebrow">Post</p>
                         <h1 class="article-title">{{.Page.Title}}</h1>
                         {{if .Page.Description}}
                         <p class="lead">{{.Page.Description}}</p>
                         {{end}}
                         <div class="article-meta">
-                            {{if not (.Page.Date.IsZero)}}<span
-                                >{{.Page.Date.Format "January 2, 2006"}}</span
-                            >{{end}} {{if not (.Page.Updated.IsZero)}}<span
-                                >Updated {{.Page.Updated.Format "January 2, 2006"}}</span
-                            >{{end}}
+                            {{if not (.Page.Date.IsZero)}}<span>{{.Page.Date.Format "January 2, 2006"}}</span>{{end}}
+                            {{if not (.Page.Updated.IsZero)}}<span>Updated {{.Page.Updated.Format "January 2, 2006"}}</span>{{end}}
                         </div>
                         {{ if .Page.Tags }}
                         <div class="tags">
-                            {{ range .Page.Tags }}<span class="tag"
-                                >{{ . }}</span
-                            >{{ end }}
+                            {{ range .Page.Tags }}<span class="tag">{{ . }}</span>{{ end }}
                         </div>
                         {{ end }}
                     </div>

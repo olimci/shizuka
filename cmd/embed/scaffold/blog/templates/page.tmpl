@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Page.Title}} | {{.Site.Title}}</title>
+    <meta name="description" content="{{.Page.Description}}">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="site-container">
+        <aside class="sidebar">
+            <div>
+                <a href="{{.Site.URL}}" class="site-logo">{{.Site.Title}}</a>
+                <p class="site-tagline">{{.Site.Description}}</p>
+
+                <nav class="nav">
+                    <a href="{{.Site.URL}}">Home</a>
+                    <a href="{{.Site.URL}}#posts">Posts</a>
+                    <a href="/about/">About</a>
+                </nav>
+            </div>
+
+            <div class="sidebar-footer">
+                <p>&copy; 2024 {{.Site.Params.author}}</p>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <article>
+                <header class="article-header">
+                    <h1 class="article-title">{{.Page.Title}}</h1>
+                    {{if .Page.Description}}
+                    <p class="hero-lead">{{.Page.Description}}</p>
+                    {{end}}
+                </header>
+
+                <div class="content">{{.Page.Body}}</div>
+
+                <footer class="article-footer">
+                    <a href="{{.Site.URL}}" class="back-link">← Back to home</a>
+                </footer>
+            </article>
+        </main>
+    </div>
+</body>
+</html>

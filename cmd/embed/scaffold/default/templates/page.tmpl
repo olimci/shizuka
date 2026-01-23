@@ -10,20 +10,21 @@
     <body>
         <div class="page">
             <header class="site-header">
-                <div class="brand">
-                    <a class="logo" href="{{.Site.URL}}">{{.Site.Title}}</a>
-                    <p class="tagline">{{.Site.Description}}</p>
+                <div class="header-inner">
+                    <div class="brand">
+                        <a class="logo" href="{{.Site.URL}}">{{.Site.Title}}</a>
+                        <p class="tagline">{{.Site.Description}}</p>
+                    </div>
+                    <nav class="nav">
+                        <a href="{{.Site.URL}}">Home</a>
+                        <a href="{{.Site.URL}}#posts">Posts</a>
+                    </nav>
                 </div>
-                <nav class="nav">
-                    <a href="{{.Site.URL}}">Home</a>
-                    <a href="{{.Site.URL}}#posts">Posts</a>
-                </nav>
             </header>
 
             <main>
                 <article class="article">
                     <div class="article-header">
-                        <p class="eyebrow">Page</p>
                         <h1 class="article-title">{{.Page.Title}}</h1>
                         {{if .Page.Description}}<p class="lead">{{.Page.Description}}</p>{{end}}
                     </div>

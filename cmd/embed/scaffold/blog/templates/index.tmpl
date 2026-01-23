@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Site.Title}}</title>
+    <meta name="description" content="{{.Site.Description}}">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="site-container">
+        <aside class="sidebar">
+            <div>
+                <a href="{{.Site.URL}}" class="site-logo">{{.Site.Title}}</a>
+                <p class="site-tagline">{{.Site.Description}}</p>
+
+                <nav class="nav">
+                    <a href="{{.Site.URL}}" class="active">Home</a>
+                    <a href="#posts">Posts</a>
+                    <a href="/about/">About</a>
+                </nav>
+            </div>
+
+            <div class="sidebar-footer">
+                <p>&copy; 2024 {{.Site.Params.author}}</p>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <section class="hero">
+                <h1 class="hero-title">{{.Page.Title}}</h1>
+                {{if .Page.Description}}
+                <p class="hero-lead">{{.Page.Description}}</p>
+                {{end}}
+                <div class="content">{{.Page.Body}}</div>
+                <div class="hero-actions">
+                    <a href="#posts" class="button button-primary">Read Posts</a>
+                    <a href="https://github.com/olimci/shizuka" class="button button-secondary">View Docs</a>
+                </div>
+            </section>
+
+            <section id="posts">
+                <h2 class="section-title">Recent Posts</h2>
+                <p class="section-subtitle">Latest thoughts and tutorials</p>
+
+                {{ $posts := where "Section" "posts" .Site.Collections.All }}
+                {{ $sorted := sort "Date" "desc" $posts }}
+                {{ if $sorted }}
+                <div class="posts-list">
+                    {{ range $sorted }}
+                    <article class="post-card">
+                        <div class="post-meta">
+                            {{ if not (.Date.IsZero) }}
+                            <time class="post-date">{{ .Date.Format "Jan 2, 2006" }}</time>
+                            {{ end }}
+                            {{ if .Tags }}
+                            <span>•</span>
+                            <span>{{ len .Tags }} {{ if eq (len .Tags) 1 }}tag{{ else }}tags{{ end }}</span>
+                            {{ end }}
+                        </div>
+                        <h3 class="post-title">
+                            <a href="{{.Canon}}">{{ .Title }}</a>
+                        </h3>
+                        {{ if .Description }}
+                        <p class="post-excerpt">{{ .Description }}</p>
+                        {{ end }}
+                        {{ if .Tags }}
+                        <div class="post-tags">
+                            {{ range .Tags }}<span class="tag">{{ . }}</span>{{ end }}
+                        </div>
+                        {{ end }}
+                    </article>
+                    {{ end }}
+                </div>
+                {{ else }}
+                <div class="empty-state">
+                    <p>No posts yet. Add your first post in <code>content/posts/</code></p>
+                </div>
+                {{ end }}
+            </section>
+        </main>
+    </div>
+</body>
+</html>
