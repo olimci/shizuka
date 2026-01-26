@@ -1,4 +1,4 @@
-package build
+package steps
 
 import (
 	"context"
@@ -9,14 +9,14 @@ import (
 	"github.com/olimci/shizuka/pkg/manifest"
 )
 
-// Step represents the DAG node for a build step
+// Step represents the DAG node for a build step.
 type Step struct {
 	ID   string
 	Deps []string
 	Fn   func(*StepContext) error
 }
 
-// StepFunc creates a new Step with the given ID, function, and dependencies
+// StepFunc creates a new Step with the given ID, function, and dependencies.
 func StepFunc(id string, fn func(*StepContext) error, deps ...string) Step {
 	if deps == nil {
 		deps = []string{}
@@ -31,11 +31,22 @@ func StepFunc(id string, fn func(*StepContext) error, deps ...string) Step {
 
 // StepContext is the interface for the build step to interact with the build process.
 type StepContext struct {
-	Ctx          context.Context
-	Manifest     *manifest.Manifest
-	SourceFS     fs.FS
-	SourceRoot   string
+	Ctx        context.Context
+	Manifest   *manifest.Manifest
+	SourceFS   fs.FS
+	SourceRoot string
+
 	eventHandler events.Handler
+}
+
+func NewStepContext(ctx context.Context, man *manifest.Manifest, sourceFS fs.FS, sourceRoot string, handler events.Handler) StepContext {
+	return StepContext{
+		Ctx:          ctx,
+		Manifest:     man,
+		SourceFS:     sourceFS,
+		SourceRoot:   sourceRoot,
+		eventHandler: handler,
+	}
 }
 
 func (sc *StepContext) event(level events.Level, message string, err error) {
@@ -46,32 +57,32 @@ func (sc *StepContext) event(level events.Level, message string, err error) {
 	})
 }
 
-// Debug reports a debug message
+// Debug reports a debug message.
 func (sc *StepContext) Debug(message string) {
 	sc.event(events.Debug, message, nil)
 }
 
-// Debugf reports a debug message with a format string
+// Debugf reports a debug message with a format string.
 func (sc *StepContext) Debugf(format string, args ...any) {
 	sc.event(events.Debug, fmt.Sprintf(format, args...), nil)
 }
 
-// Info reports an info-level message
+// Info reports an info-level message.
 func (sc *StepContext) Info(message string) {
 	sc.event(events.Info, message, nil)
 }
 
-// Infof reports an info-level message with a format string
+// Infof reports an info-level message with a format string.
 func (sc *StepContext) Infof(format string, args ...any) {
 	sc.event(events.Info, fmt.Sprintf(format, args...), nil)
 }
 
-// Error reports an error-level message
+// Error reports an error-level message.
 func (sc *StepContext) Error(err error, message string) {
 	sc.event(events.Error, message, err)
 }
 
-// Errorf reports an error-level message with a format string
+// Errorf reports an error-level message with a format string.
 func (sc *StepContext) Errorf(err error, format string, args ...any) {
 	sc.event(events.Error, fmt.Sprintf(format, args...), err)
 }

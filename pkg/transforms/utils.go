@@ -17,10 +17,6 @@ func firstNonzero[T comparable](values ...T) T {
 	return zero
 }
 
-// CleanSlug normalizes and validates a slug.
-//
-// A slug is a URL path without a leading or trailing slash. It may contain
-// multiple segments separated by "/".
 func CleanSlug(raw string) (string, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -36,7 +32,6 @@ func CleanSlug(raw string) (string, error) {
 		return "", nil
 	}
 
-	// Reject anything that would be rewritten by path.Clean to avoid ambiguity.
 	if cleaned := path.Clean(s); cleaned != s {
 		return "", fmt.Errorf("slug must be clean (got %q, want %q)", raw, cleaned)
 	}
@@ -58,7 +53,6 @@ func CleanSlug(raw string) (string, error) {
 	return s, nil
 }
 
-// RFC 3986 unreserved characters: ALPHA / DIGIT / "-" / "." / "_" / "~"
 func isUnreservedURLRune(r rune) bool {
 	switch {
 	case r >= 'a' && r <= 'z':

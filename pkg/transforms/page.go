@@ -1,7 +1,6 @@
 package transforms
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -10,10 +9,6 @@ import (
 	"path"
 	"strings"
 	"time"
-
-	"github.com/BurntSushi/toml"
-	gm "github.com/yuin/goldmark"
-	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -46,7 +41,9 @@ type Page struct {
 
 	Headers map[string]string
 
-	Body template.HTML
+	Body     template.HTML
+	BodyRaw  []byte
+	BodyType string
 
 	Featured bool
 	Draft    bool
@@ -116,23 +113,29 @@ type PageTemplate struct {
 	Error error
 }
 
-// BuildPageFS builds a page from a file within the provided fs.FS.
-func BuildPageFS(fsys fs.FS, source string, md gm.Markdown) (*Page, error) {
+// BuildPage builds a page from a file within the provided fs.FS.
+func BuildPage(fsys fs.FS, source string) (*Page, error) {
 	var (
-		fm   *Frontmatter
-		body string
-		err  error
+		fm       *Frontmatter
+		body     []byte
+		err      error
+		pageType string
 	)
 
+	// TODO: should extensions be able to create parsers here?
 	switch ext := path.Ext(path.Base(source)); ext {
 	case ".md":
-		fm, body, err = buildMDFromFS(fsys, source, md)
+		fm, body, err = buildMD(fsys, source)
+		pageType = "markdown"
 	case ".toml":
-		fm, body, err = buildTOMLFromFS(fsys, source)
+		fm, body, err = buildTOML(fsys, source)
+		pageType = "data"
 	case ".yaml", ".yml":
-		fm, body, err = buildYamlFromFS(fsys, source)
+		fm, body, err = buildYaml(fsys, source)
+		pageType = "data"
 	case ".json":
-		fm, body, err = buildJSONFromFS(fsys, source)
+		fm, body, err = buildJSON(fsys, source)
+		pageType = "data"
 	default:
 		return nil, fmt.Errorf("unsupported file extension: %s", ext)
 	}
@@ -158,75 +161,9 @@ func BuildPageFS(fsys fs.FS, source string, md gm.Markdown) (*Page, error) {
 		Headers:     fm.Headers,
 		RSS:         fm.RSS,
 		Sitemap:     fm.Sitemap,
-		Body:        template.HTML(body),
+		BodyRaw:     body,
+		BodyType:    pageType,
 		Featured:    fm.Featured,
 		Draft:       fm.Draft,
 	}, nil
-}
-
-func buildMDFromFS(fsys fs.FS, path string, md gm.Markdown) (*Frontmatter, string, error) {
-	doc, err := fs.ReadFile(fsys, path)
-	if err != nil {
-		return nil, "", err
-	}
-
-	fm, body, err := ExtractFrontmatter(doc)
-	if err != nil {
-		return nil, "", err
-	}
-
-	var buf strings.Builder
-	if err := md.Convert(body, &buf); err != nil {
-		return nil, "", err
-	}
-
-	return fm, buf.String(), nil
-}
-
-func buildTOMLFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
-	file, err := fsys.Open(path)
-	if err != nil {
-		return nil, "", err
-	}
-	defer file.Close()
-
-	fm := new(Frontmatter)
-
-	if _, err := toml.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", err
-	}
-
-	return fm, fm.Body, nil
-}
-
-func buildYamlFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
-	file, err := fsys.Open(path)
-	if err != nil {
-		return nil, "", err
-	}
-	defer file.Close()
-
-	fm := new(Frontmatter)
-
-	if err := yaml.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", err
-	}
-
-	return fm, fm.Body, nil
-}
-
-func buildJSONFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
-	file, err := fsys.Open(path)
-	if err != nil {
-		return nil, "", err
-	}
-	defer file.Close()
-
-	fm := new(Frontmatter)
-
-	if err := json.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", err
-	}
-
-	return fm, fm.Body, nil
 }

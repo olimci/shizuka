@@ -30,7 +30,6 @@ type Frontmatter struct {
 	Headers map[string]string `toml:"headers" yaml:"headers" json:"headers"`
 
 	Template string `toml:"template" yaml:"template" json:"template"`
-	Body     string `toml:"body" yaml:"body" json:"body"`
 
 	Featured bool `toml:"featured" yaml:"featured" json:"featured"`
 	Draft    bool `toml:"draft" yaml:"draft" json:"draft"`
