@@ -10,6 +10,7 @@ import (
 	"github.com/olimci/shizuka/pkg/build"
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/events"
+	"github.com/olimci/shizuka/pkg/steps"
 	"github.com/urfave/cli/v3"
 )
 
@@ -62,8 +63,8 @@ func runBuild(ctx context.Context, cmd *cli.Command) error {
 			opts.
 				WithDev().
 				WithPageErrorTemplates(map[error]*template.Template{
-					build.ErrNoTemplate:       templateFallback.Get(),
-					build.ErrTemplateNotFound: templateFallback.Get(),
+					steps.ErrNoTemplate:       templateFallback.Get(),
+					steps.ErrTemplateNotFound: templateFallback.Get(),
 					nil:                       templateError.Get(),
 				}).
 				WithErrTemplate(templateBuildError.Get())
@@ -115,8 +116,8 @@ func runXBuild(ctx context.Context, cmd *cli.Command) error {
 		opts.
 			WithDev().
 			WithPageErrorTemplates(map[error]*template.Template{
-				build.ErrNoTemplate:       templateFallback.Get(),
-				build.ErrTemplateNotFound: templateFallback.Get(),
+				steps.ErrNoTemplate:       templateFallback.Get(),
+				steps.ErrTemplateNotFound: templateFallback.Get(),
 				nil:                       templateError.Get(),
 			}).
 			WithErrTemplate(templateBuildError.Get())
