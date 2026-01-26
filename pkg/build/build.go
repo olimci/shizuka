@@ -66,7 +66,7 @@ func Build(opts *config.Options) (error, *events.Summary) {
 
 	buildSteps := make([]steps.Step, 0)
 	if config.Build.Steps.Static != nil {
-		buildSteps = append(buildSteps, steps.StepStatic())
+		buildSteps = append(buildSteps, steps.StepStatic)
 	}
 	if config.Build.Steps.Content != nil {
 		buildSteps = append(buildSteps, steps.StepContent()...)
@@ -115,11 +115,11 @@ func build(buildSteps []steps.Step, config *config.Config, options *config.Optio
 		return err, summary()
 	}
 
-	runErr := dag.Run(options.Context, options.MaxWorkers, func(ctx context.Context, id string) error {
+	runErr := dag.Run(options.Context, options.MaxWorkers, func(ctx context.Context, id steps.StepID) error {
 		step := dag.m[id]
 		sc := steps.NewStepContext(ctx, man, sourceFS, sourceRoot, collector)
 		if err := step.Fn(&sc); err != nil {
-			return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
+			return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID.String(), err)
 		}
 		return nil
 	})
@@ -156,27 +156,27 @@ func build(buildSteps []steps.Step, config *config.Config, options *config.Optio
 // newDAG constructs a DAG from a slice of steps.
 func newDAG(buildSteps []steps.Step) (*dag, error) {
 	d := &dag{
-		m:   make(map[string]steps.Step),
-		adj: make(map[string][]string),
-		deg: make(map[string]int),
+		m:   make(map[steps.StepID]steps.Step),
+		adj: make(map[steps.StepID][]steps.StepID),
+		deg: make(map[steps.StepID]int),
 	}
 
 	for _, step := range buildSteps {
 		if _, ex := d.m[step.ID]; ex {
-			return nil, fmt.Errorf("%w: %s", ErrDuplicateStep, step.ID)
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateStep, step.ID.String())
 		}
 		d.m[step.ID] = step
 		d.deg[step.ID] = 0
 	}
 
 	for _, step := range buildSteps {
-		seen := set.New[string]()
+		seen := set.New[steps.StepID]()
 		for _, dep := range step.Deps {
 			if step.ID == dep {
-				return nil, fmt.Errorf("%w: %s", ErrSelfDependency, step.ID)
+				return nil, fmt.Errorf("%w: %s", ErrSelfDependency, step.ID.String())
 			}
 			if _, ex := d.m[dep]; !ex {
-				return nil, fmt.Errorf("%w: %s", ErrUnresolvedDependency, dep)
+				return nil, fmt.Errorf("%w: %s", ErrUnresolvedDependency, dep.String())
 			}
 			if seen.Has(dep) {
 				continue
@@ -193,16 +193,16 @@ func newDAG(buildSteps []steps.Step) (*dag, error) {
 
 // dag is an internal struct representing a directed acyclic graph
 type dag struct {
-	m   map[string]steps.Step
-	adj map[string][]string
-	deg map[string]int
+	m   map[steps.StepID]steps.Step
+	adj map[steps.StepID][]steps.StepID
+	deg map[steps.StepID]int
 }
 
-func (d *dag) Run(ctx context.Context, maxWorkers int, run func(ctx context.Context, id string) error) error {
-	deg := make(map[string]int, len(d.deg))
+func (d *dag) Run(ctx context.Context, maxWorkers int, run func(ctx context.Context, id steps.StepID) error) error {
+	deg := make(map[steps.StepID]int, len(d.deg))
 	maps.Copy(deg, d.deg)
 
-	var ready []string
+	var ready []steps.StepID
 	for id, count := range deg {
 		if count == 0 {
 			ready = append(ready, id)
@@ -217,13 +217,19 @@ func (d *dag) Run(ctx context.Context, maxWorkers int, run func(ctx context.Cont
 		g.SetLimit(maxWorkers)
 	}
 
+	rm := newResourceManager()
+	go func() {
+		<-ctx.Done()
+		rm.Broadcast()
+	}()
+
 	var (
 		mu       sync.Mutex
 		done     int
-		schedule func(id string)
+		schedule func(id steps.StepID)
 	)
 
-	schedule = func(id string) {
+	schedule = func(id steps.StepID) {
 		g.Go(func() error {
 			select {
 			case <-ctx.Done():
@@ -231,11 +237,17 @@ func (d *dag) Run(ctx context.Context, maxWorkers int, run func(ctx context.Cont
 			default:
 			}
 
+			step := d.m[id]
+			if err := rm.Acquire(ctx, step); err != nil {
+				return err
+			}
+			defer rm.Release(step)
+
 			if err := run(ctx, id); err != nil {
 				return err
 			}
 
-			var ready []string
+			var ready []steps.StepID
 			mu.Lock()
 			done++
 			for _, req := range d.adj[id] {
@@ -266,7 +278,7 @@ func (d *dag) Run(ctx context.Context, maxWorkers int, run func(ctx context.Cont
 		var stuck []string
 		for id, count := range deg {
 			if count != 0 {
-				stuck = append(stuck, id)
+				stuck = append(stuck, id.String())
 			}
 		}
 		return fmt.Errorf("%w: %v", ErrCircularDependency, stuck)

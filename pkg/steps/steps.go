@@ -24,46 +24,65 @@ var (
 	ErrTemplateNotFound = errors.New("template not found")
 )
 
-// StepStatic attatches static files.
-func StepStatic() Step {
-	return StepFunc("static", func(sc *StepContext) error {
-		cfg := manifest.GetAs(sc.Manifest, keys.Config)
+var (
+	IDStatic         = StepID{Owner: "shizuka", Name: "static"}
+	IDPagesIndex     = StepID{Owner: "shizuka", Name: "pages", Sub: "index"}
+	IDPagesRender    = StepID{Owner: "shizuka", Name: "pages", Sub: "render"}
+	IDPagesTemplates = StepID{Owner: "shizuka", Name: "pages", Sub: "templates"}
+	IDPagesResolve   = StepID{Owner: "shizuka", Name: "pages", Sub: "resolve"}
+	IDPagesBuild     = StepID{Owner: "shizuka", Name: "pages", Sub: "build"}
+	IDHeaders        = StepID{Owner: "shizuka", Name: "headers"}
+	IDRedirects      = StepID{Owner: "shizuka", Name: "redirects"}
+	IDRSS            = StepID{Owner: "shizuka", Name: "rss"}
+	IDSitemap        = StepID{Owner: "shizuka", Name: "sitemap"}
+)
+var StepStatic = StepFunc(IDStatic, func(sc *StepContext) error {
+	cfg := manifest.GetAs(sc.Manifest, keys.Config)
 
-		m := transforms.NewMinifier(cfg.Build.Minify)
+	m := transforms.NewMinifier(cfg.Build.Minify)
 
-		sourceRoot, err := cleanFSPath(cfg.Build.Steps.Static.Source)
-		if err != nil {
-			return fmt.Errorf("static source: %w", err)
-		}
-		targetRoot, err := cleanFSPath(cfg.Build.Steps.Static.Destination)
-		if err != nil {
-			return fmt.Errorf("static destination: %w", err)
-		}
+	sourceRoot, err := cleanFSPath(cfg.Build.Steps.Static.Source)
+	if err != nil {
+		return fmt.Errorf("static source: %w", err)
+	}
+	targetRoot, err := cleanFSPath(cfg.Build.Steps.Static.Destination)
+	if err != nil {
+		return fmt.Errorf("static destination: %w", err)
+	}
 
-		files, err := fileutils.WalkFilesFS(sc.SourceFS, sourceRoot)
-		if err != nil {
-			return err
-		}
+	files, err := fileutils.WalkFilesFS(sc.SourceFS, sourceRoot)
+	if err != nil {
+		return err
+	}
 
-		for _, rel := range files.Values() {
-			source := path.Join(sourceRoot, rel)
-			target := path.Join(targetRoot, rel)
-			sc.Manifest.Emit(manifest.StaticArtefact(manifest.Claim{
-				Owner:  "static",
-				Source: source,
-				Target: target,
-				Canon:  path.Join(targetRoot, rel),
-			}).Post(m))
-		}
+	for _, rel := range files.Values() {
+		source := path.Join(sourceRoot, rel)
+		target := path.Join(targetRoot, rel)
+		sc.Manifest.Emit(manifest.StaticArtefact(manifest.Claim{
+			Owner:  "static",
+			Source: source,
+			Target: target,
+			Canon:  path.Join(targetRoot, rel),
+		}).Post(m))
+	}
 
-		return nil
-	})
-}
+	return nil
+})
 
 // StepContent builds pages.
 func StepContent() []Step {
-	// build creates the manifest artefacts for the pages.
-	build := StepFunc("pages:build", func(sc *StepContext) error {
+	return []Step{
+		StepPagesIndex(),
+		StepPagesRender(),
+		StepPagesTemplates(),
+		StepPagesResolve(),
+		StepPagesBuild(),
+	}
+}
+
+// StepPagesBuild creates the manifest artefacts for pages.
+func StepPagesBuild() Step {
+	return StepFunc(IDPagesBuild, func(sc *StepContext) error {
 		opts := manifest.GetAs(sc.Manifest, keys.Options)
 		cfg := manifest.GetAs(sc.Manifest, keys.Config)
 		pages := manifest.GetAs(sc.Manifest, keys.Pages)
@@ -119,10 +138,13 @@ func StepContent() []Step {
 		}
 
 		return nil
-	}, "pages:resolve", "pages:templates")
+	}).WithDeps(IDPagesRender, IDPagesResolve, IDPagesTemplates).
+		WithReads(string(keys.Pages), string(keys.Site), string(keys.Templates))
+}
 
-	// resolve creates the manifest registry entries for site information.
-	resolve := StepFunc("pages:resolve", func(sc *StepContext) error {
+// StepPagesResolve creates the manifest registry entries for site information.
+func StepPagesResolve() Step {
+	return StepFunc(IDPagesResolve, func(sc *StepContext) error {
 		opts := manifest.GetAs(sc.Manifest, keys.Options)
 		cfg := manifest.GetAs(sc.Manifest, keys.Config)
 		pages := manifest.GetAs(sc.Manifest, keys.Pages)
@@ -245,9 +267,12 @@ func StepContent() []Step {
 		manifest.SetAs(sc.Manifest, keys.Site, site)
 
 		return nil
-	}, "pages:index")
+	}).WithDeps(IDPagesRender).WithWrites(string(keys.Pages), string(keys.Site))
+}
 
-	templates := StepFunc("pages:templates", func(sc *StepContext) error {
+// StepPagesTemplates parses the page templates.
+func StepPagesTemplates() Step {
+	return StepFunc(IDPagesTemplates, func(sc *StepContext) error {
 		config := manifest.GetAs(sc.Manifest, keys.Config)
 
 		glob, err := cleanFSGlob(config.Build.Steps.Content.TemplateGlob)
@@ -263,9 +288,12 @@ func StepContent() []Step {
 		manifest.SetAs(sc.Manifest, keys.Templates, tmpl)
 
 		return nil
-	})
+	}).WithWrites(string(keys.Templates))
+}
 
-	render := StepFunc("pages:render", func(sc *StepContext) error {
+// StepPagesRender renders page bodies from content.
+func StepPagesRender() Step {
+	return StepFunc(IDPagesRender, func(sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, keys.Config)
 		pages := manifest.GetAs(sc.Manifest, keys.Pages)
 
@@ -287,10 +315,12 @@ func StepContent() []Step {
 		}
 
 		return nil
-	}, "pages:index")
+	}).WithDeps(IDPagesIndex).WithWrites(string(keys.Pages))
+}
 
-	// index indexes pages and creates the manifest registry entries for page information.
-	index := StepFunc("pages:index", func(sc *StepContext) error {
+// StepPagesIndex indexes pages and creates the manifest registry entries for page information.
+func StepPagesIndex() Step {
+	return StepFunc(IDPagesIndex, func(sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, keys.Config)
 
 		root, err := cleanFSPath(cfg.Build.Steps.Content.Source)
@@ -395,20 +425,12 @@ func StepContent() []Step {
 		manifest.SetAs(sc.Manifest, keys.Pages, pageTree)
 
 		return nil
-	})
-
-	return []Step{
-		index,
-		render,
-		templates,
-		resolve,
-		build,
-	}
+	}).WithWrites(string(keys.Pages))
 }
 
 // StepHeaders writes a headers file from config.
 func StepHeaders() Step {
-	return StepFunc("headers", func(sc *StepContext) error {
+	return StepFunc(IDHeaders, func(sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, keys.Config)
 		pages := manifest.GetAs(sc.Manifest, keys.Pages)
 
@@ -450,12 +472,12 @@ func StepHeaders() Step {
 		})
 
 		return nil
-	}, "pages:index")
+	}).WithDeps(IDPagesResolve).WithReads(string(keys.Pages))
 }
 
 // StepRedirects writes a redirects file from config.
 func StepRedirects() Step {
-	return StepFunc("redirects", func(sc *StepContext) error {
+	return StepFunc(IDRedirects, func(sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, keys.Config)
 		pages := manifest.GetAs(sc.Manifest, keys.Pages)
 
@@ -507,11 +529,11 @@ func StepRedirects() Step {
 		})
 
 		return nil
-	}, "pages:index")
+	}).WithDeps(IDPagesResolve).WithReads(string(keys.Pages))
 }
 
 func StepRSS() Step {
-	return StepFunc("rss", func(sc *StepContext) error {
+	return StepFunc(IDRSS, func(sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, keys.Config)
 		pages := manifest.GetAs(sc.Manifest, keys.Pages)
 		site := manifest.GetAs(sc.Manifest, keys.Site)
@@ -528,11 +550,11 @@ func StepRSS() Step {
 		))
 
 		return nil
-	}, "pages:resolve")
+	}).WithDeps(IDPagesResolve).WithReads(string(keys.Pages), string(keys.Site))
 }
 
 func StepSitemap() Step {
-	return StepFunc("sitemap", func(sc *StepContext) error {
+	return StepFunc(IDSitemap, func(sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, keys.Config)
 		pages := manifest.GetAs(sc.Manifest, keys.Pages)
 		site := manifest.GetAs(sc.Manifest, keys.Site)
@@ -549,5 +571,5 @@ func StepSitemap() Step {
 		))
 
 		return nil
-	}, "pages:resolve")
+	}).WithDeps(IDPagesResolve).WithReads(string(keys.Pages), string(keys.Site))
 }

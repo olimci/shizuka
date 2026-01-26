@@ -9,24 +9,52 @@ import (
 	"github.com/olimci/shizuka/pkg/manifest"
 )
 
-// Step represents the DAG node for a build step.
-type Step struct {
-	ID   string
-	Deps []string
-	Fn   func(*StepContext) error
+type StepID struct {
+	Owner string
+	Name  string
+	Sub   string
 }
 
-// StepFunc creates a new Step with the given ID, function, and dependencies.
-func StepFunc(id string, fn func(*StepContext) error, deps ...string) Step {
-	if deps == nil {
-		deps = []string{}
+func (s StepID) String() string {
+	if s.Sub == "" {
+		return fmt.Sprintf("%s:%s", s.Owner, s.Name)
 	}
+	return fmt.Sprintf("%s:%s:%s", s.Owner, s.Name, s.Sub)
+}
 
+// Step represents the DAG node for a build step.
+type Step struct {
+	ID     StepID
+	Deps   []StepID
+	Reads  []string
+	Writes []string
+	Fn     func(*StepContext) error
+}
+
+// StepFunc creates a new Step with the given ID and function.
+func StepFunc(id StepID, fn func(*StepContext) error) Step {
 	return Step{
-		ID:   id,
-		Deps: deps,
-		Fn:   fn,
+		ID: id,
+		Fn: fn,
 	}
+}
+
+// WithReads returns a copy of the step with read resources attached.
+func (s Step) WithReads(reads ...string) Step {
+	s.Reads = append([]string(nil), reads...)
+	return s
+}
+
+// WithWrites returns a copy of the step with write resources attached.
+func (s Step) WithWrites(writes ...string) Step {
+	s.Writes = append([]string(nil), writes...)
+	return s
+}
+
+// WithDeps returns a copy of the step with dependencies attached.
+func (s Step) WithDeps(deps ...StepID) Step {
+	s.Deps = append(s.Deps, deps...)
+	return s
 }
 
 // StepContext is the interface for the build step to interact with the build process.
