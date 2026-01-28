@@ -18,9 +18,10 @@ import (
 
 // Config represents the configuration for the build process.
 type Config struct {
-	Shizuka ConfigShizuka `toml:"shizuka" yaml:"shizuka" json:"shizuka"`
-	Site    ConfigSite    `toml:"site" yaml:"site" json:"site"`
-	Build   ConfigBuild   `toml:"build" yaml:"build" json:"build"`
+	Shizuka    ConfigShizuka              `toml:"shizuka" yaml:"shizuka" json:"shizuka"`
+	Site       ConfigSite                 `toml:"site" yaml:"site" json:"site"`
+	Build      ConfigBuild                `toml:"build" yaml:"build" json:"build"`
+	Extensions map[string]ConfigExtension `toml:"extensions" yaml:"extensions" json:"extensions"`
 }
 
 type ConfigShizuka struct {
@@ -40,6 +41,11 @@ type ConfigBuild struct {
 	Minify bool   `toml:"minify" yaml:"minify" json:"minify"`
 
 	Steps ConfigBuildSteps `toml:"steps" yaml:"steps" json:"steps"`
+}
+
+type ConfigExtension struct {
+	Exec   []string       `toml:"exec" yaml:"exec" json:"exec"`
+	Params map[string]any `toml:"params" yaml:"params" json:"params"`
 }
 
 type ConfigBuildSteps struct {

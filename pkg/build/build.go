@@ -69,23 +69,25 @@ func Build(opts *config.Options) (error, *events.Summary) {
 		buildSteps = append(buildSteps, steps.StepStatic)
 	}
 	if config.Build.Steps.Content != nil {
-		buildSteps = append(buildSteps, steps.StepContent()...)
+		buildSteps = append(buildSteps,
+			steps.StepPagesIndex,
+			steps.StepPagesResolve,
+			steps.StepPagesRender,
+			steps.StepPagesTemplates,
+			steps.StepPagesBuild,
+		)
 	}
 	if config.Build.Steps.Headers != nil {
-		buildSteps = append(buildSteps, steps.StepHeaders())
+		buildSteps = append(buildSteps, steps.StepHeaders)
 	}
 	if config.Build.Steps.Redirects != nil {
-		buildSteps = append(buildSteps, steps.StepRedirects())
+		buildSteps = append(buildSteps, steps.StepRedirects)
 	}
 	if config.Build.Steps.RSS != nil {
-		buildSteps = append(buildSteps, steps.StepRSS())
+		buildSteps = append(buildSteps, steps.StepRSS)
 	}
 	if config.Build.Steps.Sitemap != nil {
-		buildSteps = append(buildSteps, steps.StepSitemap())
-	}
-
-	if opts.OutputPath != "" {
-
+		buildSteps = append(buildSteps, steps.StepSitemap)
 	}
 
 	return build(buildSteps, config, opts, sourceFS, sourceRoot, dest)
@@ -117,8 +119,8 @@ func build(buildSteps []steps.Step, config *config.Config, options *config.Optio
 
 	runErr := dag.Run(options.Context, options.MaxWorkers, func(ctx context.Context, id steps.StepID) error {
 		step := dag.m[id]
-		sc := steps.NewStepContext(ctx, man, sourceFS, sourceRoot, collector)
-		if err := step.Fn(&sc); err != nil {
+		sc := steps.NewStepContext(man, sourceFS, sourceRoot, collector, step)
+		if err := step.Fn(ctx, sc); err != nil {
 			return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID.String(), err)
 		}
 		return nil

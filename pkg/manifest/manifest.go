@@ -16,26 +16,6 @@ import (
 
 var ErrConflicts = errors.New("conflicts")
 
-// K is a typed key
-type K[T any] string
-
-// GetAs retrieves a value from the manifest as the specified type. UB for bad keys/types
-func GetAs[T any](m *Manifest, k K[T]) T {
-	if v, ok := m.Get(string(k)); ok {
-		if vt, ok := v.(T); ok {
-			return vt
-		}
-	}
-	return *new(T)
-}
-
-func SetAs[T any](m *Manifest, k K[T], v T) {
-	m.registryMu.Lock()
-	defer m.registryMu.Unlock()
-
-	m.registry[string(k)] = v
-}
-
 // New creates a new manifest
 func New() *Manifest {
 	return &Manifest{

@@ -18,6 +18,10 @@ func resolveSource(opts *config.Options) (iofs.Readable, string, error) {
 		if filepath.IsAbs(configPath) {
 			return iofs.FromOS(filepath.Dir(configPath)), filepath.Base(configPath), nil
 		}
+		dir := filepath.Dir(configPath)
+		if dir != "." {
+			return iofs.FromOS(dir), filepath.Base(configPath), nil
+		}
 		return iofs.FromOS("."), configPath, nil
 	}
 	if filepath.IsAbs(configPath) {
