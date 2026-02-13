@@ -98,6 +98,9 @@ func StepContent() []Step {
 			if page == nil {
 				continue
 			}
+			if page.Draft && !opts.Dev {
+				continue
+			}
 
 			if tmpl.Lookup(page.Meta.Template) == nil {
 				var err error

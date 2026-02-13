@@ -35,17 +35,6 @@ type BuildCtx struct {
 }
 
 func Build(opts *config.Options) (error, *events.Summary) {
-	return buildWithIO(opts)
-}
-
-func BuildWithDestination(opts *config.Options, dest iofs.Writable) (error, *events.Summary) {
-	if dest != nil {
-		opts = opts.WithDestination(dest)
-	}
-	return buildWithIO(opts)
-}
-
-func buildWithIO(opts *config.Options) (error, *events.Summary) {
 	source, configPath, err := resolveSource(opts)
 	if err != nil {
 		return err, nil
