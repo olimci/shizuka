@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"time"
@@ -54,7 +55,7 @@ func xBuildCmd() *cli.Command {
 }
 
 func runBuild(ctx context.Context, cmd *cli.Command) error {
-	return prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
+	err := prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
 		defer p.Clear()
 		opts := config.DefaultOptions().WithContext(ctx)
 
@@ -106,6 +107,10 @@ func runBuild(ctx context.Context, cmd *cli.Command) error {
 		}
 		return nil
 	}, prompter.WithContext(ctx), prompter.WithStyles(styles))
+	if err != nil && errors.Is(err, prompter.ErrNoninteractive) {
+		return runXBuild(ctx, cmd)
+	}
+	return err
 }
 
 func runXBuild(ctx context.Context, cmd *cli.Command) error {

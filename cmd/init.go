@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -86,7 +87,7 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("--list and --list-vars cannot be used together!")
 	}
 
-	return prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
+	err = prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
 		defer p.Clear()
 		tmpl, coll, close, err := initResolve(ctx, source)
 		if err != nil {
@@ -147,6 +148,10 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 
 		return nil
 	}, prompter.WithContext(ctx), prompter.WithStyles(styles))
+	if err != nil && errors.Is(err, prompter.ErrNoninteractive) {
+		return runXInit(ctx, cmd)
+	}
+	return err
 }
 
 func runXInit(ctx context.Context, cmd *cli.Command) error {

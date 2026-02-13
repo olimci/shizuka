@@ -135,7 +135,7 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 		Handler: mux,
 	}
 
-	return prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
+	err = prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
 		defer p.Clear()
 		opts.WithEventHandler(events.NewHandlerFunc(func(event events.Event) {
 			p.Log(formatEvent(event))
@@ -227,6 +227,10 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 			}
 		}
 	}, prompter.WithContext(ctx), prompter.WithStyles(styles))
+	if err != nil && errors.Is(err, prompter.ErrNoninteractive) {
+		return runXDev(ctx, cmd)
+	}
+	return err
 }
 
 func runXDev(ctx context.Context, cmd *cli.Command) error {
