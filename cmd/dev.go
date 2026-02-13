@@ -38,7 +38,26 @@ func devFlags() []cli.Flag {
 			Value:   0,
 			Usage:   "Number of workers to use for building",
 		},
+		&cli.BoolFlag{
+			Name:  "undev",
+			Usage: "Run dev server with production-like build options",
+		},
 	}
+}
+
+func applyDevBuildOptions(opts *config.Options, undev bool) *config.Options {
+	if undev {
+		return opts
+	}
+
+	return opts.
+		WithDev().
+		WithPageErrorTemplates(map[error]*template.Template{
+			build.ErrNoTemplate:       templateFallback.Get(),
+			build.ErrTemplateNotFound: templateFallback.Get(),
+			nil:                       templateError.Get(),
+		}).
+		WithErrTemplate(templateBuildError.Get())
 }
 
 func devCmd() *cli.Command {
@@ -79,14 +98,8 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 		WithContext(ctx).
 		WithConfig(configPath).
 		WithOutput(dist).
-		WithSiteURL(siteURL).
-		WithDev().
-		WithPageErrorTemplates(map[error]*template.Template{
-			build.ErrNoTemplate:       templateFallback.Get(),
-			build.ErrTemplateNotFound: templateFallback.Get(),
-			nil:                       templateError.Get(),
-		}).
-		WithErrTemplate(templateBuildError.Get())
+		WithSiteURL(siteURL)
+	opts = applyDevBuildOptions(opts, cmd.Bool("undev"))
 
 	if n := cmd.Int("workers"); n > 0 {
 		opts = opts.WithMaxWorkers(n)
@@ -236,14 +249,8 @@ func runXDev(ctx context.Context, cmd *cli.Command) error {
 		WithContext(ctx).
 		WithConfig(configPath).
 		WithOutput(dist).
-		WithSiteURL(siteURL).
-		WithDev().
-		WithPageErrorTemplates(map[error]*template.Template{
-			build.ErrNoTemplate:       templateFallback.Get(),
-			build.ErrTemplateNotFound: templateFallback.Get(),
-			nil:                       templateError.Get(),
-		}).
-		WithErrTemplate(templateBuildError.Get())
+		WithSiteURL(siteURL)
+	opts = applyDevBuildOptions(opts, cmd.Bool("undev"))
 
 	if n := cmd.Int("workers"); n > 0 {
 		opts = opts.WithMaxWorkers(n)

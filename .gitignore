@@ -54,6 +54,7 @@ tmp/
 temp/
 .tmp/
 _docs_int/
+.gocache/
 
 # Backup files
 *.bak
