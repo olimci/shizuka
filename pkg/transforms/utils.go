@@ -17,6 +17,31 @@ func firstNonzero[T comparable](values ...T) T {
 	return zero
 }
 
+// URLPathForContentPath maps a content source path such as "posts/hello.md" or
+// "posts/hello/index.md" to the page URL path used by the build pipeline.
+func URLPathForContentPath(rel string) string {
+	rel = path.Clean(strings.TrimSpace(rel))
+	rel = strings.TrimPrefix(rel, "/")
+	if rel == "." || rel == "" {
+		return ""
+	}
+
+	dir, base := path.Split(rel)
+	name := strings.TrimSuffix(base, path.Ext(base))
+	if name == "index" {
+		return cleanContentDir(dir)
+	}
+	return path.Join(cleanContentDir(dir), name)
+}
+
+func cleanContentDir(dir string) string {
+	dir = path.Clean(strings.TrimSpace(dir))
+	if dir == "." || dir == "/" || dir == "" {
+		return ""
+	}
+	return strings.TrimPrefix(dir, "/")
+}
+
 // CleanSlug normalizes and validates a slug.
 //
 // A slug is a URL path without a leading or trailing slash. It may contain

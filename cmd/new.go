@@ -14,6 +14,7 @@ import (
 
 	"github.com/olimci/coffee"
 	"github.com/olimci/shizuka/pkg/config"
+	"github.com/olimci/shizuka/pkg/transforms"
 	"github.com/urfave/cli/v3"
 )
 
@@ -94,6 +95,11 @@ type newResult struct {
 	Path string
 }
 
+type newPathInfo struct {
+	SourcePath string
+	URLPath    string
+}
+
 func newAction(ctx context.Context, cmd *cli.Command) error {
 	req, err := newRequestFromCommand(cmd)
 	if err != nil {
@@ -159,7 +165,7 @@ func createNewContentInteractive(_ context.Context, c *coffee.Coffee, req newReq
 	if strings.TrimSpace(req.Path) == "" {
 		defaultPath := defaultNewPath(req.Title)
 
-		_ = c.Logf("path (relative to %s):", nctx.ContentSource)
+		_ = c.Logf("path (site path or source path, relative to %s):", nctx.ContentSource)
 		relPath, err := c.AwaitInput(
 			coffee.WithInputPlaceholder(defaultPath),
 			coffee.WithInputValue(defaultPath),
@@ -200,21 +206,24 @@ func createNewContent(req newRequest) (*newResult, error) {
 }
 
 func createNewContentWithContext(nctx *newContext, req newRequest) (*newResult, error) {
-	relPath, err := normalizeNewPath(req.Path)
+	pathInfo, err := normalizeNewPath(req.Path)
 	if err != nil {
 		return nil, err
 	}
 
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
-		title = deriveTitle(relPath)
+		title = deriveTitle(pathInfo.URLPath)
 	}
 	if title == "" {
 		return nil, fmt.Errorf("title must not be empty")
 	}
 
-	isPost := looksLikePost(relPath, req.Section)
-	slug := strings.TrimSuffix(relPath, path.Ext(relPath))
+	isPost := looksLikePost(pathInfo.URLPath, req.Section)
+	slug, err := transforms.CleanSlug(pathInfo.URLPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid page path %q: %w", req.Path, err)
+	}
 
 	pageData := newPageData{
 		Slug:     slug,
@@ -225,12 +234,12 @@ func createNewContentWithContext(nctx *newContext, req newRequest) (*newResult, 
 		Draft:    req.Draft,
 	}
 
-	targetPath := filepath.Join(nctx.ConfigDir, filepath.FromSlash(nctx.ContentSource), filepath.FromSlash(relPath))
+	targetPath := filepath.Join(nctx.ConfigDir, filepath.FromSlash(nctx.ContentSource), filepath.FromSlash(pathInfo.SourcePath))
 	if !req.Force {
 		if _, err := os.Stat(targetPath); err == nil {
 			return nil, fmt.Errorf(
 				"file %s already exists (use force to overwrite)",
-				filepath.ToSlash(filepath.Join(nctx.ContentSource, relPath)),
+				filepath.ToSlash(filepath.Join(nctx.ContentSource, pathInfo.SourcePath)),
 			)
 		} else if !os.IsNotExist(err) {
 			return nil, err
@@ -246,7 +255,7 @@ func createNewContentWithContext(nctx *newContext, req newRequest) (*newResult, 
 	}
 
 	return &newResult{
-		Path: filepath.ToSlash(filepath.Join(nctx.ContentSource, relPath)),
+		Path: filepath.ToSlash(filepath.Join(nctx.ContentSource, pathInfo.SourcePath)),
 	}, nil
 }
 
@@ -279,29 +288,40 @@ func loadNewContext(configPath string) (*newContext, error) {
 	}, nil
 }
 
-func normalizeNewPath(rel string) (string, error) {
+func normalizeNewPath(rel string) (*newPathInfo, error) {
 	rel = strings.TrimSpace(rel)
 	if rel == "" {
-		return "", fmt.Errorf("path must not be empty")
+		return nil, fmt.Errorf("path must not be empty")
 	}
-	if filepath.IsAbs(rel) {
-		return "", fmt.Errorf("absolute paths are not supported: %q", rel)
+	if filepath.VolumeName(rel) != "" {
+		return nil, fmt.Errorf("absolute paths are not supported: %q", rel)
 	}
 
+	inputHasExt := path.Ext(filepath.ToSlash(rel)) != ""
 	rel = filepath.ToSlash(rel)
 	rel = path.Clean(rel)
 	rel = strings.TrimPrefix(rel, "/")
-	if rel == "." || rel == "" {
-		return "", fmt.Errorf("path must not be empty")
+	if rel == "." {
+		rel = ""
 	}
 	if strings.HasPrefix(rel, "../") || rel == ".." {
-		return "", fmt.Errorf("path %q escapes content root", rel)
+		return nil, fmt.Errorf("path %q escapes content root", rel)
 	}
 
-	if path.Ext(rel) == "" {
-		rel += ".md"
+	var sourcePath string
+	switch {
+	case rel == "":
+		sourcePath = "index.md"
+	case inputHasExt:
+		sourcePath = rel
+	default:
+		sourcePath = rel + ".md"
 	}
-	return rel, nil
+
+	return &newPathInfo{
+		SourcePath: sourcePath,
+		URLPath:    transforms.URLPathForContentPath(sourcePath),
+	}, nil
 }
 
 func builtInNewFileBody(data newPageData) string {
@@ -375,13 +395,18 @@ func looksLikePost(relPath, section string) bool {
 func defaultNewPath(title string) string {
 	stem := slugify(title)
 	if stem == "" {
-		return "about.md"
+		return "about"
 	}
-	return stem + ".md"
+	return stem
 }
 
 func deriveTitle(relPath string) string {
-	stem := strings.TrimSuffix(path.Base(strings.TrimSpace(relPath)), path.Ext(strings.TrimSpace(relPath)))
+	cleanPath := path.Clean(strings.TrimSpace(relPath))
+	if cleanPath == "." || cleanPath == "/" {
+		return ""
+	}
+
+	stem := path.Base(cleanPath)
 	if stem == "" {
 		return ""
 	}

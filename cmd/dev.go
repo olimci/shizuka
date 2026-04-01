@@ -62,10 +62,6 @@ var devCmd = &cli.Command{
 			Name:  "undev",
 			Usage: "Run dev server with production-like build options",
 		},
-		&cli.BoolFlag{
-			Name:  "alt",
-			Usage: "Use the terminal alt screen for the TUI",
-		},
 	},
 	Action: devAction,
 }
@@ -112,11 +108,6 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 	port := fmt.Sprintf(":%d", cmd.Int("port"))
 	configPath := cmd.String("config")
 	siteURL := fmt.Sprintf("http://localhost:%d/", cmd.Int("port"))
-
-	coffeeOpts := []coffee.Option{coffee.WithContext(ctx)}
-	if cmd.Bool("alt") {
-		coffeeOpts = append(coffeeOpts, coffee.WithAltScreen())
-	}
 
 	err := coffee.Do(func(ctx context.Context, c *coffee.Coffee) error {
 		defer func() {
@@ -288,7 +279,7 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 				}
 			}
 		}
-	}, coffeeOpts...)
+	}, coffee.WithContext(ctx), coffee.WithAltScreen())
 	if err != nil && errors.Is(err, coffee.ErrNonInteractive) {
 		return xDevAction(ctx, cmd)
 	}

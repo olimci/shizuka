@@ -27,7 +27,10 @@ Create a new page or post with `new`
 ```sh
 shizuka new about
 shizuka new posts/my-first-post
+shizuka new /posts/my-first-post
 ```
+
+`new` accepts either a site-relative path like `/posts/my-first-post` or a source path like `posts/my-first-post.md`.
 
 When you have made your site, build it with `build`
 

@@ -305,10 +305,7 @@ func StepContent() []Step {
 			ext := path.Ext(base)
 			name := strings.TrimSuffix(base, ext)
 			source := path.Join(root, node.Path)
-			urlPath := path.Join(url2dir(dir), name)
-			if name == "index" {
-				urlPath = url2dir(dir)
-			}
+			urlPath := transforms.URLPathForContentPath(node.Path)
 			claim := manifest.NewPageClaim(source, urlPath)
 
 			if ext == ".html" {
