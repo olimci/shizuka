@@ -57,11 +57,12 @@ type ConfigStepStatic struct {
 }
 
 type ConfigStepContent struct {
-	TemplateGlob   string         `toml:"template_glob" yaml:"template_glob" json:"template_glob"`
-	Source         string         `toml:"source" yaml:"source" json:"source"`
-	Destination    string         `toml:"destination" yaml:"destination" json:"destination"`
-	DefaultParams  map[string]any `toml:"default_params" yaml:"default_params" json:"default_params"`
-	GoldmarkConfig ConfigGoldmark `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
+	TemplateGlob    string         `toml:"template_glob" yaml:"template_glob" json:"template_glob"`
+	Source          string         `toml:"source" yaml:"source" json:"source"`
+	Destination     string         `toml:"destination" yaml:"destination" json:"destination"`
+	DefaultTemplate string         `toml:"default_template" yaml:"default_template" json:"default_template"`
+	DefaultParams   map[string]any `toml:"default_params" yaml:"default_params" json:"default_params"`
+	GoldmarkConfig  ConfigGoldmark `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
 }
 
 type ConfigStepHeaders struct {
@@ -149,11 +150,12 @@ func DefaultConfig() *Config {
 					Destination: ".",
 				},
 				Content: &ConfigStepContent{
-					TemplateGlob:   "templates/*.tmpl",
-					Source:         "content",
-					Destination:    ".",
-					DefaultParams:  map[string]any{},
-					GoldmarkConfig: defaultGoldmark,
+					TemplateGlob:    "templates/*.tmpl",
+					Source:          "content",
+					Destination:     ".",
+					DefaultTemplate: "page",
+					DefaultParams:   map[string]any{},
+					GoldmarkConfig:  defaultGoldmark,
 				},
 			},
 		},
@@ -227,6 +229,9 @@ func (c *Config) Validate() error {
 		}
 		if strings.TrimSpace(c.Build.Steps.Content.Destination) == "" {
 			c.Build.Steps.Content.Destination = "."
+		}
+		if strings.TrimSpace(c.Build.Steps.Content.DefaultTemplate) == "" {
+			c.Build.Steps.Content.DefaultTemplate = "page"
 		}
 		if c.Build.Steps.Content.DefaultParams == nil {
 			c.Build.Steps.Content.DefaultParams = map[string]any{}

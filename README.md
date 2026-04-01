@@ -22,6 +22,13 @@ Then start a dev server with `dev`
 shizuka dev
 ```
 
+Create a new page or post with `new`
+
+```sh
+shizuka new about
+shizuka new posts/my-first-post
+```
+
 When you have made your site, build it with `build`
 
 ```sh

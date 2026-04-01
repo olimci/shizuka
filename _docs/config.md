@@ -38,6 +38,7 @@ destination = "."
 source = "content"
 destination = "."
 template_glob = "templates/*.tmpl"
+default_template = "page"
 
 [build.steps.content.default_params]
 author = "Your Name"
@@ -55,6 +56,8 @@ XHTML = false
 ```
 
 `default_params` are merged into each page’s frontmatter `params` (frontmatter wins). Params with a leading `_` are treated as private and are excluded from `PageLite`.
+
+`default_template` is used by `shizuka new` when creating generic pages that do not explicitly pick a template.
 
 ### `build.steps.headers`
 
