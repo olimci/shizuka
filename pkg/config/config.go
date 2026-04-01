@@ -192,7 +192,6 @@ func LoadFS(fsys fs.FS, path string) (*Config, error) {
 
 // Validate validates the Config.
 func (c *Config) Validate() error {
-	c.Site.URL = strings.TrimSpace(c.Site.URL)
 	if c.Site.URL == "" {
 		return errors.New("site.url is required")
 	}
@@ -207,30 +206,30 @@ func (c *Config) Validate() error {
 		c.Site.Params = map[string]any{}
 	}
 
-	if strings.TrimSpace(c.Build.Output) == "" {
+	if c.Build.Output == "" {
 		c.Build.Output = "dist"
 	}
 
 	if c.Build.Steps.Static != nil {
-		if strings.TrimSpace(c.Build.Steps.Static.Source) == "" {
+		if c.Build.Steps.Static.Source == "" {
 			c.Build.Steps.Static.Source = "static"
 		}
-		if strings.TrimSpace(c.Build.Steps.Static.Destination) == "" {
+		if c.Build.Steps.Static.Destination == "" {
 			c.Build.Steps.Static.Destination = "."
 		}
 	}
 
 	if c.Build.Steps.Content != nil {
-		if strings.TrimSpace(c.Build.Steps.Content.TemplateGlob) == "" {
+		if c.Build.Steps.Content.TemplateGlob == "" {
 			c.Build.Steps.Content.TemplateGlob = "templates/*.tmpl"
 		}
-		if strings.TrimSpace(c.Build.Steps.Content.Source) == "" {
+		if c.Build.Steps.Content.Source == "" {
 			c.Build.Steps.Content.Source = "content"
 		}
-		if strings.TrimSpace(c.Build.Steps.Content.Destination) == "" {
+		if c.Build.Steps.Content.Destination == "" {
 			c.Build.Steps.Content.Destination = "."
 		}
-		if strings.TrimSpace(c.Build.Steps.Content.DefaultTemplate) == "" {
+		if c.Build.Steps.Content.DefaultTemplate == "" {
 			c.Build.Steps.Content.DefaultTemplate = "page"
 		}
 		if c.Build.Steps.Content.DefaultParams == nil {
@@ -248,7 +247,7 @@ func (c *Config) Validate() error {
 	}
 
 	if c.Build.Steps.Redirects != nil {
-		shorten := strings.TrimSpace(c.Build.Steps.Redirects.Shorten)
+		shorten := c.Build.Steps.Redirects.Shorten
 		if shorten == "" {
 			shorten = "/s"
 		}
@@ -264,13 +263,13 @@ func (c *Config) Validate() error {
 	}
 
 	if c.Build.Steps.RSS != nil {
-		if strings.TrimSpace(c.Build.Steps.RSS.Output) == "" {
+		if c.Build.Steps.RSS.Output == "" {
 			c.Build.Steps.RSS.Output = "rss.xml"
 		}
 	}
 
 	if c.Build.Steps.Sitemap != nil {
-		if strings.TrimSpace(c.Build.Steps.Sitemap.Output) == "" {
+		if c.Build.Steps.Sitemap.Output == "" {
 			c.Build.Steps.Sitemap.Output = "sitemap.xml"
 		}
 	}
@@ -306,7 +305,7 @@ func (cfg ConfigGoldmark) Build() gm.Markdown {
 	)
 
 	for _, name := range cfg.Extensions {
-		switch strings.ToLower(strings.TrimSpace(name)) {
+		switch name {
 		case "gfm":
 			exts = append(exts, gmext.GFM)
 		case "table", "tables":

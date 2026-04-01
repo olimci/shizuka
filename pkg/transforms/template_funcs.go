@@ -111,6 +111,15 @@ func TemplateFuncSortBy(field string, order string, pages []*PageLite) []*PageLi
 		slices.SortStableFunc(out, func(a, b *PageLite) int {
 			return strings.Compare(a.Title, b.Title)
 		})
+	case "Weight":
+		slices.SortStableFunc(out, func(a, b *PageLite) int {
+			if a.Weight < b.Weight {
+				return -1
+			} else if a.Weight > b.Weight {
+				return 1
+			}
+			return 0
+		})
 	case "Description":
 		slices.SortStableFunc(out, func(a, b *PageLite) int {
 			return strings.Compare(a.Description, b.Description)
@@ -345,6 +354,9 @@ func pageFieldEquals(page *PageLite, field string, value any) bool {
 	case "Slug":
 		v, ok := value.(string)
 		return ok && page.Slug == v
+	case "Weight":
+		v, ok := value.(int)
+		return ok && page.Weight == v
 	case "Featured":
 		v, ok := value.(bool)
 		return ok && page.Featured == v

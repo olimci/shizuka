@@ -30,6 +30,8 @@ Key fields you can use in templates:
 
 - `.Page.Title`, `.Page.Description`, `.Page.Tags`, `.Page.Featured`, `.Page.Draft`
 - `.Page.Slug` (clean slug without leading slash)
+- `.Page.Aliases` (`[]string`, site-relative alias paths)
+- `.Page.Weight` (`int`)
 - `.Page.Canon` (absolute canonical URL)
 - `.Page.Section` (populated from frontmatter key `sections`)
 - `.Page.Date`, `.Page.Updated`, `.Page.PubDate` (`time.Time`; use `.IsZero`, `.Format`, etc)
@@ -56,23 +58,23 @@ Key fields you can use in templates:
   - `.ByYear` (`map[int][]*PageLite`)
   - `.ByYearMonth` (`map[string][]*PageLite`, key format `YYYY-MM`)
 
-`PageLite` contains: `Slug`, `Canon`, `Title`, `Description`, `Section`, `Tags`, `Date`, `Updated`, `PubDate`, `Params`, `Featured`, `Draft`. `PageLite.Params` is copied from `.Page.Params` with `_`-prefixed keys stripped out.
+`PageLite` contains: `Slug`, `Canon`, `Aliases`, `Weight`, `Title`, `Description`, `Section`, `Tags`, `Date`, `Updated`, `PubDate`, `Params`, `Featured`, `Draft`. `PageLite.Params` is copied from `.Page.Params` with `_`-prefixed keys stripped out.
 
 ## Built-in template functions
 
 Shizuka registers a small set of helpers:
 
 - `where field value pages` -> filtered `[]*PageLite`
-  - supported `field` values: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Featured"`, `"Draft"`, `"Date:before"`, `"Date:after"`, `"Updated:before"`, `"Updated:after"`, `"Tags"`, `"Tags:not"`
+  - supported `field` values: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Weight"`, `"Featured"`, `"Draft"`, `"Date:before"`, `"Date:after"`, `"Updated:before"`, `"Updated:after"`, `"Tags"`, `"Tags:not"`
 - `whereEq field value pages` -> pages where `field == value`
 - `whereNe field value pages` -> pages where `field != value`
 - `whereHas field value pages` -> pages where a list-like field contains `value`
 - `whereIn field pages value...` -> pages where `field` matches any of the provided values
-  - `whereEq` / `whereNe` / `whereHas` / `whereIn` support: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Featured"`, `"Draft"`, `"Date"`, `"Updated"`, `"PubDate"`, `"Tags"`
+  - `whereEq` / `whereNe` / `whereHas` / `whereIn` support: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Weight"`, `"Featured"`, `"Draft"`, `"Date"`, `"Updated"`, `"PubDate"`, `"Tags"`
   - `whereEq` / `whereNe` / `whereHas` also support page params via `"Params.some_key"`
 - `sort field order pages` -> sorted `[]*PageLite`
   - `order` must be `"asc"` or `"desc"`
-  - `field` values: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Date"`, `"Updated"`, `"PubDate"`
+  - `field` values: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Weight"`, `"Date"`, `"Updated"`, `"PubDate"`
 - `limit n pages` -> first `n` pages
 - `offset n pages` -> pages after skipping the first `n`
 - `first pages` / `last pages` -> a single `*PageLite` (or `nil` if empty)

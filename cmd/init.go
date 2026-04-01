@@ -294,7 +294,7 @@ func parseVars(pairs []string) (map[string]any, error) {
 		if !ok {
 			return nil, fmt.Errorf("invalid --var %q (expected key=value)", pair)
 		}
-		vars[strings.TrimSpace(key)] = strings.TrimSpace(val)
+		vars[key] = val
 	}
 
 	return vars, nil

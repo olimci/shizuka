@@ -57,7 +57,7 @@ XHTML = false
 
 `default_params` are merged into each page’s frontmatter `params` (frontmatter wins). Params with a leading `_` are treated as private and are excluded from `PageLite`.
 
-`default_template` is used by `shizuka new` when creating generic pages that do not explicitly pick a template.
+`default_template` is used by `shizuka new` when creating generic pages that do not explicitly pick a template. New files created by `shizuka new` use TOML frontmatter by default.
 
 ### `build.steps.headers`
 
@@ -78,8 +78,9 @@ output = "_headers"
 
 Writes a Netlify-style `_redirects` file.
 
-- `shorten` defaults to `"/s"` (normalized to a leading `/` with no trailing `/`)
+- `shorten` defaults to `"/s"`; when set explicitly, the value is used as written except that Shizuka still requires a leading `/` and removes a trailing `/`
 - for pages in section `"posts"`, a non-empty `slug` generates a short redirect: `{site.url}{shorten}/{last-slug-segment} -> {page.url_path}`
+- per-page `aliases` from frontmatter also generate redirects to that page’s primary `url_path`
 - you can also specify explicit redirects in config
 - generated short redirects do not change `.Page.Canon`; canonical URLs still point at the page’s actual URL path
 

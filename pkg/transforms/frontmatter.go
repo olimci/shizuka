@@ -13,7 +13,9 @@ import (
 
 // Frontmatter represents the frontmatter of a document
 type Frontmatter struct {
-	Slug string `toml:"slug" yaml:"slug" json:"slug"`
+	Slug    string   `toml:"slug" yaml:"slug" json:"slug"`
+	URLPath string   `toml:"url_path" yaml:"url_path" json:"url_path"`
+	Aliases []string `toml:"aliases" yaml:"aliases" json:"aliases"`
 
 	Title       string   `toml:"title" yaml:"title" json:"title"`
 	Description string   `toml:"description" yaml:"description" json:"description"`
@@ -34,6 +36,7 @@ type Frontmatter struct {
 
 	Featured bool `toml:"featured" yaml:"featured" json:"featured"`
 	Draft    bool `toml:"draft" yaml:"draft" json:"draft"`
+	Weight   int  `toml:"weight" yaml:"weight" json:"weight"`
 }
 
 type RSSMeta struct {

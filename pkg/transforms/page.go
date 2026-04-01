@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"maps"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,8 +27,10 @@ type Page struct {
 	Meta PageMeta
 	Tree *PageNode
 
-	Slug  string
-	Canon string
+	Slug    string
+	Canon   string
+	Aliases []string
+	Weight  int
 
 	Title       string
 	Description string
@@ -63,6 +66,8 @@ func (p *Page) Lite() *PageLite {
 	return &PageLite{
 		Slug:        p.Slug,
 		Canon:       p.Canon,
+		Aliases:     slices.Clone(p.Aliases),
+		Weight:      p.Weight,
 		Title:       p.Title,
 		Description: p.Description,
 		Section:     p.Section,
@@ -78,8 +83,10 @@ func (p *Page) Lite() *PageLite {
 
 // PageLite is a lite representation of a page, used for links etc
 type PageLite struct {
-	Slug  string
-	Canon string
+	Slug    string
+	Canon   string
+	Aliases []string
+	Weight  int
 
 	Title       string
 	Description string
@@ -144,8 +151,11 @@ func BuildPageFS(fsys fs.FS, source string, md gm.Markdown) (*Page, error) {
 		Meta: PageMeta{
 			Template: fm.Template,
 			Source:   source,
+			URLPath:  fm.URLPath,
 		},
 		Slug:        fm.Slug,
+		Aliases:     slices.Clone(fm.Aliases),
+		Weight:      fm.Weight,
 		Title:       fm.Title,
 		Description: fm.Description,
 		Section:     fm.Section,

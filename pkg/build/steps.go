@@ -254,25 +254,40 @@ func StepContent() []Step {
 			site.Collections.All = append(site.Collections.All, lite)
 		}
 
+		sortPageLites(site.Collections.All)
+		sortPageLites(site.Collections.Published)
+		sortPageLites(site.Collections.Drafts)
+		sortPageLites(site.Collections.Featured)
+		sortPageLites(site.Collections.Undated)
+
 		site.Collections.Latest = slices.Clone(site.Collections.All)
 		slices.SortFunc(site.Collections.Latest, func(a, b *transforms.PageLite) int {
-			if a.Date.After(b.Date) {
-				return -1
-			} else if a.Date.Before(b.Date) {
-				return +1
+			if cmp := compareWeight(a.Weight, b.Weight); cmp != 0 {
+				return cmp
 			}
-			return 0
+			return -compareTimeAsc(a.Date, b.Date)
 		})
 
 		site.Collections.RecentlyUpdated = slices.Clone(site.Collections.All)
 		slices.SortFunc(site.Collections.RecentlyUpdated, func(a, b *transforms.PageLite) int {
-			if a.Updated.After(b.Updated) {
-				return -1
-			} else if a.Updated.Before(b.Updated) {
-				return +1
+			if cmp := compareWeight(a.Weight, b.Weight); cmp != 0 {
+				return cmp
 			}
-			return 0
+			return -compareTimeAsc(a.Updated, b.Updated)
 		})
+
+		for _, group := range site.Groups.BySection {
+			sortPageLites(group)
+		}
+		for _, group := range site.Groups.ByTag {
+			sortPageLites(group)
+		}
+		for _, group := range site.Groups.ByYear {
+			sortPageLites(group)
+		}
+		for _, group := range site.Groups.ByYearMonth {
+			sortPageLites(group)
+		}
 
 		manifest.SetAs(sc.Manifest, SiteK, site)
 
@@ -359,6 +374,39 @@ func StepContent() []Step {
 				params := maps.Clone(cfg.Build.Steps.Content.DefaultParams)
 				maps.Copy(params, page.Params)
 				page.Params = params
+
+				pageURLPath := strings.TrimSpace(page.Meta.URLPath)
+				if pageURLPath == "" {
+					pageURLPath = urlPath
+				}
+				pageURLPath, err = transforms.CleanURLPath(pageURLPath)
+				if err != nil {
+					err = fmt.Errorf("invalid url_path %q: %w", page.Meta.URLPath, err)
+				} else {
+					page.Meta.URLPath = pageURLPath
+					page.Meta.Target = path.Join(pageURLPath, "index.html")
+				}
+
+				aliases := make([]string, 0, len(page.Aliases))
+				seenAliases := make(map[string]struct{}, len(page.Aliases))
+				for _, aliasRaw := range page.Aliases {
+					alias, aliasErr := transforms.CleanURLPath(aliasRaw)
+					if aliasErr != nil {
+						err = fmt.Errorf("invalid alias %q: %w", aliasRaw, aliasErr)
+						break
+					}
+					if alias == page.Meta.URLPath {
+						continue
+					}
+					if _, exists := seenAliases[alias]; exists {
+						continue
+					}
+					seenAliases[alias] = struct{}{}
+					aliases = append(aliases, alias)
+				}
+				if err == nil {
+					page.Aliases = aliases
+				}
 			}
 
 			// If name == index, then the page corresponds to the current directory
@@ -370,8 +418,7 @@ func StepContent() []Step {
 					return
 				}
 
-				page.Meta.URLPath = parent.URLPath
-				page.Meta.Target = path.Join(page.Meta.URLPath, "index.html")
+				parent.URLPath = page.Meta.URLPath
 				parent.Page = page
 				page.Tree = parent
 				return
@@ -383,8 +430,7 @@ func StepContent() []Step {
 			if err != nil {
 				child.Error = err
 			} else {
-				page.Meta.URLPath = child.URLPath
-				page.Meta.Target = path.Join(page.Meta.URLPath, "index.html")
+				child.URLPath = page.Meta.URLPath
 				child.Page = page
 				page.Tree = child
 			}
@@ -477,21 +523,26 @@ func StepRedirects() Step {
 
 		for _, page := range pages.Pages() {
 			if page.Section != "posts" {
-				continue
+			} else {
+				shortSlug := shortSlugForRedirect(page.Slug)
+				if shortSlug != "" {
+					shortPath := path.Join(redirectsCfg.Shorten, shortSlug)
+
+					redirects = append(redirects, config.Redirect{
+						From:   shortPath,
+						To:     ensureLeadingSlash(page.Meta.URLPath),
+						Status: 0,
+					})
+				}
 			}
 
-			shortSlug := shortSlugForRedirect(page.Slug)
-			if shortSlug == "" {
-				continue
+			for _, alias := range page.Aliases {
+				redirects = append(redirects, config.Redirect{
+					From:   ensureLeadingSlash(alias),
+					To:     ensureLeadingSlash(page.Meta.URLPath),
+					Status: 301,
+				})
 			}
-
-			shortPath := path.Join(redirectsCfg.Shorten, shortSlug)
-
-			redirects = append(redirects, config.Redirect{
-				From:   shortPath,
-				To:     ensureLeadingSlash(page.Meta.URLPath),
-				Status: 0,
-			})
 		}
 
 		if len(redirects) == 0 {
@@ -501,8 +552,8 @@ func StepRedirects() Step {
 		seen := make(map[string]string, len(redirects))
 		deduped := make([]config.Redirect, 0, len(redirects))
 		for _, redirect := range redirects {
-			from := strings.TrimSpace(redirect.From)
-			to := strings.TrimSpace(redirect.To)
+			from := redirect.From
+			to := redirect.To
 
 			if prev, ok := seen[from]; ok {
 				sc.Error(

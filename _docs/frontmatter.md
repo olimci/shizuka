@@ -21,8 +21,11 @@ description: "A short post."
 template: "post"
 sections: "posts"
 slug: "posts/hello"
+url_path: "writing/hello"
+aliases: ["posts/hello", "hello"]
 date: 2024-01-15
 updated: 2024-02-01
+weight: 10
 tags: ["intro", "shizuka"]
 featured: true
 draft: false
@@ -56,6 +59,9 @@ Markdown content here.
   "template": "post",
   "sections": "posts",
   "slug": "posts/hello",
+  "url_path": "writing/hello",
+  "aliases": ["posts/hello", "hello"],
+  "weight": 10,
   "tags": ["intro", "shizuka"],
   "featured": true,
   "draft": false,
@@ -79,6 +85,9 @@ Example (`content/about.toml`):
 title = "About"
 template = "page"
 slug = "about"
+url_path = "about"
+aliases = ["about-me"]
+weight = 20
 
 [sitemap]
 include = true
@@ -93,11 +102,14 @@ body = """
 Top-level:
 
 - `slug` (string): used for short redirects and page identifiers; if empty, defaults to the page URL path (no leading/trailing `/`)
+- `url_path` (string): explicit output URL path override (site-relative, no leading `/`); if empty, the file path drives routing
+- `aliases` ([]string): extra site-relative URL paths that should redirect to the page’s main `url_path`
 - `title` (string)
 - `description` (string)
 - `sections` (string): becomes `.Page.Section` (note the key name is plural)
 - `tags` ([]string)
 - `date` / `updated` (timestamps)
+- `weight` (int): optional ordering hint; lower values sort earlier
 - `template` (string): required for rendering
 - `body` (string): only for structured pages (`*.toml`/`*.yaml`/`*.json`)
 - `featured` (bool)
