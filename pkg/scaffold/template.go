@@ -1,15 +1,13 @@
 package scaffold
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
-
-	"github.com/olimci/shizuka/pkg/iofs"
 )
 
 type BuildOptions struct {
@@ -19,7 +17,7 @@ type BuildOptions struct {
 
 type Template struct {
 	Config TemplateCfg
-	source iofs.Readable
+	source *source
 	Base   string
 }
 
@@ -34,12 +32,7 @@ type BuildResult struct {
 }
 
 // Build scaffolds the template to the target directory.
-func (t *Template) Build(ctx context.Context, targetPath string, opts BuildOptions) (*BuildResult, error) {
-	fsy, err := t.source.FS(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("accessing source: %w", err)
-	}
-
+func (t *Template) Build(targetPath string, opts BuildOptions) (*BuildResult, error) {
 	if err := os.MkdirAll(targetPath, 0755); err != nil {
 		return nil, fmt.Errorf("creating target directory: %w", err)
 	}
@@ -49,12 +42,12 @@ func (t *Template) Build(ctx context.Context, targetPath string, opts BuildOptio
 		DirsCreated:  make([]string, 0),
 	}
 
-	err = fs.WalkDir(fsy, t.Base, func(src string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(t.source.fsys, t.Base, func(src string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		rel, err := filepath.Rel(t.Base, src)
+		rel, err := relSourcePath(t.Base, src)
 		if err != nil {
 			return err
 		}
@@ -80,29 +73,45 @@ func (t *Template) Build(ctx context.Context, targetPath string, opts BuildOptio
 			}
 		}
 
-		source, err := fsy.Open(src)
+		source, err := t.source.fsys.Open(src)
 		if err != nil {
 			return fmt.Errorf("opening %s: %w", rel, err)
 		}
 
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			_ = source.Close()
 			return fmt.Errorf("creating parent directory for %s: %w", destRelPath, err)
 		}
 
 		target, err := os.Create(destPath)
 		if err != nil {
+			_ = source.Close()
 			return fmt.Errorf("creating %s: %w", destRelPath, err)
 		}
 
 		if matchesGlobs(rel, t.Config.Files.Templates) {
 			if err := processTemplate(source, target, opts.Variables); err != nil {
+				_ = target.Close()
+				_ = source.Close()
 				return fmt.Errorf("processing template %s: %w", rel, err)
 			}
 		} else {
 			if _, err := io.Copy(target, source); err != nil {
+				_ = target.Close()
+				_ = source.Close()
 				return fmt.Errorf("copying %s to %s: %w", rel, destRelPath, err)
 			}
 		}
+
+		if err := target.Close(); err != nil {
+			return fmt.Errorf("closing %s: %w", destRelPath, err)
+		}
+		target = nil
+
+		if err := source.Close(); err != nil {
+			return fmt.Errorf("closing %s: %w", rel, err)
+		}
+		source = nil
 
 		result.FilesCreated = append(result.FilesCreated, destRelPath)
 		return nil
@@ -117,8 +126,8 @@ func (t *Template) Build(ctx context.Context, targetPath string, opts BuildOptio
 
 // transformPath applies renames and suffix stripping to get the destination path.
 func (t *Template) transformPath(rel string) string {
-	dir := filepath.Dir(rel)
-	baseName := filepath.Base(rel)
+	dir := path.Dir(rel)
+	baseName := path.Base(rel)
 
 	if newName, ok := t.Config.Files.Renames[baseName]; ok {
 		baseName = newName
@@ -138,5 +147,24 @@ func (t *Template) transformPath(rel string) string {
 	if dir == "." {
 		return baseName
 	}
-	return filepath.Join(dir, baseName)
+	return path.Join(dir, baseName)
+}
+
+func relSourcePath(base, target string) (string, error) {
+	base = path.Clean(base)
+	target = path.Clean(target)
+
+	if base == "." {
+		return target, nil
+	}
+	if target == base {
+		return ".", nil
+	}
+
+	prefix := base + "/"
+	if !strings.HasPrefix(target, prefix) {
+		return "", fmt.Errorf("%q is not within %q", target, base)
+	}
+
+	return strings.TrimPrefix(target, prefix), nil
 }

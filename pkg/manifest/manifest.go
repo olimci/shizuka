@@ -3,14 +3,16 @@ package manifest
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/iofs"
+	"github.com/olimci/shizuka/pkg/utils/fileutils"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -79,7 +81,7 @@ func (m *Manifest) Emit(a Artefact) {
 }
 
 // Build builds the manifest
-func (m *Manifest) Build(config *config.Config, options *config.Options, report func(Claim, error), out iofs.Writable) error {
+func (m *Manifest) Build(config *config.Config, options *config.Options, report func(Claim, error), out string) error {
 	m.artefactsMu.Lock()
 	defer m.artefactsMu.Unlock()
 
@@ -112,19 +114,18 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, report 
 	}
 
 	// Ensure we have a valid destination
-	if out == nil {
-		dist := config.Build.Output
+	if strings.TrimSpace(out) == "" {
+		out = config.Build.Output
 		if options.OutputPath != "" {
-			dist = options.OutputPath
+			out = options.OutputPath
 		}
-		out = iofs.FromOS(dist)
 	}
 
-	if err := out.EnsureRoot(); err != nil {
+	if err := ensureOutputRoot(out); err != nil {
 		return err
 	}
 
-	gotFiles, gotDirs, err := walkDestination(options.Context, out)
+	gotFiles, gotDirs, err := walkDestination(out)
 	if err != nil {
 		return fmt.Errorf("output %q: %w", displayPath(out, "."), err)
 	}
@@ -144,7 +145,7 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, report 
 
 	for _, rel := range gotFiles.Values() {
 		if _, wants := artefacts[rel]; !wants {
-			if err := out.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			if err := os.Remove(filepath.Join(out, rel)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return fmt.Errorf("output %q: %w", displayPath(out, rel), err)
 			}
 		}
@@ -152,7 +153,7 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, report 
 
 	for _, rel := range gotDirs.Values() {
 		if !wantDirs.Has(rel) {
-			if err := out.RemoveAll(rel); err != nil {
+			if err := os.RemoveAll(filepath.Join(out, rel)); err != nil {
 				return fmt.Errorf("output %q: %w", displayPath(out, rel), err)
 			}
 		}
@@ -160,7 +161,7 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, report 
 
 	for _, rel := range wantDirs.Values() {
 		if !gotDirs.Has(rel) {
-			if err := out.MkdirAll(rel, 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Join(out, rel), 0o755); err != nil {
 				return fmt.Errorf("output %q: %w", displayPath(out, rel), err)
 			}
 		}
@@ -181,7 +182,7 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, report 
 			default:
 			}
 
-			if err := out.Write(target, artefact.Builder, exists); err != nil {
+			if err := writeOutputFile(out, target, artefact.Builder, exists); err != nil {
 				if report != nil {
 					err = reportableError(report, artefact.Claim, err)
 				}
@@ -197,6 +198,31 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, report 
 	}
 
 	return nil
+}
+
+func ensureOutputRoot(root string) error {
+	info, err := os.Stat(root)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.MkdirAll(root, 0o755); err != nil {
+				return fmt.Errorf("output directory %q: %w", root, err)
+			}
+			return nil
+		}
+		return fmt.Errorf("output directory %q: %w", root, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("output path %q is not a directory", root)
+	}
+	return nil
+}
+
+func writeOutputFile(root, rel string, gen func(io.Writer) error, exists bool) error {
+	full := filepath.Join(root, rel)
+	if exists {
+		return fileutils.AtomicEdit(full, gen)
+	}
+	return fileutils.AtomicWrite(full, gen)
 }
 
 func reportableError(report func(Claim, error), claim Claim, err error) error {

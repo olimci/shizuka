@@ -142,7 +142,7 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 
 		_ = c.Log("building...")
 
-		res, err := tmpl.Build(ctx, flagOutput, scaffold.BuildOptions{
+		res, err := tmpl.Build(flagOutput, scaffold.BuildOptions{
 			Variables: flagVars,
 			Force:     flagForce,
 		})
@@ -219,7 +219,7 @@ func runXInit(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
-	res, err := tmpl.Build(ctx, flagOutput, scaffold.BuildOptions{
+	res, err := tmpl.Build(flagOutput, scaffold.BuildOptions{
 		Variables: flagVars,
 		Force:     flagForce,
 	})

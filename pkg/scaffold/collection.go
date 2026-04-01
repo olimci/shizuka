@@ -1,10 +1,8 @@
 package scaffold
 
-import "github.com/olimci/shizuka/pkg/iofs"
-
 type Collection struct {
 	Config CollectionCfg
-	source iofs.Readable
+	source *source
 	Base   string
 
 	Templates []*Template

@@ -34,7 +34,7 @@ func (n *FSNode) Child(name string) (*FSNode, bool) {
 // FSTree is a hierarchical representation of a directory tree.
 type FSTree struct {
 	Root  *FSNode
-	Nodes map[string]*FSNode // keyed by relative Path (filepath.Clean), root is "."
+	Nodes map[string]*FSNode // keyed by cleaned relative path, root is "."
 }
 
 type TraverseFunc func(node *FSNode, depth int)
@@ -219,7 +219,7 @@ func WalkTreeFS(fsys fs.FS, root string) (*FSTree, error) {
 			return nil
 		}
 
-		rel, err := filepath.Rel(root, current)
+		rel, err := relFSPath(root, current)
 		if err != nil {
 			return err
 		}

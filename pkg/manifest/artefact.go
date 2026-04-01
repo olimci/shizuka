@@ -1,9 +1,9 @@
 package manifest
 
-import "github.com/olimci/shizuka/pkg/iofs"
+import "io"
 
 // ArtefactBuilder is a function that builds an artefact
-type ArtefactBuilder = iofs.WriterFunc
+type ArtefactBuilder = func(w io.Writer) error
 
 type PostProcessor func(claim Claim, next ArtefactBuilder) ArtefactBuilder
 

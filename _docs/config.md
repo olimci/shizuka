@@ -81,6 +81,7 @@ Writes a Netlify-style `_redirects` file.
 - `shorten` defaults to `"/s"` (normalized to a leading `/` with no trailing `/`)
 - for pages in section `"posts"`, a non-empty `slug` generates a short redirect: `{site.url}{shorten}/{last-slug-segment} -> {page.url_path}`
 - you can also specify explicit redirects in config
+- generated short redirects do not change `.Page.Canon`; canonical URLs still point at the page’s actual URL path
 
 URL paths are site-relative and do not include a leading `/` (for example `posts/hello`).
 

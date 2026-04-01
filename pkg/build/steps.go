@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"io"
 	"maps"
-	"net/url"
 	"path"
 	"slices"
 	"strings"
@@ -184,8 +183,6 @@ func StepContent() []Step {
 		site.Tree = pages
 
 		seenSlugs := make(map[string]string)
-		redirectsCfg := cfg.Build.Steps.Redirects
-
 		for _, node := range pages.Nodes() {
 			if node.Error != nil || node.Page == nil {
 				continue
@@ -214,32 +211,14 @@ func StepContent() []Step {
 				}
 			}
 
-			if redirectsCfg != nil && redirectsCfg.Shorten != "" && page.Section == "posts" {
-				shortSlug := shortSlugForRedirect(page.Slug)
-				if shortSlug != "" {
-					canon, err := url.JoinPath(site.URL, redirectsCfg.Shorten, shortSlug)
-					if err != nil {
-						sc.Error(
-							fmt.Errorf("canonical URL from site.url %q and redirect path %q: %w", site.URL, path.Join(redirectsCfg.Shorten, shortSlug), err),
-							manifest.NewPageClaim(page.Meta.Source, page.Meta.URLPath),
-						)
-					} else {
-						page.Canon = canon
-					}
-				}
-			}
-			if page.Canon == "" {
-				canon, err := url.JoinPath(site.URL, page.Meta.URLPath)
-				if err != nil {
-					sc.Error(
-						fmt.Errorf("canonical URL from site.url %q and page path %q: %w", site.URL, page.Meta.URLPath, err),
-						manifest.NewPageClaim(page.Meta.Source, page.Meta.URLPath),
-					)
-				} else if !strings.HasSuffix(canon, "/") {
-					page.Canon = canon + "/"
-				} else {
-					page.Canon = canon
-				}
+			canon, err := canonicalPageURL(site.URL, page.Meta.URLPath)
+			if err != nil {
+				sc.Error(
+					fmt.Errorf("canonical URL from site.url %q and page path %q: %w", site.URL, page.Meta.URLPath, err),
+					manifest.NewPageClaim(page.Meta.Source, page.Meta.URLPath),
+				)
+			} else {
+				page.Canon = canon
 			}
 
 			if page.Featured {
@@ -495,6 +474,29 @@ func StepRedirects() Step {
 				Status: 0,
 			})
 		}
+
+		if len(redirects) == 0 {
+			return nil
+		}
+
+		seen := make(map[string]string, len(redirects))
+		deduped := make([]config.Redirect, 0, len(redirects))
+		for _, redirect := range redirects {
+			from := strings.TrimSpace(redirect.From)
+			to := strings.TrimSpace(redirect.To)
+
+			if prev, ok := seen[from]; ok {
+				sc.Error(
+					fmt.Errorf("duplicate redirect %q (%s, %s)", from, prev, to),
+					manifest.NewInternalClaim("redirects", redirectsCfg.Output),
+				)
+				continue
+			}
+
+			seen[from] = to
+			deduped = append(deduped, redirect)
+		}
+		redirects = deduped
 
 		if len(redirects) == 0 {
 			return nil

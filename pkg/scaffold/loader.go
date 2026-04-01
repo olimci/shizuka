@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
-
-	"github.com/olimci/shizuka/pkg/iofs"
 )
 
 const (
@@ -60,18 +59,18 @@ func Load(ctx context.Context, target string) (*Template, *Collection, error) {
 		return nil, nil, fmt.Errorf("%w: resolving source: %w", ErrFailedToLoad, err)
 	}
 
-	fsy, err := src.FS(ctx)
-	if err != nil {
+	if err := src.init(ctx); err != nil {
 		src.Close()
 		return nil, nil, fmt.Errorf("%w: accessing source: %w", ErrFailedToLoad, err)
 	}
 
-	root := src.Root()
+	fsy := src.fsys
+	root := src.root
 
 	if _, ok, err := findConfigFile(fsy, path.Join(root, CollectionFileBase)); err != nil {
 		return nil, nil, fmt.Errorf("%w: checking collection config: %w", ErrFailedToLoad, err)
 	} else if ok {
-		collection, err := LoadCollection(ctx, src, ".")
+		collection, err := LoadCollection(src, ".")
 		if err != nil {
 			src.Close()
 			return nil, nil, err
@@ -82,7 +81,7 @@ func Load(ctx context.Context, target string) (*Template, *Collection, error) {
 	if _, ok, err := findConfigFile(fsy, path.Join(root, TemplateFileBase)); err != nil {
 		return nil, nil, fmt.Errorf("%w: checking template config: %w", ErrFailedToLoad, err)
 	} else if ok {
-		template, err := LoadTemplate(ctx, src, ".")
+		template, err := LoadTemplate(src, ".")
 		if err != nil {
 			src.Close()
 			return nil, nil, err
@@ -93,14 +92,14 @@ func Load(ctx context.Context, target string) (*Template, *Collection, error) {
 	return nil, nil, fmt.Errorf("%w: no %v or %v found at %s", ErrFailedToLoad, configCandidates(TemplateFileBase), configCandidates(CollectionFileBase), target)
 }
 
-func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection, error) {
-	src := iofs.FromFS(fsy, root)
+func LoadFS(_ context.Context, fsy fs.FS, root string) (*Template, *Collection, error) {
+	src := newSource(fsy, root, nil)
 
 	if _, ok, err := findConfigFile(fsy, path.Join(root, CollectionFileBase)); err != nil {
 		src.Close()
 		return nil, nil, fmt.Errorf("%w: checking collection config: %w", ErrFailedToLoad, err)
 	} else if ok {
-		collection, err := LoadCollection(ctx, src, ".")
+		collection, err := LoadCollection(src, ".")
 		if err != nil {
 			src.Close()
 			return nil, nil, fmt.Errorf("%w: %w", ErrFailedToLoad, err)
@@ -112,7 +111,7 @@ func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection
 		src.Close()
 		return nil, nil, fmt.Errorf("%w: checking template config: %w", ErrFailedToLoad, err)
 	} else if ok {
-		template, err := LoadTemplate(ctx, src, ".")
+		template, err := LoadTemplate(src, ".")
 		if err != nil {
 			src.Close()
 			return nil, nil, fmt.Errorf("%w: %w", ErrFailedToLoad, err)
@@ -123,15 +122,10 @@ func LoadFS(ctx context.Context, fsy fs.FS, root string) (*Template, *Collection
 	return nil, nil, fmt.Errorf("%w: no %v or %v found in %s", ErrFailedToLoad, configCandidates(TemplateFileBase), configCandidates(CollectionFileBase), root)
 }
 
-func LoadTemplate(ctx context.Context, src iofs.Readable, p string) (*Template, error) {
-	fsy, err := src.FS(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("accessing source: %w", err)
-	}
+func LoadTemplate(src *source, p string) (*Template, error) {
+	base := path.Join(src.root, p)
 
-	base := path.Join(src.Root(), p)
-
-	cfgPath, ok, err := findConfigFile(fsy, path.Join(base, TemplateFileBase))
+	cfgPath, ok, err := findConfigFile(src.fsys, path.Join(base, TemplateFileBase))
 	if err != nil {
 		return nil, fmt.Errorf("finding template config file: %w", err)
 	}
@@ -139,7 +133,7 @@ func LoadTemplate(ctx context.Context, src iofs.Readable, p string) (*Template, 
 		return nil, fmt.Errorf("no template config found (expected one of %v)", configCandidates(TemplateFileBase))
 	}
 
-	file, err := fsy.Open(cfgPath)
+	file, err := src.fsys.Open(cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening template config file: %w", err)
 	}
@@ -157,15 +151,10 @@ func LoadTemplate(ctx context.Context, src iofs.Readable, p string) (*Template, 
 	}, nil
 }
 
-func LoadCollection(ctx context.Context, src iofs.Readable, p string) (*Collection, error) {
-	fsy, err := src.FS(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("accessing source: %w", err)
-	}
+func LoadCollection(src *source, p string) (*Collection, error) {
+	base := path.Join(src.root, p)
 
-	base := path.Join(src.Root(), p)
-
-	cfgPath, ok, err := findConfigFile(fsy, path.Join(base, CollectionFileBase))
+	cfgPath, ok, err := findConfigFile(src.fsys, path.Join(base, CollectionFileBase))
 	if err != nil {
 		return nil, fmt.Errorf("finding collection config file: %w", err)
 	}
@@ -173,7 +162,7 @@ func LoadCollection(ctx context.Context, src iofs.Readable, p string) (*Collecti
 		return nil, fmt.Errorf("no collection config found (expected one of %v)", configCandidates(CollectionFileBase))
 	}
 
-	file, err := fsy.Open(cfgPath)
+	file, err := src.fsys.Open(cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening collection config file: %w", err)
 	}
@@ -188,7 +177,7 @@ func LoadCollection(ctx context.Context, src iofs.Readable, p string) (*Collecti
 
 	for i, slug := range config.Templates.Items {
 		fullPath := path.Join(p, slug)
-		template, err := LoadTemplate(ctx, src, fullPath)
+		template, err := LoadTemplate(src, fullPath)
 		if err != nil {
 			return nil, fmt.Errorf("loading template %s: %w", slug, err)
 		}
@@ -209,23 +198,103 @@ func LoadCollection(ctx context.Context, src iofs.Readable, p string) (*Collecti
 }
 
 // resolve determines the source type from the target string and returns the appropriate source
-func resolve(target string) (iofs.Readable, error) {
+func resolve(target string) (*source, error) {
 	if isRemoteURL(target) {
-		return iofs.FromRemote(target), nil
+		return newRemoteSource(target), nil
 	}
 
 	if info, err := os.Stat(target); err == nil {
 		if !info.IsDir() {
 			return nil, fmt.Errorf("%s is not a directory", target)
 		}
-		return iofs.FromOS(target), nil
+		return newSource(os.DirFS(target), ".", nil), nil
 	}
 
 	if looksLikeGitShorthand(target) {
-		return iofs.FromRemote("https://" + target), nil
+		return newRemoteSource("https://" + target), nil
 	}
 
 	return nil, fmt.Errorf("cannot resolve %s: path does not exist and is not a valid remote URL", target)
+}
+
+type source struct {
+	fsys    fs.FS
+	root    string
+	close   func() error
+	prepare func(context.Context) (fs.FS, error)
+}
+
+func newSource(fsys fs.FS, root string, close func() error) *source {
+	if strings.TrimSpace(root) == "" {
+		root = "."
+	}
+	if close == nil {
+		close = func() error { return nil }
+	}
+	return &source{
+		fsys:  fsys,
+		root:  root,
+		close: close,
+	}
+}
+
+func newRemoteSource(url string) *source {
+	var tempDir string
+	return &source{
+		root: ".",
+		close: func() error {
+			if tempDir == "" {
+				return nil
+			}
+			return os.RemoveAll(tempDir)
+		},
+		prepare: func(ctx context.Context) (fs.FS, error) {
+			if _, err := exec.LookPath("git"); err != nil {
+				return nil, fmt.Errorf("git is required for remote sources: %w", err)
+			}
+
+			dir, err := os.MkdirTemp("", "shizuka-source-*")
+			if err != nil {
+				return nil, fmt.Errorf("creating temp directory: %w", err)
+			}
+
+			cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", url, dir)
+			cmd.Stderr = os.Stderr
+
+			if err := cmd.Run(); err != nil {
+				_ = os.RemoveAll(dir)
+				return nil, fmt.Errorf("cloning repository: %w", err)
+			}
+
+			tempDir = dir
+			return os.DirFS(dir), nil
+		},
+	}
+}
+
+func (s *source) init(ctx context.Context) error {
+	if s.fsys != nil {
+		return nil
+	}
+	if s.prepare == nil {
+		return fmt.Errorf("source is not initialized")
+	}
+
+	fsys, err := s.prepare(ctx)
+	if err != nil {
+		return err
+	}
+
+	s.fsys = fsys
+	s.prepare = nil
+	return nil
+}
+
+func (s *source) Close() error {
+	if s == nil || s.close == nil {
+		return nil
+	}
+	return s.close()
 }
 
 func isRemoteURL(target string) bool {

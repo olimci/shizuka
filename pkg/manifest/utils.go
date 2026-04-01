@@ -1,13 +1,12 @@
 package manifest
 
 import (
-	"context"
 	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
-	"github.com/olimci/shizuka/pkg/iofs"
 	"github.com/olimci/shizuka/pkg/utils/set"
 )
 
@@ -67,19 +66,12 @@ func makeArtefacts(as []Artefact) (artefacts map[string]Artefact, conflicts map[
 	return artefacts, conflicts
 }
 
-func walkDestination(ctx context.Context, out iofs.Writable) (*set.Set[string], *set.Set[string], error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	fsys, err := out.FS(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
+func walkDestination(root string) (*set.Set[string], *set.Set[string], error) {
+	fsys := os.DirFS(root)
 	files := set.New[string]()
 	dirs := set.New[string]()
 
-	err = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -102,17 +94,9 @@ func walkDestination(ctx context.Context, out iofs.Writable) (*set.Set[string], 
 	return files, dirs, err
 }
 
-func displayPath(out iofs.Writable, rel string) string {
-	type displayer interface {
-		DisplayPath(string) string
+func displayPath(root, rel string) string {
+	if rel == "." {
+		return root
 	}
-	if d, ok := out.(displayer); ok {
-		return d.DisplayPath(rel)
-	}
-
-	root := strings.TrimSpace(out.Root())
-	if root == "" || root == "." {
-		return rel
-	}
-	return path.Join(root, rel)
+	return filepath.Clean(filepath.Join(root, rel))
 }

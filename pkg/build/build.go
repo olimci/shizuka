@@ -1,16 +1,15 @@
 package build
 
 import (
-	"context"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/iofs"
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/utils/set"
 	"golang.org/x/sync/errgroup"
@@ -34,18 +33,7 @@ type BuildCtx struct {
 }
 
 func Build(opts *config.Options) error {
-	source, configPath, err := resolveSource(opts)
-	if err != nil {
-		return err
-	}
-	defer source.Close()
-
-	dest := opts.Destination
-	if dest != nil {
-		defer dest.Close()
-	}
-
-	sourceFS, sourceRoot, err := openSourceFS(opts.Context, source)
+	sourceFS, sourceRoot, configPath, err := resolveSource(opts)
 	if err != nil {
 		return err
 	}
@@ -91,11 +79,11 @@ func Build(opts *config.Options) error {
 
 	}
 
-	return build(steps, config, opts, sourceFS, sourceRoot, dest)
+	return build(steps, config, opts, sourceFS, sourceRoot)
 }
 
 // BuildSteps is a function that builds a site from a DAG of steps.
-func build(steps []Step, config *config.Config, options *config.Options, sourceFS fs.FS, sourceRoot string, out iofs.Writable) error {
+func build(steps []Step, config *config.Config, options *config.Options, sourceFS fs.FS, sourceRoot string) error {
 	startTime := time.Now()
 
 	man := manifest.New()
@@ -199,7 +187,7 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 	}
 
 	if !buildErrors.HasErrors() {
-		if err := man.Build(config, options, report, out); err != nil {
+		if err := man.Build(config, options, report, ""); err != nil {
 			if buildErrors.HasErrors() {
 				return &Failure{Errors: buildErrors.Slice()}
 			}
@@ -216,7 +204,7 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 				options.ErrTemplate,
 				failure,
 			))
-			_ = man.Build(config, options, nil, out)
+			_ = man.Build(config, options, nil, "")
 		}
 		return failure
 	}
@@ -224,45 +212,17 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 	return nil
 }
 
-func resolveSource(opts *config.Options) (iofs.Readable, string, error) {
-	configPath := opts.ConfigPath
-	if opts.Source == nil {
-		if filepath.IsAbs(configPath) {
-			return iofs.FromOS(filepath.Dir(configPath)), filepath.Base(configPath), nil
-		}
-		return iofs.FromOS("."), configPath, nil
-	}
-	if filepath.IsAbs(configPath) {
-		return nil, "", fmt.Errorf("config %q must be relative when using a custom source", configPath)
-	}
-	return opts.Source, configPath, nil
-}
-
-func openSourceFS(ctx context.Context, source iofs.Readable) (fs.FS, string, error) {
-	fsys, err := source.FS(ctx)
-	if err != nil {
-		return nil, "", fmt.Errorf("source %q: %w", source.Root(), err)
+func resolveSource(opts *config.Options) (fs.FS, string, string, error) {
+	configPath := filepath.Clean(opts.ConfigPath)
+	sourceRoot := filepath.Dir(configPath)
+	if sourceRoot == "" {
+		sourceRoot = "."
 	}
 
-	root := strings.TrimSpace(source.Root())
-	if root == "" {
-		root = "."
-	}
+	sourceFS := os.DirFS(sourceRoot)
+	configName := filepath.Base(configPath)
 
-	if root != "." {
-		root, err = cleanFSPath(root)
-		if err != nil {
-			return nil, "", fmt.Errorf("source root %q: %w", source.Root(), err)
-		}
-		sub, err := fs.Sub(fsys, root)
-		if err != nil {
-			return nil, "", fmt.Errorf("source root %q: %w", root, err)
-		}
-		fsys = sub
-		root = "."
-	}
-
-	return fsys, root, nil
+	return sourceFS, sourceRoot, configName, nil
 }
 
 // newDAG constructs a DAG from a slice of steps.

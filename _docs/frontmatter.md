@@ -92,7 +92,7 @@ body = """
 
 Top-level:
 
-- `slug` (string): used for redirects and linking; if empty, defaults to the page URL path (no leading/trailing `/`)
+- `slug` (string): used for short redirects and page identifiers; if empty, defaults to the page URL path (no leading/trailing `/`)
 - `title` (string)
 - `description` (string)
 - `sections` (string): becomes `.Page.Section` (note the key name is plural)

@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"net/url"
 	"path"
 	"path/filepath"
 	"strings"
@@ -105,12 +106,11 @@ func parseTemplates(fsys fs.FS, pattern string, funcs template.FuncMap) (*templa
 }
 
 func url2dir(dir string) string {
-	dir = filepath.ToSlash(dir)
-	dir = strings.TrimSuffix(dir, "/")
-	if dir == "." {
+	dir = path.Clean(filepath.ToSlash(strings.TrimSpace(dir)))
+	if dir == "." || dir == "/" {
 		return ""
 	}
-	return dir
+	return strings.TrimPrefix(dir, "/")
 }
 
 func shortSlugForRedirect(slug string) string {
@@ -133,6 +133,17 @@ func ensureLeadingSlash(target string) string {
 		return target
 	}
 	return "/" + target
+}
+
+func canonicalPageURL(siteURL, pagePath string) (string, error) {
+	canon, err := url.JoinPath(siteURL, pagePath)
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasSuffix(canon, "/") {
+		canon += "/"
+	}
+	return canon, nil
 }
 
 func cleanFSPath(p string) (string, error) {
