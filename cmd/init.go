@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/olimci/prompter"
+	"github.com/olimci/coffee"
 	"github.com/olimci/shizuka/cmd/embed"
 	"github.com/olimci/shizuka/pkg/scaffold"
 	"github.com/urfave/cli/v3"
@@ -76,7 +76,7 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 	flagTemplate := cmd.String("template")
 	flagList := cmd.Bool("list")
 	flagListVars := cmd.Bool("list-vars")
-	flagVarPairs := cmd.StringSlice("vars")
+	flagVarPairs := cmd.StringSlice("var")
 	flagForce := cmd.Bool("force")
 	flagVars, err := parseVars(flagVarPairs)
 	if err != nil {
@@ -87,8 +87,11 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("--list and --list-vars cannot be used together!")
 	}
 
-	err = prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
-		defer p.Clear()
+	err = coffee.Do(func(ctx context.Context, c *coffee.Coffee) error {
+		defer func() {
+			_ = c.Clear()
+		}()
+
 		tmpl, coll, close, err := initResolve(ctx, source)
 		if err != nil {
 			return err
@@ -108,7 +111,7 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 					tmpl = selected
 				}
 			} else {
-				selected, err := p.AwaitSelectDefault("select a template:", coll.Config.Templates.Items, coll.Config.Templates.Default)
+				selected, err := c.AwaitSelectDefault("select a template:", coll.Config.Templates.Items, coll.Config.Templates.Default)
 				if err != nil {
 					return err
 				}
@@ -116,15 +119,20 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 			}
 		}
 
-		fmt.Println(tmpl, coll)
-
 		if tmpl == nil {
 			return fmt.Errorf("no template found!")
 		}
 
+		if flagListVars {
+			for _, v := range tmpl.Config.Variables {
+				fmt.Printf("%q: %q\n", v.Name, v.Default)
+			}
+			return nil
+		}
+
 		for k, v := range tmpl.Config.Variables {
-			p.Logf("variable %s (%s): ", v.Name, v.Description)
-			value, err := p.AwaitInput(prompter.WithInputPlaceholder(v.Description))
+			_ = c.Logf("variable %s (%s): ", v.Name, v.Description)
+			value, err := c.AwaitInput(coffee.WithInputPlaceholder(v.Description))
 			if err != nil {
 				return err
 			}
@@ -132,7 +140,7 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 			flagVars[k] = value
 		}
 
-		p.Log("building...")
+		_ = c.Log("building...")
 
 		res, err := tmpl.Build(ctx, flagOutput, scaffold.BuildOptions{
 			Variables: flagVars,
@@ -142,13 +150,13 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 
-		p.Log("Done!")
-		p.Logf("Files: %v", res.FilesCreated)
-		p.Logf("Dirs:  %v", res.DirsCreated)
+		_ = c.Log("Done!")
+		_ = c.Logf("Files: %v", res.FilesCreated)
+		_ = c.Logf("Dirs:  %v", res.DirsCreated)
 
 		return nil
-	}, prompter.WithContext(ctx), prompter.WithStyles(styles))
-	if err != nil && errors.Is(err, prompter.ErrNoninteractive) {
+	}, coffee.WithContext(ctx))
+	if err != nil && errors.Is(err, coffee.ErrNonInteractive) {
 		return runXInit(ctx, cmd)
 	}
 	return err
@@ -164,7 +172,7 @@ func runXInit(ctx context.Context, cmd *cli.Command) error {
 	flagTemplate := cmd.String("template")
 	flagList := cmd.Bool("list")
 	flagListVars := cmd.Bool("list-vars")
-	flagVarPairs := cmd.StringSlice("vars")
+	flagVarPairs := cmd.StringSlice("var")
 	flagForce := cmd.Bool("force")
 	flagVars, err := parseVars(flagVarPairs)
 	if err != nil {

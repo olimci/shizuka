@@ -35,6 +35,12 @@ func String() string {
 	return Current().String()
 }
 
+func Banner(repoLink string) string {
+	return fmt.Sprintf(`░█▀▀░█░█░▀█▀░▀▀█░█░█░█░█░█▀█ v%s
+░▀▀█░█▀█░░█░░▄▀░░█░█░█▀▄░█▀█
+░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀▀░▀░▀░▀░▀ %s`, String(), repoLink)
+}
+
 func (v Version) String() string {
 	return fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
 }

@@ -7,7 +7,7 @@ import (
 	"html/template"
 	"time"
 
-	"github.com/olimci/prompter"
+	"github.com/olimci/coffee"
 	"github.com/olimci/shizuka/pkg/build"
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/events"
@@ -55,8 +55,11 @@ func xBuildCmd() *cli.Command {
 }
 
 func runBuild(ctx context.Context, cmd *cli.Command) error {
-	err := prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
-		defer p.Clear()
+	err := coffee.Do(func(ctx context.Context, c *coffee.Coffee) error {
+		defer func() {
+			_ = c.Clear()
+		}()
+
 		opts := config.DefaultOptions().WithContext(ctx)
 
 		if cmd.Bool("dev") {
@@ -75,10 +78,10 @@ func runBuild(ctx context.Context, cmd *cli.Command) error {
 		}
 
 		opts.WithEventHandler(events.NewHandlerFunc(func(event events.Event) {
-			p.Log(formatEvent(event))
+			_ = c.Log(formatEvent(event))
 		}))
 
-		status, err := p.Status("building...")
+		status, err := c.Status("building...")
 		if err != nil {
 			return err
 		}
@@ -90,14 +93,14 @@ func runBuild(ctx context.Context, cmd *cli.Command) error {
 		if buildErr != nil {
 			_ = status.Error(fmt.Sprintf("build failed (%s)", elapsed))
 			if !hasSummaryEvents(summary) {
-				p.Log(buildErr.Error())
+				_ = c.Log(buildErr.Error())
 			}
 		} else {
 			_ = status.Success(fmt.Sprintf("built (%s)", elapsed))
 		}
 
 		for _, line := range formatSummary(summary) {
-			p.Log(line)
+			_ = c.Log(line)
 		}
 
 		_ = status.Clear()
@@ -106,8 +109,8 @@ func runBuild(ctx context.Context, cmd *cli.Command) error {
 			return buildErr
 		}
 		return nil
-	}, prompter.WithContext(ctx), prompter.WithStyles(styles))
-	if err != nil && errors.Is(err, prompter.ErrNoninteractive) {
+	}, coffee.WithContext(ctx))
+	if err != nil && errors.Is(err, coffee.ErrNonInteractive) {
 		return runXBuild(ctx, cmd)
 	}
 	return err

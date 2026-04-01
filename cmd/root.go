@@ -2,8 +2,9 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/olimci/prompter"
+	"github.com/olimci/shizuka/pkg/version"
 	"github.com/urfave/cli/v3"
 )
 
@@ -12,7 +13,7 @@ const (
 	DefaultPort       = 6767
 )
 
-var styles = prompter.DefaultStyles()
+const repoLink = "github.com/olimci/shizuka"
 
 func Execute(ctx context.Context, args []string) error {
 	app := &cli.Command{
@@ -27,6 +28,11 @@ func Execute(ctx context.Context, args []string) error {
 			// noninteractive subcommand group
 			xCmd(),
 		},
+	}
+
+	if len(args) <= 1 {
+		fmt.Println(version.Banner(repoLink) + "\n")
+		args = append(args, "help")
 	}
 
 	return app.Run(ctx, args)

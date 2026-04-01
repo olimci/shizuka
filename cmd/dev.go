@@ -9,11 +9,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/olimci/prompter"
+	"github.com/olimci/coffee"
 	"github.com/olimci/shizuka/cmd/internal"
 	"github.com/olimci/shizuka/pkg/build"
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/events"
+	"github.com/olimci/shizuka/pkg/version"
 	"github.com/olimci/shizuka/pkg/watcher"
 	"github.com/urfave/cli/v3"
 )
@@ -135,20 +136,36 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 		Handler: mux,
 	}
 
-	err = prompter.Start(func(ctx context.Context, p *prompter.Prompter) error {
-		defer p.Clear()
+	err = coffee.Do(func(ctx context.Context, c *coffee.Coffee) error {
+		defer func() {
+			_ = c.Clear()
+			_ = c.ClearHeader()
+			_ = c.ClearFooter()
+		}()
+
+		_ = c.SetWindowTitle("shizuka dev")
+		_ = c.LogHeader(version.Banner(repoLink))
+
 		opts.WithEventHandler(events.NewHandlerFunc(func(event events.Event) {
-			p.Log(formatEvent(event))
+			_ = c.Log(formatEvent(event))
 		}))
 
-		keysStatus, err := p.StatusKeybinds("watching for changes", []prompter.Keybind{
-			{Key: "r", Event: "rebuild", Description: "rebuild"},
-			{Key: "q", Event: "quit", Description: "quit"},
-		}, prompter.WithKeybindPrompt("keys:"))
+		keysStatus, err := c.Status("watching for changes")
 		if err != nil {
 			return err
 		}
-		defer keysStatus.Clear()
+
+		keys, err := c.Keybinds([]coffee.Keybind{
+			{Key: "r", Event: "rebuild", Description: "rebuild"},
+			{Key: "q", Event: "quit", Description: "quit"},
+		})
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = keys.Clear()
+			_ = keysStatus.Clear()
+		}()
 
 		serverErrs := make(chan error, 1)
 		go func() {
@@ -166,7 +183,9 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 		}
 
 		runBuild := func(trigger string) error {
-			p.Clear()
+			if err := c.Clear(); err != nil {
+				return err
+			}
 
 			if err := keysStatus.Working(fmt.Sprintf("building (%s)", trigger)); err != nil {
 				return err
@@ -178,17 +197,17 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 
 			if buildErr != nil {
 				_ = keysStatus.Error(fmt.Sprintf("build failed (%s)", elapsed))
-				p.Logf("build failed (%s)", elapsed)
+				_ = c.Logf("build failed (%s)", elapsed)
 				if !hasSummaryEvents(summary) {
-					p.Log(buildErr.Error())
+					_ = c.Log(buildErr.Error())
 				}
 				for _, line := range formatSummary(summary) {
-					p.Log(line)
+					_ = c.Log(line)
 				}
 				return nil
 			}
 
-			p.Logf("built (%s)", elapsed)
+			_ = c.Logf("built (%s)", elapsed)
 			_ = keysStatus.Idle("watching for changes")
 			hub.Broadcast("reload")
 			return nil
@@ -208,7 +227,11 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}
 				return err
-			case ev := <-keysStatus.Events():
+			case ev, ok := <-keys.Events():
+				if !ok {
+					return nil
+				}
+
 				switch ev.Event {
 				case "quit":
 					_ = server.Close()
@@ -219,15 +242,15 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 					}
 				}
 			case err := <-watch.Errors:
-				p.Logf("watch error: %s", err)
+				_ = c.Logf("watch error: %s", err)
 			case <-watch.Events:
 				if err := runBuild("changes"); err != nil {
 					return err
 				}
 			}
 		}
-	}, prompter.WithContext(ctx), prompter.WithStyles(styles))
-	if err != nil && errors.Is(err, prompter.ErrNoninteractive) {
+	}, coffee.WithContext(ctx))
+	if err != nil && errors.Is(err, coffee.ErrNonInteractive) {
 		return runXDev(ctx, cmd)
 	}
 	return err
