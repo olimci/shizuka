@@ -15,17 +15,29 @@ type Site struct {
 	Meta SiteMeta
 
 	Collections Collections
+	Groups      Groups
 }
 
 // Collections store collections of pages for Site
 type Collections struct {
 	All []*PageLite
 
-	Drafts   []*PageLite
-	Featured []*PageLite
+	Published []*PageLite
+	Drafts    []*PageLite
+	Featured  []*PageLite
 
 	Latest          []*PageLite
 	RecentlyUpdated []*PageLite
+	Undated         []*PageLite
+}
+
+// Groups store keyed page groupings for Site
+type Groups struct {
+	BySlug      map[string]*PageLite
+	BySection   map[string][]*PageLite
+	ByTag       map[string][]*PageLite
+	ByYear      map[int][]*PageLite
+	ByYearMonth map[string][]*PageLite
 }
 
 // SiteMeta stores metadata for the site

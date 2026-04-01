@@ -48,8 +48,13 @@ Key fields you can use in templates:
 - `.Site.Tree` (page tree for hierarchical navigation)
 - `.Site.Collections`:
   - `.All` (`[]*PageLite`)
-  - `.Drafts`, `.Featured`
-  - `.Latest`, `.RecentlyUpdated`
+  - `.Published`, `.Drafts`, `.Featured`
+  - `.Latest`, `.RecentlyUpdated`, `.Undated`
+- `.Site.Groups`:
+  - `.BySlug` (`map[string]*PageLite`)
+  - `.BySection`, `.ByTag` (`map[string][]*PageLite`)
+  - `.ByYear` (`map[int][]*PageLite`)
+  - `.ByYearMonth` (`map[string][]*PageLite`, key format `YYYY-MM`)
 
 `PageLite` contains: `Slug`, `Canon`, `Title`, `Description`, `Section`, `Tags`, `Date`, `Updated`, `PubDate`, `Params`, `Featured`, `Draft`. `PageLite.Params` is copied from `.Page.Params` with `_`-prefixed keys stripped out.
 
@@ -58,11 +63,27 @@ Key fields you can use in templates:
 Shizuka registers a small set of helpers:
 
 - `where field value pages` -> filtered `[]*PageLite`
-  - supported `field` values: `"Section"`, `"Featured"`, `"Draft"`, `"Date:before"`, `"Date:after"`, `"Updated:before"`, `"Updated:after"`, `"Tags"`, `"Tags:not"`
+  - supported `field` values: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Featured"`, `"Draft"`, `"Date:before"`, `"Date:after"`, `"Updated:before"`, `"Updated:after"`, `"Tags"`, `"Tags:not"`
+- `whereEq field value pages` -> pages where `field == value`
+- `whereNe field value pages` -> pages where `field != value`
+- `whereHas field value pages` -> pages where a list-like field contains `value`
+- `whereIn field pages value...` -> pages where `field` matches any of the provided values
+  - `whereEq` / `whereNe` / `whereHas` / `whereIn` support: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Featured"`, `"Draft"`, `"Date"`, `"Updated"`, `"PubDate"`, `"Tags"`
+  - `whereEq` / `whereNe` / `whereHas` also support page params via `"Params.some_key"`
 - `sort field order pages` -> sorted `[]*PageLite`
   - `order` must be `"asc"` or `"desc"`
-  - `field` values: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Date"`, `"Updated"`
+  - `field` values: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Date"`, `"Updated"`, `"PubDate"`
 - `limit n pages` -> first `n` pages
+- `offset n pages` -> pages after skipping the first `n`
+- `first pages` / `last pages` -> a single `*PageLite` (or `nil` if empty)
+- `groupBy field pages` -> `map[string][]*PageLite`
+  - supported `field` values: `"Section"`, `"Tags"`, `"Year"`, `"YearMonth"`, `"Featured"`, `"Draft"`
+- `datefmt layout t` -> formatted time string (returns `""` for zero time)
+- `default fallback value` -> `fallback` when `value` is empty / zero
+- `uniq values` -> deduplicated `[]string` preserving original order
+- `slugify s` -> normalized URL-safe slug string
+- `dict key value ...` -> `map[string]any`
+- `merge map ...` -> merged `map[string]any` (later maps win)
 
 Everything else is standard Go template behavior (`range`, `if`, `len`, `index`, etc).
 

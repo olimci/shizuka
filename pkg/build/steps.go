@@ -163,6 +163,14 @@ func StepContent() []Step {
 				BuildTime:       buildCtx.StartTime,
 				BuildTimeString: buildCtx.StartTimestring,
 			},
+
+			Groups: transforms.Groups{
+				BySlug:      make(map[string]*transforms.PageLite),
+				BySection:   make(map[string][]*transforms.PageLite),
+				ByTag:       make(map[string][]*transforms.PageLite),
+				ByYear:      make(map[int][]*transforms.PageLite),
+				ByYearMonth: make(map[string][]*transforms.PageLite),
+			},
 		}
 
 		site.Tree = pages
@@ -206,15 +214,44 @@ func StepContent() []Step {
 				page.Canon = canon
 			}
 
+			lite := page.Lite()
+
 			if page.Featured {
-				site.Collections.Featured = append(site.Collections.Featured, page.Lite())
+				site.Collections.Featured = append(site.Collections.Featured, lite)
 			}
 
 			if page.Draft {
-				site.Collections.Drafts = append(site.Collections.Drafts, page.Lite())
+				site.Collections.Drafts = append(site.Collections.Drafts, lite)
+			} else {
+				site.Collections.Published = append(site.Collections.Published, lite)
 			}
 
-			site.Collections.All = append(site.Collections.All, page.Lite())
+			if page.Date.IsZero() {
+				site.Collections.Undated = append(site.Collections.Undated, lite)
+			} else {
+				year := page.Date.Year()
+				site.Groups.ByYear[year] = append(site.Groups.ByYear[year], lite)
+
+				yearMonth := page.Date.Format("2006-01")
+				site.Groups.ByYearMonth[yearMonth] = append(site.Groups.ByYearMonth[yearMonth], lite)
+			}
+
+			if page.Slug != "" {
+				site.Groups.BySlug[page.Slug] = lite
+			}
+
+			if page.Section != "" {
+				site.Groups.BySection[page.Section] = append(site.Groups.BySection[page.Section], lite)
+			}
+
+			for _, tag := range page.Tags {
+				if tag == "" {
+					continue
+				}
+				site.Groups.ByTag[tag] = append(site.Groups.ByTag[tag], lite)
+			}
+
+			site.Collections.All = append(site.Collections.All, lite)
 		}
 
 		site.Collections.Latest = slices.Clone(site.Collections.All)
@@ -229,9 +266,9 @@ func StepContent() []Step {
 
 		site.Collections.RecentlyUpdated = slices.Clone(site.Collections.All)
 		slices.SortFunc(site.Collections.RecentlyUpdated, func(a, b *transforms.PageLite) int {
-			if a.Date.After(b.Date) {
+			if a.Updated.After(b.Updated) {
 				return -1
-			} else if a.Date.Before(b.Date) {
+			} else if a.Updated.Before(b.Updated) {
 				return +1
 			}
 			return 0
