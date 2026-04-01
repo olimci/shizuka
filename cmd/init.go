@@ -130,9 +130,14 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 			return nil
 		}
 
+		flagVars = mergeTemplateVars(tmpl.Config.Variables, flagVars)
+
 		for k, v := range tmpl.Config.Variables {
 			_ = c.Logf("variable %s (%s): ", v.Name, v.Description)
-			value, err := c.AwaitInput(coffee.WithInputPlaceholder(v.Description))
+			value, err := c.AwaitInput(
+				coffee.WithInputPlaceholder(v.Description),
+				coffee.WithInputValue(fmt.Sprint(flagVars[k])),
+			)
 			if err != nil {
 				return err
 			}
@@ -219,6 +224,8 @@ func runXInit(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
+	flagVars = mergeTemplateVars(tmpl.Config.Variables, flagVars)
+
 	res, err := tmpl.Build(flagOutput, scaffold.BuildOptions{
 		Variables: flagVars,
 		Force:     flagForce,
@@ -270,4 +277,18 @@ func parseVars(pairs []string) (map[string]any, error) {
 	}
 
 	return vars, nil
+}
+
+func mergeTemplateVars(cfg map[string]scaffold.TemplateCfgVar, overrides map[string]any) map[string]any {
+	merged := make(map[string]any, max(len(cfg), len(overrides)))
+
+	for key, variable := range cfg {
+		merged[key] = variable.Default
+	}
+
+	for key, value := range overrides {
+		merged[key] = value
+	}
+
+	return merged
 }

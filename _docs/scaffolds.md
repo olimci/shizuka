@@ -30,7 +30,7 @@ version = "1.0.0"
 shizuka_version = "0.1.0"
 
 [files]
-strip_suffixes = [".tmpl"]
+strip_suffixes = []
 templates = ["_shizuka.toml.tmpl", "content/**/*.md"]
 files = ["**/*"]
 
@@ -50,6 +50,7 @@ When scaffolding:
 
 - everything under the template directory is copied (except the `shizuka.template.*` config)
 - any path matching `files.templates` is processed as a Go `text/template` with your variables (e.g. `{{.SiteName}}`)
+- site templates under `templates/*.tmpl` are copied as-is, so they should keep their `.tmpl` extension and define their own template name (for example `{{ define "page" }}`)
 - filenames are transformed:
   - `files.renames` matches by basename (e.g. `_gitignore` -> `.gitignore`)
   - otherwise, a leading `_` becomes a leading `.` (e.g. `_gitignore` -> `.gitignore`)

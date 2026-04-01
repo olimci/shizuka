@@ -10,12 +10,12 @@ By default, Shizuka loads templates via:
 
 ## How template names are chosen
 
-Template names are derived from the filename **without** its extension:
+Each template file should define one named template, and your frontmatter should reference that name:
 
-- `templates/page.tmpl` -> template name `page`
-- `templates/post.tmpl` -> template name `post`
+- `templates/page.tmpl` should contain `{{ define "page" }}...{{ end }}`
+- `templates/post.tmpl` should contain `{{ define "post" }}...{{ end }}`
 
-These names must be unique across all files matched by `template_glob` (duplicate basenames are an error).
+Using the file basename as the template name is the recommended convention, but the runtime ultimately looks up the name you define in the template set. Those defined names must be unique across all files matched by `template_glob`.
 
 ## Template input data
 
@@ -68,4 +68,17 @@ Everything else is standard Go template behavior (`range`, `if`, `len`, `index`,
 
 ## Recommended template shape
 
-Shizuka executes the template by name (derived from the filename). The simplest pattern is: put the full HTML document directly in the file (like the built-in scaffold templates do), and reference `.Page` / `.Site` as needed.
+Shizuka executes the template by name. The recommended pattern is to make each `.tmpl` file a named partial:
+
+```gotemplate
+{{ define "page" }}
+<!DOCTYPE html>
+<html lang="en">
+<body>
+    <main>{{ .Page.Body }}</main>
+</body>
+</html>
+{{ end }}
+```
+
+Then reference that name from frontmatter with `template: "page"`.
