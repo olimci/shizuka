@@ -57,12 +57,18 @@ type ConfigStepStatic struct {
 }
 
 type ConfigStepContent struct {
-	TemplateGlob    string         `toml:"template_glob" yaml:"template_glob" json:"template_glob"`
-	Source          string         `toml:"source" yaml:"source" json:"source"`
-	Destination     string         `toml:"destination" yaml:"destination" json:"destination"`
-	DefaultTemplate string         `toml:"default_template" yaml:"default_template" json:"default_template"`
-	DefaultParams   map[string]any `toml:"default_params" yaml:"default_params" json:"default_params"`
-	GoldmarkConfig  ConfigGoldmark `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
+	TemplateGlob    string                `toml:"template_glob" yaml:"template_glob" json:"template_glob"`
+	Source          string                `toml:"source" yaml:"source" json:"source"`
+	Destination     string                `toml:"destination" yaml:"destination" json:"destination"`
+	DefaultTemplate string                `toml:"default_template" yaml:"default_template" json:"default_template"`
+	DefaultParams   map[string]any        `toml:"default_params" yaml:"default_params" json:"default_params"`
+	GoldmarkConfig  ConfigGoldmark        `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
+	Git             *ConfigStepContentGit `toml:"git" yaml:"git" json:"git"`
+}
+
+type ConfigStepContentGit struct {
+	Enabled  bool `toml:"enabled" yaml:"enabled" json:"enabled"`
+	Backfill bool `toml:"backfill" yaml:"backfill" json:"backfill"`
 }
 
 type ConfigStepHeaders struct {
@@ -192,7 +198,6 @@ func LoadFS(fsys fs.FS, path string) (*Config, error) {
 
 // Validate validates the Config.
 func (c *Config) Validate() error {
-	c.Site.URL = strings.TrimSpace(c.Site.URL)
 	if c.Site.URL == "" {
 		return errors.New("site.url is required")
 	}
@@ -207,30 +212,30 @@ func (c *Config) Validate() error {
 		c.Site.Params = map[string]any{}
 	}
 
-	if strings.TrimSpace(c.Build.Output) == "" {
+	if c.Build.Output == "" {
 		c.Build.Output = "dist"
 	}
 
 	if c.Build.Steps.Static != nil {
-		if strings.TrimSpace(c.Build.Steps.Static.Source) == "" {
+		if c.Build.Steps.Static.Source == "" {
 			c.Build.Steps.Static.Source = "static"
 		}
-		if strings.TrimSpace(c.Build.Steps.Static.Destination) == "" {
+		if c.Build.Steps.Static.Destination == "" {
 			c.Build.Steps.Static.Destination = "."
 		}
 	}
 
 	if c.Build.Steps.Content != nil {
-		if strings.TrimSpace(c.Build.Steps.Content.TemplateGlob) == "" {
+		if c.Build.Steps.Content.TemplateGlob == "" {
 			c.Build.Steps.Content.TemplateGlob = "templates/*.tmpl"
 		}
-		if strings.TrimSpace(c.Build.Steps.Content.Source) == "" {
+		if c.Build.Steps.Content.Source == "" {
 			c.Build.Steps.Content.Source = "content"
 		}
-		if strings.TrimSpace(c.Build.Steps.Content.Destination) == "" {
+		if c.Build.Steps.Content.Destination == "" {
 			c.Build.Steps.Content.Destination = "."
 		}
-		if strings.TrimSpace(c.Build.Steps.Content.DefaultTemplate) == "" {
+		if c.Build.Steps.Content.DefaultTemplate == "" {
 			c.Build.Steps.Content.DefaultTemplate = "page"
 		}
 		if c.Build.Steps.Content.DefaultParams == nil {
@@ -248,7 +253,7 @@ func (c *Config) Validate() error {
 	}
 
 	if c.Build.Steps.Redirects != nil {
-		shorten := strings.TrimSpace(c.Build.Steps.Redirects.Shorten)
+		shorten := c.Build.Steps.Redirects.Shorten
 		if shorten == "" {
 			shorten = "/s"
 		}
@@ -264,13 +269,13 @@ func (c *Config) Validate() error {
 	}
 
 	if c.Build.Steps.RSS != nil {
-		if strings.TrimSpace(c.Build.Steps.RSS.Output) == "" {
+		if c.Build.Steps.RSS.Output == "" {
 			c.Build.Steps.RSS.Output = "rss.xml"
 		}
 	}
 
 	if c.Build.Steps.Sitemap != nil {
-		if strings.TrimSpace(c.Build.Steps.Sitemap.Output) == "" {
+		if c.Build.Steps.Sitemap.Output == "" {
 			c.Build.Steps.Sitemap.Output = "sitemap.xml"
 		}
 	}
@@ -306,7 +311,7 @@ func (cfg ConfigGoldmark) Build() gm.Markdown {
 	)
 
 	for _, name := range cfg.Extensions {
-		switch strings.ToLower(strings.TrimSpace(name)) {
+		switch name {
 		case "gfm":
 			exts = append(exts, gmext.GFM)
 		case "table", "tables":

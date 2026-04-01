@@ -8,10 +8,13 @@ import (
 	"io"
 	"maps"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
+	"github.com/olimci/shizuka/pkg/gitmeta"
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/transforms"
 	"github.com/olimci/shizuka/pkg/utils/fileutils"
@@ -30,6 +33,8 @@ const (
 	SiteK      = manifest.K[*transforms.Site]("site")
 	TemplatesK = manifest.K[*template.Template]("templates")
 	BuildCtxK  = manifest.K[*BuildCtx]("buildctx")
+	GitRepoK   = manifest.K[*gitmeta.Repo]("gitrepo")
+	SiteGitK   = manifest.K[*transforms.SiteGitMeta]("sitegit")
 )
 
 // StepStatic attatches static files
@@ -69,7 +74,7 @@ func StepStatic() Step {
 }
 
 // StepContent builds pages
-func StepContent() []Step {
+func StepContent(useGit bool) []Step {
 	// build creates the manifest artefacts for the pages
 	build := StepFunc("pages:build", func(_ context.Context, sc *StepContext) error {
 		opts := manifest.GetAs(sc.Manifest, OptionsK)
@@ -144,11 +149,17 @@ func StepContent() []Step {
 	}, "pages:resolve", "pages:templates")
 
 	// resolve creates the manifest registry entries for site information.
+	resolveDeps := []string{"pages:index"}
+	if useGit {
+		resolveDeps = append(resolveDeps, "git:pages", "git:site")
+	}
+
 	resolve := StepFunc("pages:resolve", func(_ context.Context, sc *StepContext) error {
 		opts := manifest.GetAs(sc.Manifest, OptionsK)
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
 		buildCtx := manifest.GetAs(sc.Manifest, BuildCtxK)
+		siteGit := manifest.GetAs(sc.Manifest, SiteGitK)
 
 		site := &transforms.Site{
 			Title:       cfg.Site.Title,
@@ -159,9 +170,18 @@ func StepContent() []Step {
 			Meta: transforms.SiteMeta{
 				ConfigPath: opts.ConfigPath,
 				IsDev:      opts.Dev,
+				Git:        derefSiteGit(siteGit),
 
 				BuildTime:       buildCtx.StartTime,
 				BuildTimeString: buildCtx.StartTimestring,
+			},
+
+			Groups: transforms.Groups{
+				BySlug:      make(map[string]*transforms.PageLite),
+				BySection:   make(map[string][]*transforms.PageLite),
+				ByTag:       make(map[string][]*transforms.PageLite),
+				ByYear:      make(map[int][]*transforms.PageLite),
+				ByYearMonth: make(map[string][]*transforms.PageLite),
 			},
 		}
 
@@ -206,41 +226,85 @@ func StepContent() []Step {
 				page.Canon = canon
 			}
 
+			lite := page.Lite()
+
 			if page.Featured {
-				site.Collections.Featured = append(site.Collections.Featured, page.Lite())
+				site.Collections.Featured = append(site.Collections.Featured, lite)
 			}
 
 			if page.Draft {
-				site.Collections.Drafts = append(site.Collections.Drafts, page.Lite())
+				site.Collections.Drafts = append(site.Collections.Drafts, lite)
+			} else {
+				site.Collections.Published = append(site.Collections.Published, lite)
 			}
 
-			site.Collections.All = append(site.Collections.All, page.Lite())
+			if page.Date.IsZero() {
+				site.Collections.Undated = append(site.Collections.Undated, lite)
+			} else {
+				year := page.Date.Year()
+				site.Groups.ByYear[year] = append(site.Groups.ByYear[year], lite)
+
+				yearMonth := page.Date.Format("2006-01")
+				site.Groups.ByYearMonth[yearMonth] = append(site.Groups.ByYearMonth[yearMonth], lite)
+			}
+
+			if page.Slug != "" {
+				site.Groups.BySlug[page.Slug] = lite
+			}
+
+			if page.Section != "" {
+				site.Groups.BySection[page.Section] = append(site.Groups.BySection[page.Section], lite)
+			}
+
+			for _, tag := range page.Tags {
+				if tag == "" {
+					continue
+				}
+				site.Groups.ByTag[tag] = append(site.Groups.ByTag[tag], lite)
+			}
+
+			site.Collections.All = append(site.Collections.All, lite)
 		}
+
+		sortPageLites(site.Collections.All)
+		sortPageLites(site.Collections.Published)
+		sortPageLites(site.Collections.Drafts)
+		sortPageLites(site.Collections.Featured)
+		sortPageLites(site.Collections.Undated)
 
 		site.Collections.Latest = slices.Clone(site.Collections.All)
 		slices.SortFunc(site.Collections.Latest, func(a, b *transforms.PageLite) int {
-			if a.Date.After(b.Date) {
-				return -1
-			} else if a.Date.Before(b.Date) {
-				return +1
+			if cmp := compareWeight(a.Weight, b.Weight); cmp != 0 {
+				return cmp
 			}
-			return 0
+			return -compareTimeAsc(a.Date, b.Date)
 		})
 
 		site.Collections.RecentlyUpdated = slices.Clone(site.Collections.All)
 		slices.SortFunc(site.Collections.RecentlyUpdated, func(a, b *transforms.PageLite) int {
-			if a.Date.After(b.Date) {
-				return -1
-			} else if a.Date.Before(b.Date) {
-				return +1
+			if cmp := compareWeight(a.Weight, b.Weight); cmp != 0 {
+				return cmp
 			}
-			return 0
+			return -compareTimeAsc(a.Updated, b.Updated)
 		})
+
+		for _, group := range site.Groups.BySection {
+			sortPageLites(group)
+		}
+		for _, group := range site.Groups.ByTag {
+			sortPageLites(group)
+		}
+		for _, group := range site.Groups.ByYear {
+			sortPageLites(group)
+		}
+		for _, group := range site.Groups.ByYearMonth {
+			sortPageLites(group)
+		}
 
 		manifest.SetAs(sc.Manifest, SiteK, site)
 
 		return nil
-	}, "pages:index")
+	}, resolveDeps...)
 
 	templates := StepFunc("pages:templates", func(_ context.Context, sc *StepContext) error {
 		config := manifest.GetAs(sc.Manifest, ConfigK)
@@ -322,6 +386,39 @@ func StepContent() []Step {
 				params := maps.Clone(cfg.Build.Steps.Content.DefaultParams)
 				maps.Copy(params, page.Params)
 				page.Params = params
+
+				pageURLPath := strings.TrimSpace(page.Meta.URLPath)
+				if pageURLPath == "" {
+					pageURLPath = urlPath
+				}
+				pageURLPath, err = transforms.CleanURLPath(pageURLPath)
+				if err != nil {
+					err = fmt.Errorf("invalid url_path %q: %w", page.Meta.URLPath, err)
+				} else {
+					page.Meta.URLPath = pageURLPath
+					page.Meta.Target = path.Join(pageURLPath, "index.html")
+				}
+
+				aliases := make([]string, 0, len(page.Aliases))
+				seenAliases := make(map[string]struct{}, len(page.Aliases))
+				for _, aliasRaw := range page.Aliases {
+					alias, aliasErr := transforms.CleanURLPath(aliasRaw)
+					if aliasErr != nil {
+						err = fmt.Errorf("invalid alias %q: %w", aliasRaw, aliasErr)
+						break
+					}
+					if alias == page.Meta.URLPath {
+						continue
+					}
+					if _, exists := seenAliases[alias]; exists {
+						continue
+					}
+					seenAliases[alias] = struct{}{}
+					aliases = append(aliases, alias)
+				}
+				if err == nil {
+					page.Aliases = aliases
+				}
 			}
 
 			// If name == index, then the page corresponds to the current directory
@@ -333,8 +430,7 @@ func StepContent() []Step {
 					return
 				}
 
-				page.Meta.URLPath = parent.URLPath
-				page.Meta.Target = path.Join(page.Meta.URLPath, "index.html")
+				parent.URLPath = page.Meta.URLPath
 				parent.Page = page
 				page.Tree = parent
 				return
@@ -346,8 +442,7 @@ func StepContent() []Step {
 			if err != nil {
 				child.Error = err
 			} else {
-				page.Meta.URLPath = child.URLPath
-				page.Meta.Target = path.Join(page.Meta.URLPath, "index.html")
+				child.URLPath = page.Meta.URLPath
 				child.Page = page
 				page.Tree = child
 			}
@@ -366,12 +461,136 @@ func StepContent() []Step {
 		return nil
 	})
 
-	return []Step{
-		index,
-		templates,
-		resolve,
-		build,
+	steps := []Step{index}
+	if useGit {
+		steps = append(steps, StepGitPages(), StepGitSite())
 	}
+	steps = append(steps, templates, resolve, build)
+	return steps
+}
+
+func StepGitPages() Step {
+	return StepFunc("git:pages", func(ctx context.Context, sc *StepContext) error {
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
+		pages := manifest.GetAs(sc.Manifest, PagesK)
+		gitCfg := cfg.Build.Steps.Content.Git
+		if gitCfg == nil || !gitCfg.Enabled {
+			return nil
+		}
+
+		repo, err := getGitRepo(ctx, sc)
+		if err != nil || repo == nil {
+			return err
+		}
+
+		sourceRootAbs, err := filepath.Abs(sc.SourceRoot)
+		if err != nil {
+			return fmt.Errorf("resolve source root: %w", err)
+		}
+
+		for _, node := range pages.Nodes() {
+			if node == nil || node.Error != nil || node.Page == nil {
+				continue
+			}
+
+			relPath, ok := repoRelativeSourcePath(repo.Root(), sourceRootAbs, node.Page.Meta.Source)
+			if !ok {
+				continue
+			}
+
+			info, err := repo.FileInfo(ctx, relPath, true)
+			if err != nil {
+				return err
+			}
+
+			node.Page.Git = *info
+			if gitCfg.Backfill {
+				if node.Page.Date.IsZero() {
+					node.Page.Date = info.Created
+				}
+				if node.Page.Updated.IsZero() {
+					node.Page.Updated = info.Updated
+				}
+			}
+			node.Page.PubDate = firstNonzeroTime(node.Page.Updated, node.Page.Date, node.Page.PubDate)
+		}
+
+		return nil
+	}, "pages:index")
+}
+
+func StepGitSite() Step {
+	return StepFunc("git:site", func(ctx context.Context, sc *StepContext) error {
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
+		gitCfg := cfg.Build.Steps.Content.Git
+		if gitCfg == nil || !gitCfg.Enabled {
+			return nil
+		}
+
+		repo, err := getGitRepo(ctx, sc)
+		if err != nil || repo == nil {
+			return err
+		}
+
+		info, err := repo.SiteInfo(ctx)
+		if err != nil {
+			return err
+		}
+
+		manifest.SetAs(sc.Manifest, SiteGitK, info)
+		return nil
+	}, "pages:index")
+}
+
+func getGitRepo(ctx context.Context, sc *StepContext) (*gitmeta.Repo, error) {
+	if repo := manifest.GetAs(sc.Manifest, GitRepoK); repo != nil {
+		return repo, nil
+	}
+
+	root, err := filepath.Abs(sc.SourceRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	repo, err := gitmeta.Open(ctx, root)
+	if err != nil {
+		if errors.Is(err, gitmeta.ErrUnavailable) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	manifest.SetAs(sc.Manifest, GitRepoK, repo)
+	return repo, nil
+}
+
+func repoRelativeSourcePath(repoRoot, sourceRoot, source string) (string, bool) {
+	abs := filepath.Join(sourceRoot, filepath.FromSlash(source))
+	rel, err := filepath.Rel(repoRoot, abs)
+	if err != nil {
+		return "", false
+	}
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	if rel == "." || rel == "" || strings.HasPrefix(rel, "../") {
+		return "", false
+	}
+	return rel, true
+}
+
+func derefSiteGit(siteGit *transforms.SiteGitMeta) transforms.SiteGitMeta {
+	if siteGit == nil {
+		return transforms.SiteGitMeta{}
+	}
+	return *siteGit
+}
+
+func firstNonzeroTime(values ...time.Time) time.Time {
+	for _, value := range values {
+		if !value.IsZero() {
+			return value
+		}
+	}
+	return time.Time{}
 }
 
 // StepHeaders writes a headers file from config.
@@ -440,21 +659,26 @@ func StepRedirects() Step {
 
 		for _, page := range pages.Pages() {
 			if page.Section != "posts" {
-				continue
+			} else {
+				shortSlug := shortSlugForRedirect(page.Slug)
+				if shortSlug != "" {
+					shortPath := path.Join(redirectsCfg.Shorten, shortSlug)
+
+					redirects = append(redirects, config.Redirect{
+						From:   shortPath,
+						To:     ensureLeadingSlash(page.Meta.URLPath),
+						Status: 0,
+					})
+				}
 			}
 
-			shortSlug := shortSlugForRedirect(page.Slug)
-			if shortSlug == "" {
-				continue
+			for _, alias := range page.Aliases {
+				redirects = append(redirects, config.Redirect{
+					From:   ensureLeadingSlash(alias),
+					To:     ensureLeadingSlash(page.Meta.URLPath),
+					Status: 301,
+				})
 			}
-
-			shortPath := path.Join(redirectsCfg.Shorten, shortSlug)
-
-			redirects = append(redirects, config.Redirect{
-				From:   shortPath,
-				To:     ensureLeadingSlash(page.Meta.URLPath),
-				Status: 0,
-			})
 		}
 
 		if len(redirects) == 0 {
@@ -464,8 +688,8 @@ func StepRedirects() Step {
 		seen := make(map[string]string, len(redirects))
 		deduped := make([]config.Redirect, 0, len(redirects))
 		for _, redirect := range redirects {
-			from := strings.TrimSpace(redirect.From)
-			to := strings.TrimSpace(redirect.To)
+			from := redirect.From
+			to := redirect.To
 
 			if prev, ok := seen[from]; ok {
 				sc.Error(

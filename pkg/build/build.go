@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -48,8 +47,8 @@ func Build(opts *config.Options) error {
 		return err
 	}
 
-	if strings.TrimSpace(opts.SiteURL) != "" {
-		config.Site.URL = strings.TrimSpace(opts.SiteURL)
+	if opts.SiteURL != "" {
+		config.Site.URL = opts.SiteURL
 		if err := config.Validate(); err != nil {
 			return err
 		}
@@ -60,7 +59,8 @@ func Build(opts *config.Options) error {
 		steps = append(steps, StepStatic())
 	}
 	if config.Build.Steps.Content != nil {
-		steps = append(steps, StepContent()...)
+		useGit := config.Build.Steps.Content.Git != nil && config.Build.Steps.Content.Git.Enabled
+		steps = append(steps, StepContent(useGit)...)
 	}
 	if config.Build.Steps.Headers != nil {
 		steps = append(steps, StepHeaders())

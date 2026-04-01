@@ -9,10 +9,13 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/olimci/shizuka/pkg/manifest"
+	"github.com/olimci/shizuka/pkg/transforms"
 	"github.com/olimci/shizuka/pkg/utils/set"
 	"github.com/tdewolff/minify/v2"
 	mincss "github.com/tdewolff/minify/v2/css"
@@ -186,4 +189,52 @@ func cleanFSGlob(pattern string) (string, error) {
 		return "", fmt.Errorf("empty glob")
 	}
 	return pattern, nil
+}
+
+func compareTimeAsc(a, b time.Time) int {
+	if a.After(b) {
+		return 1
+	}
+	if a.Before(b) {
+		return -1
+	}
+	return 0
+}
+
+func compareWeight(a, b int) int {
+	if a == 0 && b == 0 {
+		return 0
+	}
+	if a == 0 {
+		return 1
+	}
+	if b == 0 {
+		return -1
+	}
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func sortPageLites(pages []*transforms.PageLite) {
+	slices.SortStableFunc(pages, func(a, b *transforms.PageLite) int {
+		if cmp := compareWeight(a.Weight, b.Weight); cmp != 0 {
+			return cmp
+		}
+		if cmp := -compareTimeAsc(a.Date, b.Date); cmp != 0 {
+			return cmp
+		}
+		if cmp := -compareTimeAsc(a.PubDate, b.PubDate); cmp != 0 {
+			return cmp
+		}
+		if cmp := strings.Compare(a.Title, b.Title); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(a.Slug, b.Slug)
+	})
 }

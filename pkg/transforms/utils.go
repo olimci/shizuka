@@ -83,6 +83,16 @@ func CleanSlug(raw string) (string, error) {
 	return s, nil
 }
 
+// CleanURLPath normalizes and validates a site-relative URL path without a
+// leading slash. The root path "/" is represented as "".
+func CleanURLPath(raw string) (string, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" || s == "/" {
+		return "", nil
+	}
+	return CleanSlug(strings.Trim(s, "/"))
+}
+
 // RFC 3986 unreserved characters: ALPHA / DIGIT / "-" / "." / "_" / "~"
 func isUnreservedURLRune(r rune) bool {
 	switch {

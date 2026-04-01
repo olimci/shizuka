@@ -147,10 +147,10 @@ func newRequestFromCommand(cmd *cli.Command) (newRequest, error) {
 
 	return newRequest{
 		ConfigPath: cmd.String("config"),
-		Path:       strings.TrimSpace(cmd.Args().First()),
-		Title:      strings.TrimSpace(cmd.String("title")),
-		Template:   strings.TrimSpace(cmd.String("template")),
-		Section:    strings.TrimSpace(cmd.String("section")),
+		Path:       cmd.Args().First(),
+		Title:      cmd.String("title"),
+		Template:   cmd.String("template"),
+		Section:    cmd.String("section"),
 		Draft:      cmd.Bool("draft"),
 		Force:      cmd.Bool("force"),
 	}, nil
@@ -162,7 +162,7 @@ func createNewContentInteractive(_ context.Context, c *coffee.Coffee, req newReq
 		return nil, err
 	}
 
-	if strings.TrimSpace(req.Path) == "" {
+	if req.Path == "" {
 		defaultPath := defaultNewPath(req.Title)
 
 		_ = c.Logf("path (site path or source path, relative to %s):", nctx.ContentSource)
@@ -173,10 +173,10 @@ func createNewContentInteractive(_ context.Context, c *coffee.Coffee, req newReq
 		if err != nil {
 			return nil, err
 		}
-		req.Path = strings.TrimSpace(relPath)
+		req.Path = relPath
 	}
 
-	if strings.TrimSpace(req.Title) == "" {
+	if req.Title == "" {
 		defaultTitle := deriveTitle(req.Path)
 		if defaultTitle == "" {
 			defaultTitle = "New Page"
@@ -190,7 +190,7 @@ func createNewContentInteractive(_ context.Context, c *coffee.Coffee, req newReq
 		if err != nil {
 			return nil, err
 		}
-		req.Title = strings.TrimSpace(title)
+		req.Title = title
 	}
 
 	return createNewContentWithContext(nctx, req)
@@ -211,7 +211,7 @@ func createNewContentWithContext(nctx *newContext, req newRequest) (*newResult, 
 		return nil, err
 	}
 
-	title := strings.TrimSpace(req.Title)
+	title := req.Title
 	if title == "" {
 		title = deriveTitle(pathInfo.URLPath)
 	}
@@ -228,8 +228,8 @@ func createNewContentWithContext(nctx *newContext, req newRequest) (*newResult, 
 	pageData := newPageData{
 		Slug:     slug,
 		Title:    title,
-		Template: defaultTemplateForNew(isPost, strings.TrimSpace(req.Template), nctx.DefaultTemplate),
-		Section:  defaultSectionForNew(isPost, strings.TrimSpace(req.Section)),
+		Template: defaultTemplateForNew(isPost, req.Template, nctx.DefaultTemplate),
+		Section:  defaultSectionForNew(isPost, req.Section),
 		Date:     time.Now().Format("2006-01-02"),
 		Draft:    req.Draft,
 	}
@@ -273,10 +273,10 @@ func loadNewContext(configPath string) (*newContext, error) {
 	contentSource := "content"
 	defaultTemplate := "page"
 	if cfg.Build.Steps.Content != nil {
-		if strings.TrimSpace(cfg.Build.Steps.Content.Source) != "" {
+		if cfg.Build.Steps.Content.Source != "" {
 			contentSource = cfg.Build.Steps.Content.Source
 		}
-		if strings.TrimSpace(cfg.Build.Steps.Content.DefaultTemplate) != "" {
+		if cfg.Build.Steps.Content.DefaultTemplate != "" {
 			defaultTemplate = cfg.Build.Steps.Content.DefaultTemplate
 		}
 	}
@@ -289,7 +289,6 @@ func loadNewContext(configPath string) (*newContext, error) {
 }
 
 func normalizeNewPath(rel string) (*newPathInfo, error) {
-	rel = strings.TrimSpace(rel)
 	if rel == "" {
 		return nil, fmt.Errorf("path must not be empty")
 	}
@@ -327,36 +326,36 @@ func normalizeNewPath(rel string) (*newPathInfo, error) {
 func builtInNewFileBody(data newPageData) string {
 	var b strings.Builder
 
-	b.WriteString("---\n")
-	b.WriteString("title: ")
+	b.WriteString("+++\n")
+	b.WriteString("title = ")
 	b.WriteString(strconv.Quote(data.Title))
 	b.WriteByte('\n')
 
 	if data.Template != "" {
-		b.WriteString("template: ")
+		b.WriteString("template = ")
 		b.WriteString(strconv.Quote(data.Template))
 		b.WriteByte('\n')
 	}
 	if data.Section != "" {
-		b.WriteString("sections: ")
+		b.WriteString("sections = ")
 		b.WriteString(strconv.Quote(data.Section))
 		b.WriteByte('\n')
 	}
 	if data.Slug != "" {
-		b.WriteString("slug: ")
+		b.WriteString("slug = ")
 		b.WriteString(strconv.Quote(data.Slug))
 		b.WriteByte('\n')
 	}
 	if data.Date != "" {
-		b.WriteString("date: ")
-		b.WriteString(data.Date)
+		b.WriteString("date = ")
+		b.WriteString(strconv.Quote(data.Date))
 		b.WriteByte('\n')
 	}
 	if data.Draft {
-		b.WriteString("draft: true\n")
+		b.WriteString("draft = true\n")
 	}
 
-	b.WriteString("---\n\n")
+	b.WriteString("+++\n\n")
 	return b.String()
 }
 
@@ -384,11 +383,11 @@ func defaultSectionForNew(isPost bool, explicit string) string {
 }
 
 func looksLikePost(relPath, section string) bool {
-	if strings.TrimSpace(section) == "posts" {
+	if section == "posts" {
 		return true
 	}
 
-	relPath = filepath.ToSlash(strings.TrimSpace(relPath))
+	relPath = filepath.ToSlash(relPath)
 	return strings.HasPrefix(relPath, "posts/")
 }
 
@@ -401,7 +400,7 @@ func defaultNewPath(title string) string {
 }
 
 func deriveTitle(relPath string) string {
-	cleanPath := path.Clean(strings.TrimSpace(relPath))
+	cleanPath := path.Clean(relPath)
 	if cleanPath == "." || cleanPath == "/" {
 		return ""
 	}
