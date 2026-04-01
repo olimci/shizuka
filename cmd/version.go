@@ -10,13 +10,11 @@ import (
 
 var Version = version.Current()
 
-func versionCmd() *cli.Command {
-	return &cli.Command{
-		Name:  "version",
-		Usage: "Print the version of shizuka",
-		Action: func(ctx context.Context, c *cli.Command) error {
-			fmt.Printf("shizuka version %s\n", Version)
-			return nil
-		},
-	}
+var versionCmd = &cli.Command{
+	Name:  "version",
+	Usage: "Print the version of shizuka",
+	Action: func(ctx context.Context, c *cli.Command) error {
+		fmt.Printf("shizuka version %s\n", Version)
+		return nil
+	},
 }

@@ -13,8 +13,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func buildFlags() []cli.Flag {
-	return []cli.Flag{
+var buildCmd = &cli.Command{
+	Name:  "build",
+	Usage: "Build the site (interactive)",
+	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "config",
 			Aliases: []string{"c"},
@@ -32,28 +34,36 @@ func buildFlags() []cli.Flag {
 			Value:   0,
 			Usage:   "Number of workers to use for building",
 		},
-	}
+	},
+	Action: buildAction,
 }
 
-func buildCmd() *cli.Command {
-	return &cli.Command{
-		Name:   "build",
-		Usage:  "Build the site (interactive)",
-		Flags:  buildFlags(),
-		Action: runBuild,
-	}
+var xBuildCmd = &cli.Command{
+	Name:  "build",
+	Usage: "Build the site (non-interactive)",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:    "config",
+			Aliases: []string{"c"},
+			Value:   DefaultConfigPath,
+			Usage:   "Config file path",
+		},
+		&cli.BoolFlag{
+			Name:    "dev",
+			Aliases: []string{"d"},
+			Usage:   "Run in development mode",
+		},
+		&cli.IntFlag{
+			Name:    "workers",
+			Aliases: []string{"w"},
+			Value:   0,
+			Usage:   "Number of workers to use for building",
+		},
+	},
+	Action: xBuildAction,
 }
 
-func xBuildCmd() *cli.Command {
-	return &cli.Command{
-		Name:   "build",
-		Usage:  "Build the site (non-interactive)",
-		Flags:  buildFlags(),
-		Action: runXBuild,
-	}
-}
-
-func runBuild(ctx context.Context, cmd *cli.Command) error {
+func buildAction(ctx context.Context, cmd *cli.Command) error {
 	err := coffee.Do(func(ctx context.Context, c *coffee.Coffee) error {
 		defer func() {
 			_ = c.Clear()
@@ -105,12 +115,12 @@ func runBuild(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}, coffee.WithContext(ctx))
 	if err != nil && errors.Is(err, coffee.ErrNonInteractive) {
-		return runXBuild(ctx, cmd)
+		return xBuildAction(ctx, cmd)
 	}
 	return err
 }
 
-func runXBuild(ctx context.Context, cmd *cli.Command) error {
+func xBuildAction(ctx context.Context, cmd *cli.Command) error {
 	opts := config.DefaultOptions().
 		WithContext(ctx).
 		WithConfig(cmd.String("config"))

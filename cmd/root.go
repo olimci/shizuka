@@ -20,13 +20,13 @@ func Execute(ctx context.Context, args []string) error {
 		Name:  "shizuka",
 		Usage: "A static site generator",
 		Commands: []*cli.Command{
-			versionCmd(),
-			initCmd(),
-			buildCmd(),
-			devCmd(),
+			versionCmd,
+			initCmd,
+			buildCmd,
+			devCmd,
 
 			// noninteractive subcommand group
-			xCmd(),
+			xCmd,
 		},
 	}
 
@@ -38,15 +38,22 @@ func Execute(ctx context.Context, args []string) error {
 	return app.Run(ctx, args)
 }
 
-func xCmd() *cli.Command {
-	return &cli.Command{
-		Name:  "x",
-		Usage: "Non-interactive commands",
-		Commands: []*cli.Command{
-			versionCmd(),
-			xInitCmd(),
-			xBuildCmd(),
-			xDevCmd(),
-		},
-	}
+var xVersionCmd = &cli.Command{
+	Name:  "version",
+	Usage: "Print the version of shizuka",
+	Action: func(ctx context.Context, c *cli.Command) error {
+		fmt.Printf("shizuka version %s\n", Version)
+		return nil
+	},
+}
+
+var xCmd = &cli.Command{
+	Name:  "x",
+	Usage: "Non-interactive commands",
+	Commands: []*cli.Command{
+		xVersionCmd,
+		xInitCmd,
+		xBuildCmd,
+		xDevCmd,
+	},
 }

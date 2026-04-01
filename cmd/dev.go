@@ -18,8 +18,25 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func devFlags() []cli.Flag {
-	return []cli.Flag{
+func applyDevBuildOptions(opts *config.Options, undev bool) *config.Options {
+	if undev {
+		return opts
+	}
+
+	return opts.
+		WithDev().
+		WithPageErrorTemplates(map[error]*template.Template{
+			build.ErrNoTemplate:       templateFallback.Get(),
+			build.ErrTemplateNotFound: templateFallback.Get(),
+			nil:                       templateError.Get(),
+		}).
+		WithErrTemplate(templateBuildError.Get())
+}
+
+var devCmd = &cli.Command{
+	Name:  "dev",
+	Usage: "Start development server with TUI",
+	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "config",
 			Aliases: []string{"c"},
@@ -42,50 +59,45 @@ func devFlags() []cli.Flag {
 			Name:  "undev",
 			Usage: "Run dev server with production-like build options",
 		},
-	}
-}
-
-func applyDevBuildOptions(opts *config.Options, undev bool) *config.Options {
-	if undev {
-		return opts
-	}
-
-	return opts.
-		WithDev().
-		WithPageErrorTemplates(map[error]*template.Template{
-			build.ErrNoTemplate:       templateFallback.Get(),
-			build.ErrTemplateNotFound: templateFallback.Get(),
-			nil:                       templateError.Get(),
-		}).
-		WithErrTemplate(templateBuildError.Get())
-}
-
-func devCmd() *cli.Command {
-	flags := append(devFlags(),
 		&cli.BoolFlag{
-			Name:  "alt-screen",
+			Name:  "alt",
 			Usage: "Use the terminal alt screen for the TUI",
 		},
-	)
-
-	return &cli.Command{
-		Name:   "dev",
-		Usage:  "Start development server with TUI",
-		Flags:  flags,
-		Action: runDev,
-	}
+	},
+	Action: devAction,
 }
 
-func xDevCmd() *cli.Command {
-	return &cli.Command{
-		Name:   "dev",
-		Usage:  "Start development server (non-interactive, logs to stdout)",
-		Flags:  devFlags(),
-		Action: runXDev,
-	}
+var xDevCmd = &cli.Command{
+	Name:  "dev",
+	Usage: "Start development server (non-interactive, logs to stdout)",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:    "config",
+			Aliases: []string{"c"},
+			Value:   DefaultConfigPath,
+			Usage:   "Config file path",
+		},
+		&cli.IntFlag{
+			Name:    "port",
+			Aliases: []string{"p"},
+			Value:   DefaultPort,
+			Usage:   "HTTP port",
+		},
+		&cli.IntFlag{
+			Name:    "workers",
+			Aliases: []string{"w"},
+			Value:   0,
+			Usage:   "Number of workers to use for building",
+		},
+		&cli.BoolFlag{
+			Name:  "undev",
+			Usage: "Run dev server with production-like build options",
+		},
+	},
+	Action: xDevAction,
 }
 
-func runDev(ctx context.Context, cmd *cli.Command) error {
+func devAction(ctx context.Context, cmd *cli.Command) error {
 	port := fmt.Sprintf(":%d", cmd.Int("port"))
 	configPath := cmd.String("config")
 	siteURL := fmt.Sprintf("http://localhost:%d/", cmd.Int("port"))
@@ -143,7 +155,7 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	coffeeOpts := []coffee.Option{coffee.WithContext(ctx)}
-	if cmd.Bool("alt-screen") {
+	if cmd.Bool("alt") {
 		coffeeOpts = append(coffeeOpts, coffee.WithAltScreen())
 	}
 
@@ -254,12 +266,12 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 		}
 	}, coffeeOpts...)
 	if err != nil && errors.Is(err, coffee.ErrNonInteractive) {
-		return runXDev(ctx, cmd)
+		return xDevAction(ctx, cmd)
 	}
 	return err
 }
 
-func runXDev(ctx context.Context, cmd *cli.Command) error {
+func xDevAction(ctx context.Context, cmd *cli.Command) error {
 	port := fmt.Sprintf(":%d", cmd.Int("port"))
 	configPath := cmd.String("config")
 	siteURL := fmt.Sprintf("http://localhost:%d/", cmd.Int("port"))

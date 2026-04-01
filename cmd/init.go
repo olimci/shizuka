@@ -13,8 +13,11 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func initFlags() []cli.Flag {
-	return []cli.Flag{
+var initCmd = &cli.Command{
+	Name:      "init",
+	Usage:     "scaffold a new shizuka site",
+	ArgsUsage: "[source]",
+	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "output",
 			Aliases: []string{"o"},
@@ -43,30 +46,48 @@ func initFlags() []cli.Flag {
 			Aliases: []string{"f"},
 			Usage:   "force overwrite existing files",
 		},
-	}
+	},
+	Action: initAction,
 }
 
-func initCmd() *cli.Command {
-	return &cli.Command{
-		Name:      "init",
-		Usage:     "scaffold a new shizuka site",
-		ArgsUsage: "[source]",
-		Flags:     initFlags(),
-		Action:    runInit,
-	}
+var xInitCmd = &cli.Command{
+	Name:      "xinit",
+	Usage:     "scaffold a new shizuka site",
+	ArgsUsage: "[source]",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:    "output",
+			Aliases: []string{"o"},
+			Usage:   "output directory",
+			Value:   ".",
+		},
+		&cli.BoolFlag{
+			Name:  "list",
+			Usage: "list available templates",
+		},
+		&cli.StringFlag{
+			Name:    "template",
+			Aliases: []string{"t"},
+			Usage:   "template to use",
+		},
+		&cli.BoolFlag{
+			Name:  "list-vars",
+			Usage: "list available variables",
+		},
+		&cli.StringSliceFlag{
+			Name:  "var",
+			Usage: "template variables (key=value, repeatable)",
+		},
+		&cli.BoolFlag{
+			Name:    "force",
+			Aliases: []string{"f"},
+			Usage:   "force overwrite existing files",
+		},
+	},
+	Action: xInitAction,
 }
 
-func xInitCmd() *cli.Command {
-	return &cli.Command{
-		Name:      "xinit",
-		Usage:     "scaffold a new shizuka site",
-		ArgsUsage: "[source]",
-		Flags:     initFlags(),
-		Action:    runXInit,
-	}
-}
-
-func runInit(ctx context.Context, cmd *cli.Command) error {
+func initAction(ctx context.Context, cmd *cli.Command) error {
 	if cmd.NArg() > 1 {
 		return fmt.Errorf("too many arguments!")
 	}
@@ -162,12 +183,12 @@ func runInit(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}, coffee.WithContext(ctx))
 	if err != nil && errors.Is(err, coffee.ErrNonInteractive) {
-		return runXInit(ctx, cmd)
+		return xInitAction(ctx, cmd)
 	}
 	return err
 }
 
-func runXInit(ctx context.Context, cmd *cli.Command) error {
+func xInitAction(ctx context.Context, cmd *cli.Command) error {
 	if cmd.NArg() > 1 {
 		return fmt.Errorf("too many arguments!")
 	}
