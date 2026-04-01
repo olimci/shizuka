@@ -51,7 +51,7 @@ Key fields you can use in templates:
   - `.Drafts`, `.Featured`
   - `.Latest`, `.RecentlyUpdated`
 
-`PageLite` contains: `Slug`, `Canon`, `Title`, `Description`, `Section`, `Tags`, `Date`, `Updated`, `PubDate`, `Params`, `Featured`, `Draft`. `PageLite.Params` is copied from `.Page.Params` excluding keys prefixed with `_`.
+`PageLite` contains: `Slug`, `Canon`, `Title`, `Description`, `Section`, `Tags`, `Date`, `Updated`, `PubDate`, `Params`, `Featured`, `Draft`. `PageLite.Params` is copied from `.Page.Params` with `_`-prefixed keys stripped out.
 
 ## Built-in template functions
 

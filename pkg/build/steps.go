@@ -164,22 +164,6 @@ func StepContent() []Step {
 			},
 		}
 
-		if cfg.Build.Steps.Content != nil && cfg.Build.Steps.Content.Cascade != nil {
-			var cascade func(*transforms.PageNode, map[string]any)
-			cascade = func(node *transforms.PageNode, params map[string]any) {
-				temp := maps.Clone(params)
-				if node.Page != nil {
-					maps.Copy(temp, node.Page.Cascade)
-					node.Page.Cascade = temp
-				}
-				for _, child := range node.Children {
-					cascade(child, temp)
-				}
-			}
-
-			cascade(pages.Root, cfg.Build.Steps.Content.Cascade)
-		}
-
 		site.Tree = pages
 
 		seenSlugs := make(map[string]string)

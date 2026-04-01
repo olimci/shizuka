@@ -105,7 +105,7 @@ Top-level:
 
 Nested / maps:
 
-- `params` (map): merged into `.Page.Params` (overrides config defaults); keys starting with `_` are not exported to `PageLite`
+- `params` (map): merged into `.Page.Params` (overrides config defaults); keys starting with `_` are treated as private and are not exported to `PageLite`
 - `headers` (map string->string): per-page headers for the headers build step (keyed by URL path)
 - `rss`:
   - `include` (bool), `title`, `description`, `guid`

@@ -41,8 +41,7 @@ type Page struct {
 	Updated time.Time
 	PubDate time.Time
 
-	Params  map[string]any
-	Cascade map[string]any
+	Params map[string]any
 
 	Headers map[string]string
 
@@ -56,7 +55,7 @@ type Page struct {
 func (p *Page) Lite() *PageLite {
 	params := maps.Clone(p.Params)
 	for k := range params {
-		if !strings.HasPrefix(k, "_") {
+		if strings.HasPrefix(k, "_") {
 			delete(params, k)
 		}
 	}

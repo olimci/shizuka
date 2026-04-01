@@ -61,7 +61,6 @@ type ConfigStepContent struct {
 	Source         string         `toml:"source" yaml:"source" json:"source"`
 	Destination    string         `toml:"destination" yaml:"destination" json:"destination"`
 	DefaultParams  map[string]any `toml:"default_params" yaml:"default_params" json:"default_params"`
-	Cascade        map[string]any `toml:"cascade" yaml:"cascade" json:"cascade"`
 	GoldmarkConfig ConfigGoldmark `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
 }
 
@@ -154,7 +153,6 @@ func DefaultConfig() *Config {
 					Source:         "content",
 					Destination:    ".",
 					DefaultParams:  map[string]any{},
-					Cascade:        map[string]any{},
 					GoldmarkConfig: defaultGoldmark,
 				},
 			},
@@ -232,9 +230,6 @@ func (c *Config) Validate() error {
 		}
 		if c.Build.Steps.Content.DefaultParams == nil {
 			c.Build.Steps.Content.DefaultParams = map[string]any{}
-		}
-		if c.Build.Steps.Content.Cascade == nil {
-			c.Build.Steps.Content.Cascade = map[string]any{}
 		}
 	}
 

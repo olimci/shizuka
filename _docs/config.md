@@ -42,9 +42,6 @@ template_glob = "templates/*.tmpl"
 [build.steps.content.default_params]
 author = "Your Name"
 
-[build.steps.content.cascade]
-section = "notes"
-
 [build.steps.content.goldmark_config]
 extensions = ["gfm", "table", "strikethrough", "tasklist", "deflist", "footnotes", "typographer"]
 
@@ -57,7 +54,7 @@ hardbreaks = false
 XHTML = false
 ```
 
-`default_params` are merged into each page’s frontmatter `params` (frontmatter wins). `cascade` is merged into each page’s `cascade` field, and then inherited down the content tree (page values win). Params with a leading `_` are treated as unexported and are excluded from `PageLite`.
+`default_params` are merged into each page’s frontmatter `params` (frontmatter wins). Params with a leading `_` are treated as private and are excluded from `PageLite`.
 
 ### `build.steps.headers`
 
