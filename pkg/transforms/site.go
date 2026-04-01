@@ -44,6 +44,7 @@ type Groups struct {
 type SiteMeta struct {
 	ConfigPath string
 	IsDev      bool
+	Git        SiteGitMeta
 
 	BuildTime       time.Time
 	BuildTimeString string

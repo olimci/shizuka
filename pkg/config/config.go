@@ -57,12 +57,18 @@ type ConfigStepStatic struct {
 }
 
 type ConfigStepContent struct {
-	TemplateGlob    string         `toml:"template_glob" yaml:"template_glob" json:"template_glob"`
-	Source          string         `toml:"source" yaml:"source" json:"source"`
-	Destination     string         `toml:"destination" yaml:"destination" json:"destination"`
-	DefaultTemplate string         `toml:"default_template" yaml:"default_template" json:"default_template"`
-	DefaultParams   map[string]any `toml:"default_params" yaml:"default_params" json:"default_params"`
-	GoldmarkConfig  ConfigGoldmark `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
+	TemplateGlob    string                `toml:"template_glob" yaml:"template_glob" json:"template_glob"`
+	Source          string                `toml:"source" yaml:"source" json:"source"`
+	Destination     string                `toml:"destination" yaml:"destination" json:"destination"`
+	DefaultTemplate string                `toml:"default_template" yaml:"default_template" json:"default_template"`
+	DefaultParams   map[string]any        `toml:"default_params" yaml:"default_params" json:"default_params"`
+	GoldmarkConfig  ConfigGoldmark        `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
+	Git             *ConfigStepContentGit `toml:"git" yaml:"git" json:"git"`
+}
+
+type ConfigStepContentGit struct {
+	Enabled  bool `toml:"enabled" yaml:"enabled" json:"enabled"`
+	Backfill bool `toml:"backfill" yaml:"backfill" json:"backfill"`
 }
 
 type ConfigStepHeaders struct {

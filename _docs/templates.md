@@ -35,6 +35,8 @@ Key fields you can use in templates:
 - `.Page.Canon` (absolute canonical URL)
 - `.Page.Section` (populated from frontmatter key `sections`)
 - `.Page.Date`, `.Page.Updated`, `.Page.PubDate` (`time.Time`; use `.IsZero`, `.Format`, etc)
+- `.Page.Git.Tracked`, `.Page.Git.Created`, `.Page.Git.Updated`
+- `.Page.Git.CommitHash`, `.Page.Git.ShortHash`, `.Page.Git.AuthorName`
 - `.Page.Body` (`template.HTML`; rendered Markdown output or `body` from structured pages)
 - `.Page.Params` (arbitrary map for full page templates)
 - `.Page.Headers` (used by the headers build step; see `_docs/config.md`)
@@ -47,6 +49,8 @@ Key fields you can use in templates:
 
 - `.Site.Title`, `.Site.Description`, `.Site.URL`
 - `.Site.Meta.IsDev`, `.Site.Meta.ConfigPath`, `.Site.Meta.BuildTime`, `.Site.Meta.BuildTimeString`
+- `.Site.Meta.Git.Available`, `.Site.Meta.Git.RepoRoot`, `.Site.Meta.Git.GitDir`
+- `.Site.Meta.Git.Branch`, `.Site.Meta.Git.CommitHash`, `.Site.Meta.Git.ShortHash`, `.Site.Meta.Git.Dirty`
 - `.Site.Tree` (page tree for hierarchical navigation)
 - `.Site.Collections`:
   - `.All` (`[]*PageLite`)
@@ -58,7 +62,7 @@ Key fields you can use in templates:
   - `.ByYear` (`map[int][]*PageLite`)
   - `.ByYearMonth` (`map[string][]*PageLite`, key format `YYYY-MM`)
 
-`PageLite` contains: `Slug`, `Canon`, `Aliases`, `Weight`, `Title`, `Description`, `Section`, `Tags`, `Date`, `Updated`, `PubDate`, `Params`, `Featured`, `Draft`. `PageLite.Params` is copied from `.Page.Params` with `_`-prefixed keys stripped out.
+`PageLite` contains: `Git`, `Slug`, `Canon`, `Aliases`, `Weight`, `Title`, `Description`, `Section`, `Tags`, `Date`, `Updated`, `PubDate`, `Params`, `Featured`, `Draft`. `PageLite.Params` is copied from `.Page.Params` with `_`-prefixed keys stripped out.
 
 ## Built-in template functions
 

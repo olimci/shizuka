@@ -40,6 +40,10 @@ destination = "."
 template_glob = "templates/*.tmpl"
 default_template = "page"
 
+[build.steps.content.git]
+enabled = false
+backfill = true
+
 [build.steps.content.default_params]
 author = "Your Name"
 
@@ -58,6 +62,21 @@ XHTML = false
 `default_params` are merged into each page’s frontmatter `params` (frontmatter wins). Params with a leading `_` are treated as private and are excluded from `PageLite`.
 
 `default_template` is used by `shizuka new` when creating generic pages that do not explicitly pick a template. New files created by `shizuka new` use TOML frontmatter by default.
+
+### `build.steps.content.git`
+
+Enables git-backed metadata for content pages and for the site build.
+
+- `enabled`: turns git integration on or off
+- `backfill`: when true, missing page `date` and `updated` values are filled from git history
+
+When enabled, Shizuka exposes git metadata on `.Page.Git` and `.Site.Meta.Git`.
+
+```toml
+[build.steps.content.git]
+enabled = true
+backfill = true
+```
 
 ### `build.steps.headers`
 

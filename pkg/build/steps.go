@@ -8,10 +8,13 @@ import (
 	"io"
 	"maps"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
+	"github.com/olimci/shizuka/pkg/gitmeta"
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/transforms"
 	"github.com/olimci/shizuka/pkg/utils/fileutils"
@@ -30,6 +33,8 @@ const (
 	SiteK      = manifest.K[*transforms.Site]("site")
 	TemplatesK = manifest.K[*template.Template]("templates")
 	BuildCtxK  = manifest.K[*BuildCtx]("buildctx")
+	GitRepoK   = manifest.K[*gitmeta.Repo]("gitrepo")
+	SiteGitK   = manifest.K[*transforms.SiteGitMeta]("sitegit")
 )
 
 // StepStatic attatches static files
@@ -69,7 +74,7 @@ func StepStatic() Step {
 }
 
 // StepContent builds pages
-func StepContent() []Step {
+func StepContent(useGit bool) []Step {
 	// build creates the manifest artefacts for the pages
 	build := StepFunc("pages:build", func(_ context.Context, sc *StepContext) error {
 		opts := manifest.GetAs(sc.Manifest, OptionsK)
@@ -144,11 +149,17 @@ func StepContent() []Step {
 	}, "pages:resolve", "pages:templates")
 
 	// resolve creates the manifest registry entries for site information.
+	resolveDeps := []string{"pages:index"}
+	if useGit {
+		resolveDeps = append(resolveDeps, "git:pages", "git:site")
+	}
+
 	resolve := StepFunc("pages:resolve", func(_ context.Context, sc *StepContext) error {
 		opts := manifest.GetAs(sc.Manifest, OptionsK)
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
 		buildCtx := manifest.GetAs(sc.Manifest, BuildCtxK)
+		siteGit := manifest.GetAs(sc.Manifest, SiteGitK)
 
 		site := &transforms.Site{
 			Title:       cfg.Site.Title,
@@ -159,6 +170,7 @@ func StepContent() []Step {
 			Meta: transforms.SiteMeta{
 				ConfigPath: opts.ConfigPath,
 				IsDev:      opts.Dev,
+				Git:        derefSiteGit(siteGit),
 
 				BuildTime:       buildCtx.StartTime,
 				BuildTimeString: buildCtx.StartTimestring,
@@ -292,7 +304,7 @@ func StepContent() []Step {
 		manifest.SetAs(sc.Manifest, SiteK, site)
 
 		return nil
-	}, "pages:index")
+	}, resolveDeps...)
 
 	templates := StepFunc("pages:templates", func(_ context.Context, sc *StepContext) error {
 		config := manifest.GetAs(sc.Manifest, ConfigK)
@@ -449,12 +461,136 @@ func StepContent() []Step {
 		return nil
 	})
 
-	return []Step{
-		index,
-		templates,
-		resolve,
-		build,
+	steps := []Step{index}
+	if useGit {
+		steps = append(steps, StepGitPages(), StepGitSite())
 	}
+	steps = append(steps, templates, resolve, build)
+	return steps
+}
+
+func StepGitPages() Step {
+	return StepFunc("git:pages", func(ctx context.Context, sc *StepContext) error {
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
+		pages := manifest.GetAs(sc.Manifest, PagesK)
+		gitCfg := cfg.Build.Steps.Content.Git
+		if gitCfg == nil || !gitCfg.Enabled {
+			return nil
+		}
+
+		repo, err := getGitRepo(ctx, sc)
+		if err != nil || repo == nil {
+			return err
+		}
+
+		sourceRootAbs, err := filepath.Abs(sc.SourceRoot)
+		if err != nil {
+			return fmt.Errorf("resolve source root: %w", err)
+		}
+
+		for _, node := range pages.Nodes() {
+			if node == nil || node.Error != nil || node.Page == nil {
+				continue
+			}
+
+			relPath, ok := repoRelativeSourcePath(repo.Root(), sourceRootAbs, node.Page.Meta.Source)
+			if !ok {
+				continue
+			}
+
+			info, err := repo.FileInfo(ctx, relPath, true)
+			if err != nil {
+				return err
+			}
+
+			node.Page.Git = *info
+			if gitCfg.Backfill {
+				if node.Page.Date.IsZero() {
+					node.Page.Date = info.Created
+				}
+				if node.Page.Updated.IsZero() {
+					node.Page.Updated = info.Updated
+				}
+			}
+			node.Page.PubDate = firstNonzeroTime(node.Page.Updated, node.Page.Date, node.Page.PubDate)
+		}
+
+		return nil
+	}, "pages:index")
+}
+
+func StepGitSite() Step {
+	return StepFunc("git:site", func(ctx context.Context, sc *StepContext) error {
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
+		gitCfg := cfg.Build.Steps.Content.Git
+		if gitCfg == nil || !gitCfg.Enabled {
+			return nil
+		}
+
+		repo, err := getGitRepo(ctx, sc)
+		if err != nil || repo == nil {
+			return err
+		}
+
+		info, err := repo.SiteInfo(ctx)
+		if err != nil {
+			return err
+		}
+
+		manifest.SetAs(sc.Manifest, SiteGitK, info)
+		return nil
+	}, "pages:index")
+}
+
+func getGitRepo(ctx context.Context, sc *StepContext) (*gitmeta.Repo, error) {
+	if repo := manifest.GetAs(sc.Manifest, GitRepoK); repo != nil {
+		return repo, nil
+	}
+
+	root, err := filepath.Abs(sc.SourceRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	repo, err := gitmeta.Open(ctx, root)
+	if err != nil {
+		if errors.Is(err, gitmeta.ErrUnavailable) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	manifest.SetAs(sc.Manifest, GitRepoK, repo)
+	return repo, nil
+}
+
+func repoRelativeSourcePath(repoRoot, sourceRoot, source string) (string, bool) {
+	abs := filepath.Join(sourceRoot, filepath.FromSlash(source))
+	rel, err := filepath.Rel(repoRoot, abs)
+	if err != nil {
+		return "", false
+	}
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	if rel == "." || rel == "" || strings.HasPrefix(rel, "../") {
+		return "", false
+	}
+	return rel, true
+}
+
+func derefSiteGit(siteGit *transforms.SiteGitMeta) transforms.SiteGitMeta {
+	if siteGit == nil {
+		return transforms.SiteGitMeta{}
+	}
+	return *siteGit
+}
+
+func firstNonzeroTime(values ...time.Time) time.Time {
+	for _, value := range values {
+		if !value.IsZero() {
+			return value
+		}
+	}
+	return time.Time{}
 }
 
 // StepHeaders writes a headers file from config.

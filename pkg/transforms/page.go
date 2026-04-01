@@ -26,6 +26,7 @@ var (
 type Page struct {
 	Meta PageMeta
 	Tree *PageNode
+	Git  PageGitMeta
 
 	Slug    string
 	Canon   string
@@ -64,6 +65,7 @@ func (p *Page) Lite() *PageLite {
 	}
 
 	return &PageLite{
+		Git:         p.Git,
 		Slug:        p.Slug,
 		Canon:       p.Canon,
 		Aliases:     slices.Clone(p.Aliases),
@@ -83,6 +85,8 @@ func (p *Page) Lite() *PageLite {
 
 // PageLite is a lite representation of a page, used for links etc
 type PageLite struct {
+	Git PageGitMeta
+
 	Slug    string
 	Canon   string
 	Aliases []string
