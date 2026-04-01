@@ -57,11 +57,49 @@ attribute = false
 [build.steps.content.goldmark_config.renderer]
 hardbreaks = false
 XHTML = false
+
+[build.steps.content.markdown]
+obsidian_links = false
+
+[build.steps.content.bundle_assets]
+enabled = false
+output = "_assets"
+mode = "fingerprinted"
+
+[build.steps.content.raw]
+markdown = false
 ```
 
 `default_params` are merged into each page’s frontmatter `params` (frontmatter wins). Params with a leading `_` are treated as private and are excluded from `PageLite`.
 
 `default_template` is used by `shizuka new` when creating generic pages that do not explicitly pick a template. New files created by `shizuka new` use TOML frontmatter by default.
+
+### `build.steps.content.bundle_assets`
+
+Enables implicit page bundle asset discovery under `content/`.
+
+- same-stem sibling files such as `posts/hello.png`
+- same-stem directories such as `posts/hello/hero.png`
+
+Supported settings:
+
+- `enabled`: turns bundle asset handling on or off
+- `output`: root output path for fingerprinted assets
+- `mode`: `"fingerprinted"` or `"adjacent"`
+
+When fingerprinting is enabled, relative Markdown and HTML body links that point at owned bundle assets are rewritten to the emitted asset URL.
+
+### `build.steps.content.markdown`
+
+Markdown-specific authoring options.
+
+- `obsidian_links`: when true, Shizuka rewrites Obsidian-style wikilinks such as `[[about]]`, `[[about|About]]`, and `![[hero.png]]`
+
+### `build.steps.content.raw`
+
+Controls extra sidecar outputs for content sources.
+
+- `markdown`: when true, Markdown pages also emit a raw `.md` variant such as `posts/hello.md`
 
 ### `build.steps.content.git`
 

@@ -2,9 +2,9 @@
 
 Shizuka uses frontmatter to build a `Page`, then renders it through a template.
 
-## Markdown pages (`content/**/*.md`)
+## Markdown and HTML pages (`content/**/*.md`, `content/**/*.html`)
 
-Markdown files must start with a fenced frontmatter block:
+Markdown and HTML files must start with a fenced frontmatter block:
 
 - YAML frontmatter: fence with `---`
 - TOML frontmatter: fence with `+++`
@@ -47,7 +47,7 @@ sitemap:
   priority: 0.7
 ---
 
-Markdown content here.
+Body content here. For `.md` files it is rendered as Markdown. For `.html` files it is treated as raw HTML and injected into `.Page.Body`.
 ```
 
 ### Example (JSON)

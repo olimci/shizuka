@@ -27,14 +27,15 @@ var (
 )
 
 const (
-	ConfigK    = manifest.K[*config.Config]("config")
-	OptionsK   = manifest.K[*config.Options]("options")
-	PagesK     = manifest.K[*transforms.PageTree]("pages")
-	SiteK      = manifest.K[*transforms.Site]("site")
-	TemplatesK = manifest.K[*template.Template]("templates")
-	BuildCtxK  = manifest.K[*BuildCtx]("buildctx")
-	GitRepoK   = manifest.K[*gitmeta.Repo]("gitrepo")
-	SiteGitK   = manifest.K[*transforms.SiteGitMeta]("sitegit")
+	ConfigK      = manifest.K[*config.Config]("config")
+	OptionsK     = manifest.K[*config.Options]("options")
+	PagesK       = manifest.K[*transforms.PageTree]("pages")
+	ContentTreeK = manifest.K[*fileutils.FSTree]("contenttree")
+	SiteK        = manifest.K[*transforms.Site]("site")
+	TemplatesK   = manifest.K[*template.Template]("templates")
+	BuildCtxK    = manifest.K[*BuildCtx]("buildctx")
+	GitRepoK     = manifest.K[*gitmeta.Repo]("gitrepo")
+	SiteGitK     = manifest.K[*transforms.SiteGitMeta]("sitegit")
 )
 
 // StepStatic attatches static files
@@ -143,15 +144,16 @@ func StepContent(useGit bool) []Step {
 				Page: *page,
 				Site: *site,
 			}).Post(m))
+			addRawVariants(sc, page)
 		}
 
 		return nil
-	}, "pages:resolve", "pages:templates")
+	}, "pages:resolve", "pages:render", "pages:templates")
 
 	// resolve creates the manifest registry entries for site information.
-	resolveDeps := []string{"pages:index"}
+	resolveDeps := []string{"pages:index", "pages:assets"}
 	if useGit {
-		resolveDeps = append(resolveDeps, "git:pages", "git:site")
+		resolveDeps = append(resolveDeps, "git")
 	}
 
 	resolve := StepFunc("pages:resolve", func(_ context.Context, sc *StepContext) error {
@@ -338,8 +340,6 @@ func StepContent(useGit bool) []Step {
 			return fmt.Errorf("content source %q: %w", root, err)
 		}
 
-		md := cfg.Build.Steps.Content.GoldmarkConfig.Build()
-
 		rootPage := &(transforms.PageNode{
 			Path: ".",
 		})
@@ -372,12 +372,11 @@ func StepContent(useGit bool) []Step {
 			urlPath := transforms.URLPathForContentPath(node.Path)
 			claim := manifest.NewPageClaim(source, urlPath)
 
-			if ext == ".html" {
-				sc.Manifest.Emit(manifest.StaticArtefact(sc.SourceFS, claim))
+			if !isPageSourceExt(ext) {
 				return
 			}
 
-			page, err := transforms.BuildPageFS(sc.SourceFS, source, md)
+			page, err := transforms.BuildPageFS(sc.SourceFS, source, nil)
 			if err != nil {
 				sc.Error(err, claim)
 			}
@@ -457,20 +456,148 @@ func StepContent(useGit bool) []Step {
 
 		pageTree := transforms.NewPageTree(rootPage)
 		manifest.SetAs(sc.Manifest, PagesK, pageTree)
+		manifest.SetAs(sc.Manifest, ContentTreeK, tree)
 
 		return nil
 	})
 
-	steps := []Step{index}
+	assets := StepFunc("pages:assets", func(_ context.Context, sc *StepContext) error {
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
+		if cfg.Build.Steps.Content == nil || !cfg.Build.Steps.Content.BundleAssets.Enabled {
+			return nil
+		}
+
+		root, err := cleanFSPath(cfg.Build.Steps.Content.Source)
+		if err != nil {
+			return fmt.Errorf("content source %q: %w", cfg.Build.Steps.Content.Source, err)
+		}
+
+		contentTree := manifest.GetAs(sc.Manifest, ContentTreeK)
+		pages := manifest.GetAs(sc.Manifest, PagesK)
+		mode := cfg.Build.Steps.Content.BundleAssets.Mode
+		outputRoot := strings.TrimPrefix(path.Clean(cfg.Build.Steps.Content.BundleAssets.Output), "/")
+		outputRoot = strings.TrimPrefix(outputRoot, ".")
+		outputRoot = strings.Trim(outputRoot, "/")
+		if outputRoot == "" {
+			outputRoot = "_assets"
+		}
+
+		owned := make(map[string]string)
+		emitted := make(map[string]string)
+
+		for _, node := range pages.Nodes() {
+			if node == nil || node.Page == nil || node.Error != nil {
+				continue
+			}
+
+			page := node.Page
+			page.Bundle.Assets = make(map[string]*transforms.PageAsset)
+
+			rel, err := relContentPath(root, page.Meta.Source)
+			if err != nil {
+				sc.Error(err, manifest.NewPageClaim(page.Meta.Source, page.Meta.URLPath))
+				continue
+			}
+
+			contentNode, ok := contentTree.Node(rel)
+			if !ok || contentNode == nil {
+				sc.Error(fmt.Errorf("content node %q not found", rel), manifest.NewPageClaim(page.Meta.Source, page.Meta.URLPath))
+				continue
+			}
+
+			_, base := path.Split(rel)
+			ext := path.Ext(base)
+			stem := strings.TrimSuffix(base, ext)
+			parent := contentNode.Parent
+			if parent == nil {
+				continue
+			}
+
+			for _, child := range parent.Children {
+				if child == nil || child.Path == contentNode.Path {
+					continue
+				}
+
+				if child.IsDir {
+					if child.Name != stem {
+						continue
+					}
+					if err := collectBundleDir(sc, page, child, root, owned, emitted, mode, outputRoot); err != nil {
+						sc.Error(err, manifest.NewPageClaim(page.Meta.Source, page.Meta.URLPath))
+					}
+					continue
+				}
+
+				childExt := path.Ext(child.Name)
+				if isPageSourceExt(childExt) {
+					continue
+				}
+				childStem := strings.TrimSuffix(child.Name, childExt)
+				if childStem != stem {
+					continue
+				}
+
+				source := path.Join(root, child.Path)
+				if err := attachBundleAsset(sc, page, child.Name, source, owned, emitted, mode, outputRoot); err != nil {
+					sc.Error(err, manifest.NewPageClaim(page.Meta.Source, page.Meta.URLPath))
+				}
+			}
+		}
+
+		return nil
+	}, "pages:index")
+
+	render := StepFunc("pages:render", func(_ context.Context, sc *StepContext) error {
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
+		pages := manifest.GetAs(sc.Manifest, PagesK)
+		md := cfg.Build.Steps.Content.GoldmarkConfig.Build()
+		contentRoot, err := cleanFSPath(cfg.Build.Steps.Content.Source)
+		if err != nil {
+			return fmt.Errorf("content source %q: %w", cfg.Build.Steps.Content.Source, err)
+		}
+
+		for _, node := range pages.Nodes() {
+			if node == nil || node.Page == nil || node.Error != nil {
+				continue
+			}
+
+			page := node.Page
+			body := page.Source.Body
+
+			switch page.Source.Kind {
+			case transforms.PageSourceKindMarkdown:
+				if cfg.Build.Steps.Content.Markdown.ObsidianLinks {
+					body = rewriteObsidianLinks(body, page, pages, contentRoot)
+				}
+				body = rewriteMarkdownBundleLinks(body, page.Bundle)
+				var buf strings.Builder
+				if err := md.Convert([]byte(body), &buf); err != nil {
+					return fmt.Errorf("render markdown %q: %w", page.Meta.Source, err)
+				}
+				page.Body = template.HTML(buf.String())
+			case transforms.PageSourceKindHTML, transforms.PageSourceKindStructured:
+				if page.Source.BodyHTML {
+					body = rewriteHTMLBundleLinks(body, page.Bundle)
+				}
+				page.Body = template.HTML(body)
+			default:
+				page.Body = template.HTML(body)
+			}
+		}
+
+		return nil
+	}, "pages:resolve")
+
+	steps := []Step{index, assets}
 	if useGit {
-		steps = append(steps, StepGitPages(), StepGitSite())
+		steps = append(steps, StepGit())
 	}
-	steps = append(steps, templates, resolve, build)
+	steps = append(steps, templates, resolve, render, build)
 	return steps
 }
 
-func StepGitPages() Step {
-	return StepFunc("git:pages", func(ctx context.Context, sc *StepContext) error {
+func StepGit() Step {
+	return StepFunc("git", func(ctx context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
 		gitCfg := cfg.Build.Steps.Content.Git
@@ -482,6 +609,12 @@ func StepGitPages() Step {
 		if err != nil || repo == nil {
 			return err
 		}
+
+		info, err := repo.SiteInfo(ctx)
+		if err != nil {
+			return err
+		}
+		manifest.SetAs(sc.Manifest, SiteGitK, info)
 
 		sourceRootAbs, err := filepath.Abs(sc.SourceRoot)
 		if err != nil {
@@ -515,29 +648,6 @@ func StepGitPages() Step {
 			node.Page.PubDate = firstNonzeroTime(node.Page.Updated, node.Page.Date, node.Page.PubDate)
 		}
 
-		return nil
-	}, "pages:index")
-}
-
-func StepGitSite() Step {
-	return StepFunc("git:site", func(ctx context.Context, sc *StepContext) error {
-		cfg := manifest.GetAs(sc.Manifest, ConfigK)
-		gitCfg := cfg.Build.Steps.Content.Git
-		if gitCfg == nil || !gitCfg.Enabled {
-			return nil
-		}
-
-		repo, err := getGitRepo(ctx, sc)
-		if err != nil || repo == nil {
-			return err
-		}
-
-		info, err := repo.SiteInfo(ctx)
-		if err != nil {
-			return err
-		}
-
-		manifest.SetAs(sc.Manifest, SiteGitK, info)
 		return nil
 	}, "pages:index")
 }
@@ -614,9 +724,7 @@ func StepHeaders() Step {
 			if _, ok := headers[path]; !ok {
 				headers[path] = make(map[string]string, len(page.Headers))
 			}
-			for key, value := range page.Headers {
-				headers[path][key] = value
-			}
+			maps.Copy(headers[path], page.Headers)
 		}
 
 		if len(headers) == 0 {

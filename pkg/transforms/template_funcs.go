@@ -13,23 +13,25 @@ import (
 
 func DefaultTemplateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"where":    TemplateFuncWhere,
-		"whereEq":  TemplateFuncWhereEq,
-		"whereNe":  TemplateFuncWhereNe,
-		"whereHas": TemplateFuncWhereHas,
-		"whereIn":  TemplateFuncWhereIn,
-		"sort":     TemplateFuncSortBy,
-		"limit":    TemplateFuncLimit,
-		"offset":   TemplateFuncOffset,
-		"first":    TemplateFuncFirst,
-		"last":     TemplateFuncLast,
-		"groupBy":  TemplateFuncGroupBy,
-		"datefmt":  TemplateFuncDateFmt,
-		"default":  TemplateFuncDefault,
-		"uniq":     TemplateFuncUniq,
-		"slugify":  TemplateFuncSlugify,
-		"dict":     TemplateFuncDict,
-		"merge":    TemplateFuncMerge,
+		"where":     TemplateFuncWhere,
+		"whereEq":   TemplateFuncWhereEq,
+		"whereNe":   TemplateFuncWhereNe,
+		"whereHas":  TemplateFuncWhereHas,
+		"whereIn":   TemplateFuncWhereIn,
+		"sort":      TemplateFuncSortBy,
+		"limit":     TemplateFuncLimit,
+		"offset":    TemplateFuncOffset,
+		"first":     TemplateFuncFirst,
+		"last":      TemplateFuncLast,
+		"groupBy":   TemplateFuncGroupBy,
+		"datefmt":   TemplateFuncDateFmt,
+		"default":   TemplateFuncDefault,
+		"uniq":      TemplateFuncUniq,
+		"slugify":   TemplateFuncSlugify,
+		"asset":     TemplateFuncAsset,
+		"assetMeta": TemplateFuncAssetMeta,
+		"dict":      TemplateFuncDict,
+		"merge":     TemplateFuncMerge,
 	}
 }
 
@@ -292,6 +294,21 @@ func TemplateFuncSlugify(raw string) string {
 	slug = path.Clean(slug)
 	slug = strings.Trim(slug, "/.")
 	return slug
+}
+
+func TemplateFuncAsset(key string, page Page) string {
+	if asset := TemplateFuncAssetMeta(key, page); asset != nil {
+		return asset.URL
+	}
+	return ""
+}
+
+func TemplateFuncAssetMeta(key string, page Page) *PageAsset {
+	key = strings.TrimPrefix(path.Clean(strings.TrimSpace(key)), "/")
+	if key == "." || key == "" {
+		return nil
+	}
+	return page.Bundle.Assets[key]
 }
 
 // TemplateFuncDict constructs a map from key/value pairs.
