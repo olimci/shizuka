@@ -134,14 +134,14 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 			}
 
 			sc := StepContext{
-				Ctx:        ctx,
+				ctx:        ctx,
 				Manifest:   man,
 				SourceFS:   sourceFS,
 				SourceRoot: sourceRoot,
 				errors:     buildErrors,
 			}
 
-			if err := step.Fn(&sc); err != nil {
+			if err := step.Fn(ctx, &sc); err != nil {
 				return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
 			}
 

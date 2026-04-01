@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"html/template"
@@ -33,7 +34,7 @@ const (
 
 // StepStatic attatches static files
 func StepStatic() Step {
-	return StepFunc("static", func(sc *StepContext) error {
+	return StepFunc("static", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 
 		m := NewMinifier(cfg.Build.Minify)
@@ -70,7 +71,7 @@ func StepStatic() Step {
 // StepContent builds pages
 func StepContent() []Step {
 	// build creates the manifest artefacts for the pages
-	build := StepFunc("pages:build", func(sc *StepContext) error {
+	build := StepFunc("pages:build", func(_ context.Context, sc *StepContext) error {
 		opts := manifest.GetAs(sc.Manifest, OptionsK)
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
@@ -143,7 +144,7 @@ func StepContent() []Step {
 	}, "pages:resolve", "pages:templates")
 
 	// resolve creates the manifest registry entries for site information.
-	resolve := StepFunc("pages:resolve", func(sc *StepContext) error {
+	resolve := StepFunc("pages:resolve", func(_ context.Context, sc *StepContext) error {
 		opts := manifest.GetAs(sc.Manifest, OptionsK)
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
@@ -241,7 +242,7 @@ func StepContent() []Step {
 		return nil
 	}, "pages:index")
 
-	templates := StepFunc("pages:templates", func(sc *StepContext) error {
+	templates := StepFunc("pages:templates", func(_ context.Context, sc *StepContext) error {
 		config := manifest.GetAs(sc.Manifest, ConfigK)
 
 		glob, err := cleanFSGlob(config.Build.Steps.Content.TemplateGlob)
@@ -260,7 +261,7 @@ func StepContent() []Step {
 	})
 
 	// index indexes pages and creates the manifest registry entries for page information.
-	index := StepFunc("pages:index", func(sc *StepContext) error {
+	index := StepFunc("pages:index", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 
 		root, err := cleanFSPath(cfg.Build.Steps.Content.Source)
@@ -378,7 +379,7 @@ func StepContent() []Step {
 
 // StepHeaders writes a headers file from config.
 func StepHeaders() Step {
-	return StepFunc("headers", func(sc *StepContext) error {
+	return StepFunc("headers", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
 
@@ -427,7 +428,7 @@ func StepHeaders() Step {
 
 // StepRedirects writes a redirects file from config.
 func StepRedirects() Step {
-	return StepFunc("redirects", func(sc *StepContext) error {
+	return StepFunc("redirects", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
 
@@ -506,7 +507,7 @@ func StepRedirects() Step {
 }
 
 func StepRSS() Step {
-	return StepFunc("rss", func(sc *StepContext) error {
+	return StepFunc("rss", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
 		site := manifest.GetAs(sc.Manifest, SiteK)
@@ -527,7 +528,7 @@ func StepRSS() Step {
 }
 
 func StepSitemap() Step {
-	return StepFunc("sitemap", func(sc *StepContext) error {
+	return StepFunc("sitemap", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
 		site := manifest.GetAs(sc.Manifest, SiteK)
