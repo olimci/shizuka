@@ -134,7 +134,7 @@ func BuildPageFS(fsys fs.FS, source string, md gm.Markdown) (*Page, error) {
 	case ".json":
 		fm, body, err = buildJSONFromFS(fsys, source)
 	default:
-		return nil, fmt.Errorf("unsupported file extension: %s", ext)
+		return nil, fmt.Errorf("%w %q", ErrUnsupportedContentType, ext)
 	}
 
 	if err != nil {
@@ -177,7 +177,7 @@ func buildMDFromFS(fsys fs.FS, path string, md gm.Markdown) (*Frontmatter, strin
 
 	var buf strings.Builder
 	if err := md.Convert(body, &buf); err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("markdown body: %w", err)
 	}
 
 	return fm, buf.String(), nil
@@ -193,7 +193,7 @@ func buildTOMLFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
 	fm := new(Frontmatter)
 
 	if _, err := toml.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("TOML page data: %w", err)
 	}
 
 	return fm, fm.Body, nil
@@ -209,7 +209,7 @@ func buildYamlFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
 	fm := new(Frontmatter)
 
 	if err := yaml.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("YAML page data: %w", err)
 	}
 
 	return fm, fm.Body, nil
@@ -225,7 +225,7 @@ func buildJSONFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
 	fm := new(Frontmatter)
 
 	if err := json.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("JSON page data: %w", err)
 	}
 
 	return fm, fm.Body, nil

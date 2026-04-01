@@ -1,81 +1,68 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
-	"github.com/olimci/shizuka/pkg/events"
+	"github.com/olimci/coffee"
+	"github.com/olimci/shizuka/pkg/build"
 )
 
-type eventCounts struct {
-	Debug int
-	Info  int
-	Error int
-}
+func formatDiagnostic(err *build.BuildError) string {
+	if err == nil {
+		return ""
+	}
 
-func countEvents(eventsList []events.Event) eventCounts {
-	var counts eventCounts
-	for _, event := range eventsList {
-		switch event.Level {
-		case events.Debug:
-			counts.Debug++
-		case events.Info:
-			counts.Info++
-		case events.Error:
-			counts.Error++
+	if target := err.Target(); target != "" {
+		if source := err.Source(); source != "" && target != source {
+			return fmt.Sprintf("%s [%s]", err.Description(), target)
 		}
+		return err.Description()
 	}
-	return counts
+
+	if owner := err.Owner(); owner != "" {
+		return fmt.Sprintf("%s: %s", owner, err.Description())
+	}
+
+	return err.Description()
 }
 
-func levelLabel(level events.Level) string {
-	switch level {
-	case events.Debug:
-		return "debug"
-	case events.Info:
-		return "info"
-	case events.Error:
-		return "error"
-	default:
-		return "event"
-	}
-}
-
-func formatEvent(event events.Event) string {
-	label := levelLabel(event.Level)
-	if event.Error != nil {
-		return fmt.Sprintf("[%s] %s: %s", label, event.Message, event.Error.Error())
-	}
-	return fmt.Sprintf("[%s] %s", label, event.Message)
-}
-
-func formatSummary(summary *events.Summary) []string {
-	if summary == nil || len(summary.Full) == 0 {
+func formatBuildError(err error) []string {
+	if err == nil {
 		return nil
 	}
 
-	counts := countEvents(summary.Full)
-	total := len(summary.Full)
+	var failure *build.Failure
+	if errors.As(err, &failure) && failure.HasErrors() {
+		grouped := make(map[string][]*build.BuildError)
+		order := make([]string, 0)
 
-	lines := []string{
-		fmt.Sprintf(
-			"summary: %d events (debug %d, info %d, error %d)",
-			total,
-			counts.Debug,
-			counts.Info,
-			counts.Error,
-		),
-	}
-
-	if summary.ErrorCount > 0 {
-		lines = append(lines, fmt.Sprintf("errors (%d):", summary.ErrorCount))
-		for _, event := range summary.Errors {
-			lines = append(lines, fmt.Sprintf("- %s", formatEvent(event)))
+		for _, buildErr := range failure.Errors {
+			key := buildErr.Source()
+			if key == "" {
+				key = buildErr.Location()
+			}
+			if key == "" {
+				key = "build"
+			}
+			if _, ok := grouped[key]; !ok {
+				order = append(order, key)
+			}
+			grouped[key] = append(grouped[key], buildErr)
 		}
+
+		lines := make([]string, 0, len(failure.Errors)+len(order))
+		for _, key := range order {
+			lines = append(lines, coffee.InverseErrorStyle.Render(" "+key+" "))
+			for _, buildErr := range grouped[key] {
+				for _, line := range strings.Split(formatDiagnostic(buildErr), "\n") {
+					lines = append(lines, "  "+coffee.ErrorStyle.Render(line))
+				}
+			}
+		}
+		return lines
 	}
 
-	return lines
-}
-
-func hasSummaryEvents(summary *events.Summary) bool {
-	return summary != nil && len(summary.Full) > 0
+	return []string{err.Error()}
 }

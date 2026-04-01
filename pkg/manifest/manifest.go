@@ -6,10 +6,10 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/events"
 	"github.com/olimci/shizuka/pkg/iofs"
 	"golang.org/x/sync/errgroup"
 )
@@ -79,20 +79,36 @@ func (m *Manifest) Emit(a Artefact) {
 }
 
 // Build builds the manifest
-func (m *Manifest) Build(config *config.Config, options *config.Options, handler events.Handler, out iofs.Writable) error {
+func (m *Manifest) Build(config *config.Config, options *config.Options, report func(Claim, error), out iofs.Writable) error {
 	m.artefactsMu.Lock()
 	defer m.artefactsMu.Unlock()
 
 	artefacts, conflicts := makeArtefacts(m.artefacts)
 	for conflict, files := range conflicts {
-		handler.Handle(events.Event{
-			Level:   events.Error,
-			Message: fmt.Sprintf("file conflict %s: %v", conflict, files),
-			Error:   fmt.Errorf("%w: %v", ErrConflicts, conflicts),
-		})
+		owners := make([]string, 0, len(files))
+		for _, file := range files {
+			owner := strings.TrimSpace(file.Owner)
+			if owner == "" {
+				owner = strings.TrimSpace(file.Source)
+			}
+			if owner == "" {
+				owner = strings.TrimSpace(file.Target)
+			}
+			if owner == "" {
+				owner = "<unknown>"
+			}
+			owners = append(owners, owner)
+		}
+
+		if report != nil {
+			report(
+				NewInternalClaim("manifest", conflict),
+				fmt.Errorf("%w for %q: claimed by %s", ErrConflicts, conflict, strings.Join(owners, ", ")),
+			)
+		}
 	}
 	if !options.Dev && len(conflicts) > 0 {
-		return fmt.Errorf("%w: %v", ErrConflicts, conflicts)
+		return fmt.Errorf("%w: %d conflicting output path(s)", ErrConflicts, len(conflicts))
 	}
 
 	// Ensure we have a valid destination
@@ -110,15 +126,16 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, handler
 
 	gotFiles, gotDirs, err := walkDestination(options.Context, out)
 	if err != nil {
-		return fmt.Errorf("walk dist: %w", err)
+		return fmt.Errorf("output %q: %w", displayPath(out, "."), err)
 	}
 
-	cleaned := make(map[string]ArtefactBuilder, len(artefacts))
+	cleaned := make(map[string]Artefact, len(artefacts))
 	for dest, a := range artefacts {
 		rel := path.Clean(filepath.ToSlash(dest))
 		if path.IsAbs(rel) || isRel(rel) {
-			return fmt.Errorf("unsafe artefact path %q escapes dist", dest)
+			return fmt.Errorf("output path %q escapes the build output root", dest)
 		}
+		a.Claim.Target = rel
 		cleaned[rel] = a
 	}
 	artefacts = cleaned
@@ -128,7 +145,7 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, handler
 	for _, rel := range gotFiles.Values() {
 		if _, wants := artefacts[rel]; !wants {
 			if err := out.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return fmt.Errorf("failed to remove %s: %w", displayPath(out, rel), err)
+				return fmt.Errorf("output %q: %w", displayPath(out, rel), err)
 			}
 		}
 	}
@@ -136,7 +153,7 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, handler
 	for _, rel := range gotDirs.Values() {
 		if !wantDirs.Has(rel) {
 			if err := out.RemoveAll(rel); err != nil {
-				return fmt.Errorf("failed to remove %s: %w", displayPath(out, rel), err)
+				return fmt.Errorf("output %q: %w", displayPath(out, rel), err)
 			}
 		}
 	}
@@ -144,7 +161,7 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, handler
 	for _, rel := range wantDirs.Values() {
 		if !gotDirs.Has(rel) {
 			if err := out.MkdirAll(rel, 0o755); err != nil {
-				return fmt.Errorf("failed to create %s: %w", displayPath(out, rel), err)
+				return fmt.Errorf("output %q: %w", displayPath(out, rel), err)
 			}
 		}
 	}
@@ -164,11 +181,11 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, handler
 			default:
 			}
 
-			if err := out.Write(target, artefact, exists); err != nil {
-				if exists {
-					return fmt.Errorf("failed to edit %s: %w", displayPath(out, target), err)
+			if err := out.Write(target, artefact.Builder, exists); err != nil {
+				if report != nil {
+					err = reportableError(report, artefact.Claim, err)
 				}
-				return fmt.Errorf("failed to write %s: %w", displayPath(out, target), err)
+				return err
 			}
 
 			return nil
@@ -176,8 +193,16 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, handler
 	}
 
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("failed to build: %w", err)
+		return err
 	}
 
 	return nil
+}
+
+func reportableError(report func(Claim, error), claim Claim, err error) error {
+	if report == nil || err == nil {
+		return err
+	}
+	report(claim, err)
+	return err
 }

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/events"
 	"github.com/olimci/shizuka/pkg/iofs"
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/utils/set"
@@ -34,10 +33,10 @@ type BuildCtx struct {
 	Dev        bool
 }
 
-func Build(opts *config.Options) (error, *events.Summary) {
+func Build(opts *config.Options) error {
 	source, configPath, err := resolveSource(opts)
 	if err != nil {
-		return err, nil
+		return err
 	}
 	defer source.Close()
 
@@ -48,23 +47,23 @@ func Build(opts *config.Options) (error, *events.Summary) {
 
 	sourceFS, sourceRoot, err := openSourceFS(opts.Context, source)
 	if err != nil {
-		return err, nil
+		return err
 	}
 
 	configPath, err = cleanFSPath(configPath)
 	if err != nil {
-		return fmt.Errorf("config path: %w", err), nil
+		return fmt.Errorf("config %q: %w", configPath, err)
 	}
 
 	config, err := config.LoadFS(sourceFS, configPath)
 	if err != nil {
-		return err, nil
+		return err
 	}
 
 	if strings.TrimSpace(opts.SiteURL) != "" {
 		config.Site.URL = strings.TrimSpace(opts.SiteURL)
 		if err := config.Validate(); err != nil {
-			return err, nil
+			return err
 		}
 	}
 
@@ -96,7 +95,7 @@ func Build(opts *config.Options) (error, *events.Summary) {
 }
 
 // BuildSteps is a function that builds a site from a DAG of steps.
-func build(steps []Step, config *config.Config, options *config.Options, sourceFS fs.FS, sourceRoot string, out iofs.Writable) (error, *events.Summary) {
+func build(steps []Step, config *config.Config, options *config.Options, sourceFS fs.FS, sourceRoot string, out iofs.Writable) error {
 	startTime := time.Now()
 
 	man := manifest.New()
@@ -109,14 +108,11 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 		Dev:             options.Dev,
 	})
 
-	collector := events.NewCollector(options.EventHandler)
-	summary := func() *events.Summary {
-		return collector.Summary()
-	}
+	buildErrors := &errorState{}
 
 	dag, err := newDAG(steps)
 	if err != nil {
-		return err, summary()
+		return err
 	}
 
 	var ready []string
@@ -126,7 +122,7 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 		}
 	}
 	if len(ready) == 0 {
-		return ErrCircularDependency, summary()
+		return ErrCircularDependency
 	}
 
 	g, ctx := errgroup.WithContext(options.Context)
@@ -150,11 +146,11 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 			}
 
 			sc := StepContext{
-				Ctx:          ctx,
-				Manifest:     man,
-				SourceFS:     sourceFS,
-				SourceRoot:   sourceRoot,
-				eventHandler: collector,
+				Ctx:        ctx,
+				Manifest:   man,
+				SourceFS:   sourceFS,
+				SourceRoot: sourceRoot,
+				errors:     buildErrors,
 			}
 
 			if err := step.Fn(&sc); err != nil {
@@ -185,7 +181,7 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 	}
 
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("%w: %w", ErrBuildFailed, err), summary()
+		return err
 	}
 
 	if done != len(steps) {
@@ -195,30 +191,37 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 				stuck = append(stuck, id)
 			}
 		}
-		return fmt.Errorf("%w: %v", ErrCircularDependency, stuck), summary()
+		return fmt.Errorf("%w: %v", ErrCircularDependency, stuck)
 	}
 
-	if !collector.HasLevel(events.Error) {
-		if err := man.Build(config, options, collector, out); err != nil {
-			return fmt.Errorf("%w: %w", ErrBuildFailed, err), summary()
+	report := func(claim manifest.Claim, err error) {
+		buildErrors.Add(claim, err)
+	}
+
+	if !buildErrors.HasErrors() {
+		if err := man.Build(config, options, report, out); err != nil {
+			if buildErrors.HasErrors() {
+				return &Failure{Errors: buildErrors.Slice()}
+			}
+			return err
 		}
 	}
 
-	if collector.HasLevel(events.Error) {
+	if buildErrors.HasErrors() {
+		failure := &Failure{Errors: buildErrors.Slice()}
 		if options.Dev && options.ErrTemplate != nil {
 			man := manifest.New()
 			man.Emit(manifest.TemplateArtefact(
 				manifest.Claim{Owner: "build", Target: "index.html", Canon: "/"},
 				options.ErrTemplate,
-				collector.Summary(),
+				failure,
 			))
-			_ = man.Build(config, options, new(events.NoopHandler), out)
+			_ = man.Build(config, options, nil, out)
 		}
-		summary := summary()
-		return fmt.Errorf("%w: %v", ErrBuildFailed, summary), summary
+		return failure
 	}
 
-	return nil, summary()
+	return nil
 }
 
 func resolveSource(opts *config.Options) (iofs.Readable, string, error) {
@@ -230,7 +233,7 @@ func resolveSource(opts *config.Options) (iofs.Readable, string, error) {
 		return iofs.FromOS("."), configPath, nil
 	}
 	if filepath.IsAbs(configPath) {
-		return nil, "", fmt.Errorf("config path must be relative when using a custom source: %q", configPath)
+		return nil, "", fmt.Errorf("config %q must be relative when using a custom source", configPath)
 	}
 	return opts.Source, configPath, nil
 }
@@ -238,7 +241,7 @@ func resolveSource(opts *config.Options) (iofs.Readable, string, error) {
 func openSourceFS(ctx context.Context, source iofs.Readable) (fs.FS, string, error) {
 	fsys, err := source.FS(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("accessing source: %w", err)
+		return nil, "", fmt.Errorf("source %q: %w", source.Root(), err)
 	}
 
 	root := strings.TrimSpace(source.Root())
@@ -249,7 +252,7 @@ func openSourceFS(ctx context.Context, source iofs.Readable) (fs.FS, string, err
 	if root != "." {
 		root, err = cleanFSPath(root)
 		if err != nil {
-			return nil, "", fmt.Errorf("invalid source root %q: %w", source.Root(), err)
+			return nil, "", fmt.Errorf("source root %q: %w", source.Root(), err)
 		}
 		sub, err := fs.Sub(fsys, root)
 		if err != nil {

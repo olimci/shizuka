@@ -10,7 +10,9 @@ import (
 
 func main() {
 	if err := cmd.Execute(context.Background(), os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		if !cmd.IsSilentError(err) {
+			fmt.Fprintln(os.Stderr, "error:", err)
+		}
 		os.Exit(1)
 	}
 }

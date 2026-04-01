@@ -13,7 +13,6 @@ import (
 	"github.com/olimci/shizuka/cmd/internal"
 	"github.com/olimci/shizuka/pkg/build"
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/events"
 	"github.com/olimci/shizuka/pkg/version"
 	"github.com/olimci/shizuka/pkg/watcher"
 	"github.com/urfave/cli/v3"
@@ -62,10 +61,17 @@ func applyDevBuildOptions(opts *config.Options, undev bool) *config.Options {
 }
 
 func devCmd() *cli.Command {
+	flags := append(devFlags(),
+		&cli.BoolFlag{
+			Name:  "alt-screen",
+			Usage: "Use the terminal alt screen for the TUI",
+		},
+	)
+
 	return &cli.Command{
 		Name:   "dev",
 		Usage:  "Start development server with TUI",
-		Flags:  devFlags(),
+		Flags:  flags,
 		Action: runDev,
 	}
 }
@@ -136,6 +142,11 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 		Handler: mux,
 	}
 
+	coffeeOpts := []coffee.Option{coffee.WithContext(ctx)}
+	if cmd.Bool("alt-screen") {
+		coffeeOpts = append(coffeeOpts, coffee.WithAltScreen())
+	}
+
 	err = coffee.Do(func(ctx context.Context, c *coffee.Coffee) error {
 		defer func() {
 			_ = c.Clear()
@@ -145,10 +156,6 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 
 		_ = c.SetWindowTitle("shizuka dev")
 		_ = c.LogHeader(version.Banner(repoLink))
-
-		opts.WithEventHandler(events.NewHandlerFunc(func(event events.Event) {
-			_ = c.Log(formatEvent(event))
-		}))
 
 		keysStatus, err := c.Status("watching for changes")
 		if err != nil {
@@ -192,16 +199,12 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 			}
 
 			start := time.Now()
-			buildErr, summary := build.Build(opts)
+			buildErr := build.Build(opts)
 			elapsed := time.Since(start).Truncate(time.Millisecond)
 
 			if buildErr != nil {
 				_ = keysStatus.Error(fmt.Sprintf("build failed (%s)", elapsed))
-				_ = c.Logf("build failed (%s)", elapsed)
-				if !hasSummaryEvents(summary) {
-					_ = c.Log(buildErr.Error())
-				}
-				for _, line := range formatSummary(summary) {
+				for _, line := range formatBuildError(buildErr) {
 					_ = c.Log(line)
 				}
 				return nil
@@ -226,7 +229,7 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 				if errors.Is(err, http.ErrServerClosed) {
 					return nil
 				}
-				return err
+				return fmt.Errorf("dev server %q: %w", port, err)
 			case ev, ok := <-keys.Events():
 				if !ok {
 					return nil
@@ -249,7 +252,7 @@ func runDev(ctx context.Context, cmd *cli.Command) error {
 				}
 			}
 		}
-	}, coffee.WithContext(ctx))
+	}, coffeeOpts...)
 	if err != nil && errors.Is(err, coffee.ErrNonInteractive) {
 		return runXDev(ctx, cmd)
 	}
@@ -313,10 +316,6 @@ func runXDev(ctx context.Context, cmd *cli.Command) error {
 		Handler: mux,
 	}
 
-	opts.WithEventHandler(events.NewHandlerFunc(func(event events.Event) {
-		fmt.Println(formatEvent(event))
-	}))
-
 	serverErrs := make(chan error, 1)
 	go func() {
 		serverErrs <- server.ListenAndServe()
@@ -333,9 +332,9 @@ func runXDev(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	runBuild := func(trigger string) {
-		if buildErr, summary := build.Build(opts); buildErr != nil {
-			fmt.Printf("build error (%s): %s\n", trigger, buildErr)
-			for _, line := range formatSummary(summary) {
+		if buildErr := build.Build(opts); buildErr != nil {
+			fmt.Printf("build failed (%s)\n", trigger)
+			for _, line := range formatBuildError(buildErr) {
 				fmt.Println(line)
 			}
 			return
@@ -356,7 +355,7 @@ func runXDev(ctx context.Context, cmd *cli.Command) error {
 			if errors.Is(err, http.ErrServerClosed) {
 				return nil
 			}
-			return err
+			return fmt.Errorf("dev server %q: %w", port, err)
 		case err := <-watch.Errors:
 			fmt.Printf("watch error: %s\n", err)
 		case <-watch.Events:

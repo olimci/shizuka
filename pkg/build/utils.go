@@ -75,29 +75,29 @@ func parseTemplates(fsys fs.FS, pattern string, funcs template.FuncMap) (*templa
 	}
 	files, err := doublestar.Glob(fsys, pattern)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("template glob %q: %w", pattern, err)
 	}
 	if len(files) == 0 {
-		return nil, fmt.Errorf("no template files found matching pattern: %s", pattern)
+		return nil, fmt.Errorf("no templates matched %q", pattern)
 	}
 
-	tmpl := template.New("").Funcs(funcs)
+	tmpl := template.New("shizuka").Funcs(funcs)
 
 	seen := set.New[string]()
 
 	for _, file := range files {
 		content, err := fs.ReadFile(fsys, file)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read template file %s: %w", file, err)
+			return nil, fmt.Errorf("template %q: %w", file, err)
 		}
 
 		if seen.HasAdd(file) {
-			return nil, fmt.Errorf("duplicate template name: %s", file)
+			return nil, fmt.Errorf("template %q was matched more than once", file)
 		}
 
 		_, err = tmpl.New(file).Parse(string(content))
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse template %s: %w", file, err)
+			return nil, fmt.Errorf("template %q: %w", file, err)
 		}
 	}
 

@@ -6,7 +6,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/fsnotify/fsnotify v1.9.0
-	github.com/olimci/coffee v0.0.0-20260401115214-638b1d839872
+	github.com/olimci/coffee v0.0.0-20260401140500-8e7bf1106b99
 	github.com/tdewolff/minify/v2 v2.24.11
 	github.com/urfave/cli/v3 v3.8.0
 	github.com/yuin/goldmark v1.8.2

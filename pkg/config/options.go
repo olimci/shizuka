@@ -6,18 +6,16 @@ import (
 	"maps"
 	"runtime"
 
-	"github.com/olimci/shizuka/pkg/events"
 	"github.com/olimci/shizuka/pkg/iofs"
 )
 
 // DefaultOptions constructs an Options with default values.
 func DefaultOptions() *Options {
 	return &Options{
-		Context:      context.Background(),
-		ConfigPath:   "shizuka.toml",
-		MaxWorkers:   runtime.NumCPU(),
-		Dev:          false,
-		EventHandler: new(events.NoopHandler),
+		Context:    context.Background(),
+		ConfigPath: "shizuka.toml",
+		MaxWorkers: runtime.NumCPU(),
+		Dev:        false,
 	}
 }
 
@@ -36,7 +34,6 @@ type Options struct {
 
 	PageErrTemplates map[error]*template.Template
 	ErrTemplate      *template.Template
-	EventHandler     events.Handler
 }
 
 // WithContext sets the root context for building
@@ -100,12 +97,6 @@ func (o *Options) WithSourcePath(path string) *Options {
 // WithDestinationPath sets the output destination using an OS path.
 func (o *Options) WithDestinationPath(path string) *Options {
 	o.Destination = iofs.FromOS(path)
-	return o
-}
-
-// WithEventHandler sets the event handler for building
-func (o *Options) WithEventHandler(handler events.Handler) *Options {
-	o.EventHandler = handler
 	return o
 }
 

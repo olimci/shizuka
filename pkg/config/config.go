@@ -167,11 +167,11 @@ func Load(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
 	if err := decodeFile(path, cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config %q: %w", path, err)
 	}
 
 	if err := cfg.Validate(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config %q: %w", path, err)
 	}
 	return cfg, nil
 }
@@ -181,11 +181,11 @@ func LoadFS(fsys fs.FS, path string) (*Config, error) {
 	cfg := DefaultConfig()
 
 	if err := decodeFS(fsys, path, cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config %q: %w", path, err)
 	}
 
 	if err := cfg.Validate(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config %q: %w", path, err)
 	}
 	return cfg, nil
 }

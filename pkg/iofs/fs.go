@@ -59,14 +59,14 @@ func (o *OSFS) EnsureRoot() error {
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			if err := os.MkdirAll(o.path, 0o755); err != nil {
-				return fmt.Errorf("failed to create build dir %q: %w", o.path, err)
+				return fmt.Errorf("output directory %q: %w", o.path, err)
 			}
 			return nil
 		}
-		return fmt.Errorf("failed to stat build dir %q: %w", o.path, err)
+		return fmt.Errorf("output directory %q: %w", o.path, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("build dir %q is not a directory", o.path)
+		return fmt.Errorf("output path %q is not a directory", o.path)
 	}
 	return nil
 }

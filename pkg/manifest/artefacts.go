@@ -3,14 +3,14 @@ package manifest
 import (
 	"html/template"
 	"io"
-	"os"
+	"io/fs"
 )
 
-func StaticArtefact(claim Claim) Artefact {
+func StaticArtefact(fsys fs.FS, claim Claim) Artefact {
 	return Artefact{
 		Claim: claim,
 		Builder: func(w io.Writer) error {
-			file, err := os.Open(claim.Source)
+			file, err := fsys.Open(claim.Source)
 			if err != nil {
 				return err
 			}

@@ -41,11 +41,11 @@ func StepStatic() Step {
 
 		sourceRoot, err := cleanFSPath(cfg.Build.Steps.Static.Source)
 		if err != nil {
-			return fmt.Errorf("static source: %w", err)
+			return fmt.Errorf("static source %q: %w", cfg.Build.Steps.Static.Source, err)
 		}
 		targetRoot, err := cleanFSPath(cfg.Build.Steps.Static.Destination)
 		if err != nil {
-			return fmt.Errorf("static destination: %w", err)
+			return fmt.Errorf("static destination %q: %w", cfg.Build.Steps.Static.Destination, err)
 		}
 
 		files, err := fileutils.WalkFilesFS(sc.SourceFS, sourceRoot)
@@ -56,7 +56,7 @@ func StepStatic() Step {
 		for _, rel := range files.Values() {
 			source := path.Join(sourceRoot, rel)
 			target := path.Join(targetRoot, rel)
-			sc.Manifest.Emit(manifest.StaticArtefact(manifest.Claim{
+			sc.Manifest.Emit(manifest.StaticArtefact(sc.SourceFS, manifest.Claim{
 				Owner:  "static",
 				Source: source,
 				Target: target,
@@ -102,15 +102,10 @@ func StepContent() []Step {
 				continue
 			}
 
-			if tmpl.Lookup(page.Meta.Template) == nil {
-				var err error
-				if page.Meta.Template == "" {
-					err = errors.Join(ErrNoTemplate, errors.New("no template specified"))
-					sc.Errorf(err, "page %s: no template specified", claim)
-				} else {
-					err = errors.Join(ErrTemplateNotFound, fmt.Errorf("template %q not found", page.Meta.Template))
-					sc.Errorf(err, "template %q not found", page.Meta.Template)
-				}
+			templateName := strings.TrimSpace(page.Meta.Template)
+			if templateName == "" {
+				err := errors.Join(ErrNoTemplate, errors.New("no template specified"))
+				sc.Error(err, claim)
 
 				if errTmpl := lookupErrPage(opts.PageErrTemplates, err); errTmpl != nil {
 					sc.Manifest.Emit(manifest.TemplateArtefact(claim, errTmpl, transforms.PageTemplate{
@@ -123,7 +118,23 @@ func StepContent() []Step {
 				continue
 			}
 
-			sc.Manifest.Emit(manifest.NamedTemplateArtefact(claim, page.Meta.Template, tmpl, transforms.PageTemplate{
+			if tmpl.Lookup(templateName) == nil {
+				var err error
+				err = errors.Join(ErrTemplateNotFound, fmt.Errorf("template %q not found", templateName))
+				sc.Error(err, claim)
+
+				if errTmpl := lookupErrPage(opts.PageErrTemplates, err); errTmpl != nil {
+					sc.Manifest.Emit(manifest.TemplateArtefact(claim, errTmpl, transforms.PageTemplate{
+						Page:  *page,
+						Site:  *site,
+						Error: err,
+					}).Post(m))
+				}
+
+				continue
+			}
+
+			sc.Manifest.Emit(manifest.NamedTemplateArtefact(claim, templateName, tmpl, transforms.PageTemplate{
 				Page: *page,
 				Site: *site,
 			}).Post(m))
@@ -188,12 +199,15 @@ func StepContent() []Step {
 			}
 			slug, err := transforms.CleanSlug(slugSource)
 			if err != nil {
-				sc.Errorf(err, "page %s: invalid slug %q", page.Meta.Source, slugSource)
+				sc.Error(fmt.Errorf("invalid slug %q: %w", slugSource, err), manifest.NewPageClaim(page.Meta.Source, page.Meta.URLPath))
 			} else {
 				page.Slug = slug
 				if slug != "" {
 					if prev, ok := seenSlugs[slug]; ok {
-						sc.Errorf(fmt.Errorf("duplicate slug %q (%s, %s)", slug, prev, page.Meta.Source), "duplicate slug %q", slug)
+						sc.Error(
+							fmt.Errorf("duplicate slug %q (%s, %s)", slug, prev, page.Meta.Source),
+							manifest.NewPageClaim(page.Meta.Source, page.Meta.URLPath),
+						)
 					} else {
 						seenSlugs[slug] = page.Meta.Source
 					}
@@ -205,7 +219,10 @@ func StepContent() []Step {
 				if shortSlug != "" {
 					canon, err := url.JoinPath(site.URL, redirectsCfg.Shorten, shortSlug)
 					if err != nil {
-						sc.Errorf(err, "page %s: failed to build canonical url", page.Meta.Source)
+						sc.Error(
+							fmt.Errorf("canonical URL from site.url %q and redirect path %q: %w", site.URL, path.Join(redirectsCfg.Shorten, shortSlug), err),
+							manifest.NewPageClaim(page.Meta.Source, page.Meta.URLPath),
+						)
 					} else {
 						page.Canon = canon
 					}
@@ -214,7 +231,10 @@ func StepContent() []Step {
 			if page.Canon == "" {
 				canon, err := url.JoinPath(site.URL, page.Meta.URLPath)
 				if err != nil {
-					sc.Errorf(err, "page %s: failed to build canonical url", page.Meta.Source)
+					sc.Error(
+						fmt.Errorf("canonical URL from site.url %q and page path %q: %w", site.URL, page.Meta.URLPath, err),
+						manifest.NewPageClaim(page.Meta.Source, page.Meta.URLPath),
+					)
 				} else if !strings.HasSuffix(canon, "/") {
 					page.Canon = canon + "/"
 				} else {
@@ -263,12 +283,12 @@ func StepContent() []Step {
 
 		glob, err := cleanFSGlob(config.Build.Steps.Content.TemplateGlob)
 		if err != nil {
-			return fmt.Errorf("template glob: %w", err)
+			return fmt.Errorf("template glob %q: %w", config.Build.Steps.Content.TemplateGlob, err)
 		}
 
 		tmpl, err := parseTemplates(sc.SourceFS, glob, transforms.DefaultTemplateFuncs())
 		if err != nil {
-			return fmt.Errorf("failed to parse templates: %w", err)
+			return fmt.Errorf("template glob %q: %w", glob, err)
 		}
 
 		manifest.SetAs(sc.Manifest, TemplatesK, tmpl)
@@ -282,12 +302,12 @@ func StepContent() []Step {
 
 		root, err := cleanFSPath(cfg.Build.Steps.Content.Source)
 		if err != nil {
-			return fmt.Errorf("content source: %w", err)
+			return fmt.Errorf("content source %q: %w", cfg.Build.Steps.Content.Source, err)
 		}
 
 		tree, err := fileutils.WalkTreeFS(sc.SourceFS, root)
 		if err != nil {
-			return fmt.Errorf("failed to walk files: %w", err)
+			return fmt.Errorf("content source %q: %w", root, err)
 		}
 
 		md := cfg.Build.Steps.Content.GoldmarkConfig.Build()
@@ -311,7 +331,7 @@ func StepContent() []Step {
 					URLPath: url2dir(node.Path),
 				})
 				if ok := parent.AddChild(node.Name, dirNode); !ok {
-					sc.Errorf(fmt.Errorf("duplicate page node %q", node.Name), "duplicate page node %q", node.Name)
+					sc.Error(fmt.Errorf("duplicate page node %q", node.Name), manifest.NewInternalClaim("pages:index", path.Join(dirNode.URLPath, "index.html")))
 				}
 				s.Push(dirNode)
 				return
@@ -321,22 +341,20 @@ func StepContent() []Step {
 			ext := path.Ext(base)
 			name := strings.TrimSuffix(base, ext)
 			source := path.Join(root, node.Path)
+			urlPath := path.Join(url2dir(dir), name)
+			if name == "index" {
+				urlPath = url2dir(dir)
+			}
+			claim := manifest.NewPageClaim(source, urlPath)
 
 			if ext == ".html" {
-				var url string
-				if name == "index" {
-					url = url2dir(dir)
-				} else {
-					url = path.Join(url2dir(dir), name)
-				}
-				sc.Manifest.Emit(manifest.StaticArtefact(manifest.NewPageClaim(source, url)))
+				sc.Manifest.Emit(manifest.StaticArtefact(sc.SourceFS, claim))
 				return
 			}
 
 			page, err := transforms.BuildPageFS(sc.SourceFS, source, md)
 			if err != nil {
-				// if we get an error, emit an error and create an empty page node where Error is set
-				sc.Error(err, "failed to build page")
+				sc.Error(err, claim)
 			}
 
 			if err == nil {
@@ -347,6 +365,7 @@ func StepContent() []Step {
 
 			// If name == index, then the page corresponds to the current directory
 			if name == "index" {
+				parent.Path = source
 				parent.URLPath = url2dir(dir)
 				if err != nil {
 					parent.Error = err
@@ -361,7 +380,7 @@ func StepContent() []Step {
 			}
 
 			child := new(transforms.PageNode)
-			child.Path = node.Path
+			child.Path = source
 			child.URLPath = path.Join(url2dir(dir), name)
 			if err != nil {
 				child.Error = err
@@ -372,7 +391,7 @@ func StepContent() []Step {
 				page.Tree = child
 			}
 			if ok := parent.AddChild(name, child); !ok {
-				sc.Errorf(fmt.Errorf("duplicate page node %q", name), "duplicate page node %q", name)
+				sc.Error(fmt.Errorf("duplicate page node %q", name), manifest.NewInternalClaim("pages:index", path.Join(child.URLPath, "index.html")))
 			}
 		}, func(node *fileutils.FSNode, depth int) {
 			if node.IsDir && node.Path != "." {

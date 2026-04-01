@@ -10,7 +10,6 @@ import (
 	"github.com/olimci/coffee"
 	"github.com/olimci/shizuka/pkg/build"
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/events"
 	"github.com/urfave/cli/v3"
 )
 
@@ -60,7 +59,9 @@ func runBuild(ctx context.Context, cmd *cli.Command) error {
 			_ = c.Clear()
 		}()
 
-		opts := config.DefaultOptions().WithContext(ctx)
+		opts := config.DefaultOptions().
+			WithContext(ctx).
+			WithConfig(cmd.String("config"))
 
 		if cmd.Bool("dev") {
 			opts.
@@ -77,36 +78,29 @@ func runBuild(ctx context.Context, cmd *cli.Command) error {
 			opts.WithMaxWorkers(n)
 		}
 
-		opts.WithEventHandler(events.NewHandlerFunc(func(event events.Event) {
-			_ = c.Log(formatEvent(event))
-		}))
-
 		status, err := c.Status("building...")
 		if err != nil {
 			return err
 		}
 
 		start := time.Now()
-		buildErr, summary := build.Build(opts)
+		buildErr := build.Build(opts)
 		elapsed := time.Since(start).Truncate(time.Millisecond)
 
 		if buildErr != nil {
 			_ = status.Error(fmt.Sprintf("build failed (%s)", elapsed))
-			if !hasSummaryEvents(summary) {
-				_ = c.Log(buildErr.Error())
-			}
 		} else {
 			_ = status.Success(fmt.Sprintf("built (%s)", elapsed))
 		}
 
-		for _, line := range formatSummary(summary) {
+		for _, line := range formatBuildError(buildErr) {
 			_ = c.Log(line)
 		}
 
 		_ = status.Clear()
 
 		if buildErr != nil {
-			return buildErr
+			return quietError(buildErr)
 		}
 		return nil
 	}, coffee.WithContext(ctx))
@@ -117,7 +111,9 @@ func runBuild(ctx context.Context, cmd *cli.Command) error {
 }
 
 func runXBuild(ctx context.Context, cmd *cli.Command) error {
-	opts := config.DefaultOptions().WithContext(ctx)
+	opts := config.DefaultOptions().
+		WithContext(ctx).
+		WithConfig(cmd.String("config"))
 
 	if cmd.Bool("dev") {
 		opts.
@@ -134,25 +130,18 @@ func runXBuild(ctx context.Context, cmd *cli.Command) error {
 		opts.WithMaxWorkers(n)
 	}
 
-	opts.WithEventHandler(events.NewHandlerFunc(func(event events.Event) {
-		fmt.Println(formatEvent(event))
-	}))
-
 	fmt.Println("building...")
 
-	buildErr, summary := build.Build(opts)
+	buildErr := build.Build(opts)
 	if buildErr != nil {
-		fmt.Printf("build failed: %s\n", buildErr)
-		for _, line := range formatSummary(summary) {
+		fmt.Println("build failed")
+		for _, line := range formatBuildError(buildErr) {
 			fmt.Println(line)
 		}
-		return buildErr
+		return quietError(buildErr)
 	}
 
 	fmt.Println("built")
-	for _, line := range formatSummary(summary) {
-		fmt.Println(line)
-	}
 
 	return nil
 }

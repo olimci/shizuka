@@ -51,8 +51,8 @@ type SitemapMeta struct {
 
 var (
 	ErrUnknownFrontmatterType   = errors.New("unknown frontmatter type")
-	ErrFailedToParseFrontmatter = errors.New("failed to parse frontmatter")
-	ErrNoFrontmatter            = errors.New("no frontmatter")
+	ErrFailedToParseFrontmatter = errors.New("invalid frontmatter")
+	ErrNoFrontmatter            = errors.New("frontmatter is required")
 )
 
 // ExtractFrontmatter extracts the frontmatter from a document
@@ -63,19 +63,19 @@ func ExtractFrontmatter(doc []byte) (*Frontmatter, []byte, error) {
 	case "yaml":
 		var fm Frontmatter
 		if err := yaml.Unmarshal(b[start:end], &fm); err != nil {
-			return nil, doc, fmt.Errorf("%w: %w", ErrFailedToParseFrontmatter, err)
+			return nil, doc, fmt.Errorf("%w (%s): %w", ErrFailedToParseFrontmatter, "yaml", err)
 		}
 		return &fm, b[bodyStart:], nil
 	case "toml":
 		var fm Frontmatter
 		if err := toml.Unmarshal(b[start:end], &fm); err != nil {
-			return nil, doc, fmt.Errorf("%w: %w", ErrFailedToParseFrontmatter, err)
+			return nil, doc, fmt.Errorf("%w (%s): %w", ErrFailedToParseFrontmatter, "toml", err)
 		}
 		return &fm, b[bodyStart:], nil
 	case "json":
 		var fm Frontmatter
 		if err := json.Unmarshal(b[start:end], &fm); err != nil {
-			return nil, doc, fmt.Errorf("%w: %w", ErrFailedToParseFrontmatter, err)
+			return nil, doc, fmt.Errorf("%w (%s): %w", ErrFailedToParseFrontmatter, "json", err)
 		}
 		return &fm, b[bodyStart:], nil
 	case "":

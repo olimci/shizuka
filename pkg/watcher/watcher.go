@@ -42,14 +42,16 @@ type Watcher struct {
 
 func (w *Watcher) Start(ctx context.Context) error {
 	w.watched = set.New[string]()
-	w.addPath(w.configPath)
+	if err := w.addPath(w.configPath); err != nil {
+		return fmt.Errorf("config file %q: %w", w.configPath, err)
+	}
 	if cfg, err := config.Load(w.configPath); err == nil {
 		paths, globs := cfg.WatchedPaths()
 		if err := w.addPaths(paths...); err != nil {
-			lazySend(w.Errors, fmt.Errorf("failed to add paths: %w", err))
+			lazySend(w.Errors, err)
 		}
 		if err := w.addGlobs(globs...); err != nil {
-			lazySend(w.Errors, fmt.Errorf("failed to add globs: %w", err))
+			lazySend(w.Errors, err)
 		}
 	}
 
@@ -123,7 +125,7 @@ func (w *Watcher) loop(ctx context.Context) {
 			flush(reason)
 
 		case err := <-w.watcher.Errors:
-			lazySend(w.Errors, fmt.Errorf("watch error: %w", err))
+			lazySend(w.Errors, err)
 		}
 	}
 }
@@ -159,7 +161,7 @@ func (w *Watcher) addPath(root string) error {
 func (w *Watcher) addPaths(paths ...string) error {
 	for _, path := range paths {
 		if err := w.addPath(path); err != nil {
-			return err
+			return fmt.Errorf("watched path %q: %w", path, err)
 		}
 	}
 	return nil
@@ -168,12 +170,12 @@ func (w *Watcher) addPaths(paths ...string) error {
 func (w *Watcher) addGlob(pattern string) error {
 	files, err := doublestar.Glob(os.DirFS("."), pattern)
 	if err != nil {
-		return err
+		return fmt.Errorf("watched glob %q: %w", pattern, err)
 	}
 
 	for _, file := range files {
 		if err := w.addPath(file); err != nil {
-			return err
+			return fmt.Errorf("watched glob %q matched %q: %w", pattern, file, err)
 		}
 
 	}
@@ -198,7 +200,7 @@ func (w *Watcher) addWatch(path string) error {
 		return nil
 	}
 	if err := w.watcher.Add(normalized); err != nil {
-		return err
+		return fmt.Errorf("watch path %q: %w", normalized, err)
 	}
 	w.watched.Add(normalized)
 	return nil
@@ -210,7 +212,7 @@ func (w *Watcher) removeAllWatches() {
 	}
 	for _, path := range w.watched.Values() {
 		if err := w.watcher.Remove(path); err != nil {
-			lazySend(w.Errors, fmt.Errorf("failed to remove watch: %w", err))
+			lazySend(w.Errors, fmt.Errorf("watch path %q: %w", path, err))
 		}
 	}
 	w.watched.Clear()
@@ -219,20 +221,20 @@ func (w *Watcher) removeAllWatches() {
 func (w *Watcher) rebuild() {
 	cfg, err := config.Load(w.configPath)
 	if err != nil {
-		lazySend(w.Errors, fmt.Errorf("failed to reload config: %w", err))
+		lazySend(w.Errors, err)
 		return
 	}
 	paths, globs := cfg.WatchedPaths()
 
 	w.removeAllWatches()
 	if err := w.addPath(w.configPath); err != nil {
-		lazySend(w.Errors, fmt.Errorf("failed to watch config: %w", err))
+		lazySend(w.Errors, fmt.Errorf("config file %q: %w", w.configPath, err))
 	}
 	if err := w.addPaths(paths...); err != nil {
-		lazySend(w.Errors, fmt.Errorf("failed to add paths: %w", err))
+		lazySend(w.Errors, err)
 	}
 	if err := w.addGlobs(globs...); err != nil {
-		lazySend(w.Errors, fmt.Errorf("failed to add globs: %w", err))
+		lazySend(w.Errors, err)
 	}
 }
 
@@ -249,6 +251,6 @@ func (w *Watcher) addDirectoryIfNeeded(path string) {
 		return
 	}
 	if err := w.addPath(path); err != nil {
-		lazySend(w.Errors, fmt.Errorf("failed to watch new directory: %w", err))
+		lazySend(w.Errors, fmt.Errorf("directory %q: %w", path, err))
 	}
 }

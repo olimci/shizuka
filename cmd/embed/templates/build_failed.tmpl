@@ -13,7 +13,7 @@
             <div class="banner" role="status" aria-live="polite">
                 <div class="k">build failed</div>
                 <div class="msg">
-                    {{- if .Summary -}} {{ .Summary }} {{- else -}} error {{- end
+                    {{- if .HasErrors -}} {{ .Summary }} {{- else -}} error {{- end
                     -}}
                 </div>
             </div>
@@ -21,16 +21,21 @@
             <section class="panel">
                 <div class="panel-h">
                     <div>details</div>
-                    <div class="right">
-                        fail: {{ .FailLevel }} / max: {{ .MaxLevel }}
-                    </div>
+                    <div class="right">{{ .Count }}</div>
                 </div>
 
-                {{- if .Diagnostics }}
+                {{- if .Errors }}
                 <dl class="meta">
-                    {{- range .Diagnostics }}
-                    <dt>{{ .Level }}</dt>
-                    <dd>{{ .Source }}: {{ .Message }}{{ if .Err }}: {{ .Err }}{{ end }}</dd>
+                    {{- range .Errors }}
+                    <dt>{{ .Location }}</dt>
+                    <dd>
+                        {{- if and .Source .Target -}}
+                            {{- if ne .Source .Target -}}
+                                target: {{ .Target }}<br />
+                            {{- end -}}
+                        {{- end -}}
+                        {{ .Description }}
+                    </dd>
                     {{- end }}
                 </dl>
                 {{- else }}
