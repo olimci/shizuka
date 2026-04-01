@@ -63,7 +63,24 @@ type ConfigStepContent struct {
 	DefaultTemplate string                `toml:"default_template" yaml:"default_template" json:"default_template"`
 	DefaultParams   map[string]any        `toml:"default_params" yaml:"default_params" json:"default_params"`
 	GoldmarkConfig  ConfigGoldmark        `toml:"goldmark_config" yaml:"goldmark_config" json:"goldmark_config"`
+	Markdown        ConfigContentMarkdown `toml:"markdown" yaml:"markdown" json:"markdown"`
+	BundleAssets    ConfigContentBundles  `toml:"bundle_assets" yaml:"bundle_assets" json:"bundle_assets"`
+	Raw             ConfigContentRaw      `toml:"raw" yaml:"raw" json:"raw"`
 	Git             *ConfigStepContentGit `toml:"git" yaml:"git" json:"git"`
+}
+
+type ConfigContentMarkdown struct {
+	ObsidianLinks bool `toml:"obsidian_links" yaml:"obsidian_links" json:"obsidian_links"`
+}
+
+type ConfigContentBundles struct {
+	Enabled bool   `toml:"enabled" yaml:"enabled" json:"enabled"`
+	Output  string `toml:"output" yaml:"output" json:"output"`
+	Mode    string `toml:"mode" yaml:"mode" json:"mode"`
+}
+
+type ConfigContentRaw struct {
+	Markdown bool `toml:"markdown" yaml:"markdown" json:"markdown"`
 }
 
 type ConfigStepContentGit struct {
@@ -162,6 +179,11 @@ func DefaultConfig() *Config {
 					DefaultTemplate: "page",
 					DefaultParams:   map[string]any{},
 					GoldmarkConfig:  defaultGoldmark,
+					BundleAssets: ConfigContentBundles{
+						Enabled: false,
+						Output:  "_assets",
+						Mode:    "fingerprinted",
+					},
 				},
 			},
 		},
@@ -240,6 +262,17 @@ func (c *Config) Validate() error {
 		}
 		if c.Build.Steps.Content.DefaultParams == nil {
 			c.Build.Steps.Content.DefaultParams = map[string]any{}
+		}
+		if c.Build.Steps.Content.BundleAssets.Output == "" {
+			c.Build.Steps.Content.BundleAssets.Output = "_assets"
+		}
+		if c.Build.Steps.Content.BundleAssets.Mode == "" {
+			c.Build.Steps.Content.BundleAssets.Mode = "fingerprinted"
+		}
+		switch c.Build.Steps.Content.BundleAssets.Mode {
+		case "fingerprinted", "adjacent":
+		default:
+			return fmt.Errorf("build.steps.content.bundle_assets.mode must be \"fingerprinted\" or \"adjacent\" (got %q)", c.Build.Steps.Content.BundleAssets.Mode)
 		}
 	}
 

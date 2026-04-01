@@ -38,9 +38,11 @@ This mapping is based on the file path and name, not frontmatter.
 
 ## Supported content file types
 
-- Markdown: `*.md` (requires fenced frontmatter; see `_docs/frontmatter.md`)
+- Markdown pages: `*.md` (requires fenced frontmatter; see `_docs/frontmatter.md`)
+- HTML pages: `*.html` (same frontmatter rules as Markdown; body is treated as raw HTML and then rendered through the page template)
 - Structured pages: `*.toml`, `*.yaml`/`*.yml`, `*.json` (must contain `template` and `body`)
-- Raw HTML passthrough: `*.html` (copied to the same “pretty URL” target as above)
+
+Non-page files under `content/` are ignored unless they are claimed as bundle assets by a page with the same stem, for example `content/posts/hello.md` owning `content/posts/hello/hero.png`.
 
 ## What gets built (high level)
 

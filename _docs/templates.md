@@ -29,6 +29,7 @@ Each page is rendered with this root object:
 Key fields you can use in templates:
 
 - `.Page.Title`, `.Page.Description`, `.Page.Tags`, `.Page.Featured`, `.Page.Draft`
+- `.Page.Source.Kind` (`"markdown"`, `"html"`, `"structured"`)
 - `.Page.Slug` (clean slug without leading slash)
 - `.Page.Aliases` (`[]string`, site-relative alias paths)
 - `.Page.Weight` (`int`)
@@ -39,6 +40,7 @@ Key fields you can use in templates:
 - `.Page.Git.CommitHash`, `.Page.Git.ShortHash`, `.Page.Git.AuthorName`
 - `.Page.Body` (`template.HTML`; rendered Markdown output or `body` from structured pages)
 - `.Page.Params` (arbitrary map for full page templates)
+- `.Page.Bundle.Assets` (`map[string]*PageAsset`) for owned bundle assets
 - `.Page.Headers` (used by the headers build step; see `_docs/config.md`)
 - `.Page.Meta.Source` (source file path)
 - `.Page.Meta.URLPath` (site-relative URL path without a leading slash)
@@ -88,6 +90,8 @@ Shizuka registers a small set of helpers:
 - `default fallback value` -> `fallback` when `value` is empty / zero
 - `uniq values` -> deduplicated `[]string` preserving original order
 - `slugify s` -> normalized URL-safe slug string
+- `asset key page` -> public URL string for a bundle asset, or `""`
+- `assetMeta key page` -> `*PageAsset` for a bundle asset, or `nil`
 - `dict key value ...` -> `map[string]any`
 - `merge map ...` -> merged `map[string]any` (later maps win)
 

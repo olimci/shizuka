@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io/fs"
 	"maps"
+	"mime"
 	"path"
 	"slices"
 	"strings"
@@ -27,6 +28,9 @@ type Page struct {
 	Meta PageMeta
 	Tree *PageNode
 	Git  PageGitMeta
+
+	Source PageSource
+	Bundle PageBundle
 
 	Slug    string
 	Canon   string
@@ -119,6 +123,37 @@ type PageMeta struct {
 	BuildTimeString string
 }
 
+type PageSourceKind string
+
+const (
+	PageSourceKindMarkdown   PageSourceKind = "markdown"
+	PageSourceKindHTML       PageSourceKind = "html"
+	PageSourceKindStructured PageSourceKind = "structured"
+)
+
+type PageSource struct {
+	Kind     PageSourceKind
+	Ext      string
+	Doc      string
+	Body     string
+	BodyHTML bool
+}
+
+type PageBundle struct {
+	Assets map[string]*PageAsset
+}
+
+type PageAsset struct {
+	Key        string
+	Source     string
+	Target     string
+	URL        string
+	Hash       string
+	Size       int64
+	MediaType  string
+	Standalone bool
+}
+
 // PageTemplate is the struct from which page templates are built
 type PageTemplate struct {
 	Page  Page
@@ -127,22 +162,36 @@ type PageTemplate struct {
 }
 
 // BuildPageFS builds a page from a file within the provided fs.FS.
-func BuildPageFS(fsys fs.FS, source string, md gm.Markdown) (*Page, error) {
+func BuildPageFS(fsys fs.FS, source string, _ gm.Markdown) (*Page, error) {
 	var (
 		fm   *Frontmatter
 		body string
+		doc  string
+		kind PageSourceKind
+		html bool
 		err  error
 	)
 
 	switch ext := path.Ext(path.Base(source)); ext {
 	case ".md":
-		fm, body, err = buildMDFromFS(fsys, source, md)
+		fm, body, doc, err = buildMDFromFS(fsys, source)
+		kind = PageSourceKindMarkdown
 	case ".toml":
-		fm, body, err = buildTOMLFromFS(fsys, source)
+		fm, body, doc, err = buildTOMLFromFS(fsys, source)
+		kind = PageSourceKindStructured
+		html = true
 	case ".yaml", ".yml":
-		fm, body, err = buildYamlFromFS(fsys, source)
+		fm, body, doc, err = buildYamlFromFS(fsys, source)
+		kind = PageSourceKindStructured
+		html = true
 	case ".json":
-		fm, body, err = buildJSONFromFS(fsys, source)
+		fm, body, doc, err = buildJSONFromFS(fsys, source)
+		kind = PageSourceKindStructured
+		html = true
+	case ".html":
+		fm, body, doc, err = buildHTMLFromFS(fsys, source)
+		kind = PageSourceKindHTML
+		html = true
 	default:
 		return nil, fmt.Errorf("%w %q", ErrUnsupportedContentType, ext)
 	}
@@ -156,6 +205,16 @@ func BuildPageFS(fsys fs.FS, source string, md gm.Markdown) (*Page, error) {
 			Template: fm.Template,
 			Source:   source,
 			URLPath:  fm.URLPath,
+		},
+		Source: PageSource{
+			Kind:     kind,
+			Ext:      path.Ext(path.Base(source)),
+			Doc:      doc,
+			Body:     body,
+			BodyHTML: html,
+		},
+		Bundle: PageBundle{
+			Assets: make(map[string]*PageAsset),
 		},
 		Slug:        fm.Slug,
 		Aliases:     slices.Clone(fm.Aliases),
@@ -171,75 +230,89 @@ func BuildPageFS(fsys fs.FS, source string, md gm.Markdown) (*Page, error) {
 		Headers:     fm.Headers,
 		RSS:         fm.RSS,
 		Sitemap:     fm.Sitemap,
-		Body:        template.HTML(body),
+		Body:        "",
 		Featured:    fm.Featured,
 		Draft:       fm.Draft,
 	}, nil
 }
 
-func buildMDFromFS(fsys fs.FS, path string, md gm.Markdown) (*Frontmatter, string, error) {
+func buildMDFromFS(fsys fs.FS, path string) (*Frontmatter, string, string, error) {
 	doc, err := fs.ReadFile(fsys, path)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	fm, body, err := ExtractFrontmatter(doc)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
-	var buf strings.Builder
-	if err := md.Convert(body, &buf); err != nil {
-		return nil, "", fmt.Errorf("markdown body: %w", err)
-	}
-
-	return fm, buf.String(), nil
+	return fm, string(body), string(doc), nil
 }
 
-func buildTOMLFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
-	file, err := fsys.Open(path)
+func buildTOMLFromFS(fsys fs.FS, path string) (*Frontmatter, string, string, error) {
+	doc, err := fs.ReadFile(fsys, path)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
-	defer file.Close()
 
 	fm := new(Frontmatter)
 
-	if _, err := toml.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", fmt.Errorf("TOML page data: %w", err)
+	if _, err := toml.Decode(string(doc), fm); err != nil {
+		return nil, "", "", fmt.Errorf("TOML page data: %w", err)
 	}
 
-	return fm, fm.Body, nil
+	return fm, fm.Body, string(doc), nil
 }
 
-func buildYamlFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
-	file, err := fsys.Open(path)
+func buildYamlFromFS(fsys fs.FS, path string) (*Frontmatter, string, string, error) {
+	doc, err := fs.ReadFile(fsys, path)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
-	defer file.Close()
 
 	fm := new(Frontmatter)
 
-	if err := yaml.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", fmt.Errorf("YAML page data: %w", err)
+	if err := yaml.NewDecoder(strings.NewReader(string(doc))).Decode(fm); err != nil {
+		return nil, "", "", fmt.Errorf("YAML page data: %w", err)
 	}
 
-	return fm, fm.Body, nil
+	return fm, fm.Body, string(doc), nil
 }
 
-func buildJSONFromFS(fsys fs.FS, path string) (*Frontmatter, string, error) {
-	file, err := fsys.Open(path)
+func buildJSONFromFS(fsys fs.FS, path string) (*Frontmatter, string, string, error) {
+	doc, err := fs.ReadFile(fsys, path)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
-	defer file.Close()
 
 	fm := new(Frontmatter)
 
-	if err := json.NewDecoder(file).Decode(fm); err != nil {
-		return nil, "", fmt.Errorf("JSON page data: %w", err)
+	if err := json.NewDecoder(strings.NewReader(string(doc))).Decode(fm); err != nil {
+		return nil, "", "", fmt.Errorf("JSON page data: %w", err)
 	}
 
-	return fm, fm.Body, nil
+	return fm, fm.Body, string(doc), nil
+}
+
+func buildHTMLFromFS(fsys fs.FS, path string) (*Frontmatter, string, string, error) {
+	doc, err := fs.ReadFile(fsys, path)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	fm, body, err := ExtractFrontmatter(doc)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	return fm, string(body), string(doc), nil
+}
+
+func PageAssetMediaType(source string) string {
+	typ := mime.TypeByExtension(strings.ToLower(path.Ext(source)))
+	if typ == "" {
+		return "application/octet-stream"
+	}
+	return typ
 }
