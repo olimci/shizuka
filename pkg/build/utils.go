@@ -5,17 +5,12 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/fs"
-	"net/url"
-	"path"
+	"os"
 	"path/filepath"
-	"slices"
-	"strings"
-	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/olimci/shizuka/pkg/manifest"
-	"github.com/olimci/shizuka/pkg/transforms"
+	"github.com/olimci/shizuka/pkg/utils/pathutil"
 	"github.com/olimci/shizuka/pkg/utils/set"
 	"github.com/tdewolff/minify/v2"
 	mincss "github.com/tdewolff/minify/v2/css"
@@ -73,11 +68,8 @@ func lookupErrPage(pageErrTemplates map[error]*template.Template, err error) *te
 	return pageErrTemplates[nil] // deeply cursed but i like it
 }
 
-func parseTemplates(fsys fs.FS, pattern string, funcs template.FuncMap) (*template.Template, error) {
-	if fsys == nil {
-		return nil, fmt.Errorf("fsys must not be nil")
-	}
-	files, err := doublestar.Glob(fsys, pattern)
+func parseTemplates(sourceRoot, pattern string, funcs template.FuncMap) (*template.Template, error) {
+	files, err := doublestar.FilepathGlob(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("template glob %q: %w", pattern, err)
 	}
@@ -90,151 +82,31 @@ func parseTemplates(fsys fs.FS, pattern string, funcs template.FuncMap) (*templa
 	seen := set.New[string]()
 
 	for _, file := range files {
-		content, err := fs.ReadFile(fsys, file)
+		rel, err := filepath.Rel(sourceRoot, file)
 		if err != nil {
 			return nil, fmt.Errorf("template %q: %w", file, err)
 		}
+		rel = filepath.ToSlash(rel)
 
-		if seen.HasAdd(file) {
-			return nil, fmt.Errorf("template %q was matched more than once", file)
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("template %q: %w", rel, err)
 		}
 
-		_, err = tmpl.New(file).Parse(string(content))
+		if seen.HasAdd(rel) {
+			return nil, fmt.Errorf("template %q was matched more than once", rel)
+		}
+
+		_, err = tmpl.New(rel).Parse(string(content))
 		if err != nil {
-			return nil, fmt.Errorf("template %q: %w", file, err)
+			return nil, fmt.Errorf("template %q: %w", rel, err)
 		}
 	}
 
 	return tmpl, nil
 }
 
-func url2dir(dir string) string {
-	dir = path.Clean(filepath.ToSlash(strings.TrimSpace(dir)))
-	if dir == "." || dir == "/" {
-		return ""
-	}
-	return strings.TrimPrefix(dir, "/")
-}
-
-func shortSlugForRedirect(slug string) string {
-	slug = strings.TrimSpace(slug)
-	slug = strings.Trim(slug, "/")
-	if slug == "" {
-		return ""
-	}
-	if i := strings.LastIndex(slug, "/"); i >= 0 && i < len(slug)-1 {
-		return slug[i+1:]
-	}
-	return slug
-}
-
-func ensureLeadingSlash(target string) string {
-	if target == "" {
-		return "/"
-	}
-	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
-		return target
-	}
-	return "/" + target
-}
-
-func canonicalPageURL(siteURL, pagePath string) (string, error) {
-	canon, err := url.JoinPath(siteURL, pagePath)
-	if err != nil {
-		return "", err
-	}
-	if !strings.HasSuffix(canon, "/") {
-		canon += "/"
-	}
-	return canon, nil
-}
-
-func cleanFSPath(p string) (string, error) {
-	p = strings.TrimSpace(p)
-	if p == "" {
-		return "", fmt.Errorf("empty path")
-	}
-	if filepath.IsAbs(p) {
-		return "", fmt.Errorf("absolute paths are not supported: %q", p)
-	}
-	p = filepath.ToSlash(p)
-	p = path.Clean(p)
-	if p == "." {
-		return ".", nil
-	}
-	if strings.HasPrefix(p, "../") || p == ".." {
-		return "", fmt.Errorf("path %q escapes source root", p)
-	}
-	p = strings.TrimPrefix(p, "/")
-	if p == "" {
-		return ".", nil
-	}
-	return p, nil
-}
-
-func cleanFSGlob(pattern string) (string, error) {
-	pattern = strings.TrimSpace(pattern)
-	if pattern == "" {
-		return "", fmt.Errorf("empty glob")
-	}
-	if filepath.IsAbs(pattern) {
-		return "", fmt.Errorf("absolute globs are not supported: %q", pattern)
-	}
-	pattern = filepath.ToSlash(pattern)
-	if strings.HasPrefix(pattern, "../") || pattern == ".." {
-		return "", fmt.Errorf("glob %q escapes source root", pattern)
-	}
-	pattern = strings.TrimPrefix(pattern, "/")
-	if pattern == "" {
-		return "", fmt.Errorf("empty glob")
-	}
-	return pattern, nil
-}
-
-func compareTimeAsc(a, b time.Time) int {
-	if a.After(b) {
-		return 1
-	}
-	if a.Before(b) {
-		return -1
-	}
-	return 0
-}
-
-func compareWeight(a, b int) int {
-	if a == 0 && b == 0 {
-		return 0
-	}
-	if a == 0 {
-		return 1
-	}
-	if b == 0 {
-		return -1
-	}
-	switch {
-	case a < b:
-		return -1
-	case a > b:
-		return 1
-	default:
-		return 0
-	}
-}
-
-func sortPageLites(pages []*transforms.PageLite) {
-	slices.SortStableFunc(pages, func(a, b *transforms.PageLite) int {
-		if cmp := compareWeight(a.Weight, b.Weight); cmp != 0 {
-			return cmp
-		}
-		if cmp := -compareTimeAsc(a.Date, b.Date); cmp != 0 {
-			return cmp
-		}
-		if cmp := -compareTimeAsc(a.PubDate, b.PubDate); cmp != 0 {
-			return cmp
-		}
-		if cmp := strings.Compare(a.Title, b.Title); cmp != 0 {
-			return cmp
-		}
-		return strings.Compare(a.Slug, b.Slug)
-	})
-}
+var (
+	cleanFSPath = pathutil.CleanContentPath
+	cleanFSGlob = pathutil.CleanContentGlob
+)

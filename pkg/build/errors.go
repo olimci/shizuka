@@ -19,8 +19,7 @@ func WrapError(claim manifest.Claim, err error) *BuildError {
 		return nil
 	}
 
-	var buildErr *BuildError
-	if errors.As(err, &buildErr) {
+	if buildErr, ok := errors.AsType[*BuildError](err); ok {
 		if isZeroClaim(buildErr.Claim) && !isZeroClaim(claim) {
 			out := *buildErr
 			out.Claim = claim
@@ -98,17 +97,16 @@ type errorState struct {
 	errors []*BuildError
 }
 
-func (s *errorState) Add(claim manifest.Claim, err error) *BuildError {
+func (s *errorState) Add(claim manifest.Claim, err error) {
 	buildErr := WrapError(claim, err)
 	if buildErr == nil {
-		return nil
+		return
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.errors = append(s.errors, buildErr)
-	return buildErr
 }
 
 func (s *errorState) HasErrors() bool {

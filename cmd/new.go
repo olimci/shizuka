@@ -337,7 +337,7 @@ func builtInNewFileBody(data newPageData) string {
 		b.WriteByte('\n')
 	}
 	if data.Section != "" {
-		b.WriteString("sections = ")
+		b.WriteString("section = ")
 		b.WriteString(strconv.Quote(data.Section))
 		b.WriteByte('\n')
 	}

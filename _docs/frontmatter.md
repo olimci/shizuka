@@ -4,13 +4,13 @@ Shizuka uses frontmatter to build a `Page`, then renders it through a template.
 
 ## Markdown and HTML pages (`content/**/*.md`, `content/**/*.html`)
 
-Markdown and HTML files must start with a fenced frontmatter block:
+Markdown and HTML files may start with a frontmatter block:
 
 - YAML frontmatter: fence with `---`
 - TOML frontmatter: fence with `+++`
 - JSON frontmatter: a JSON object at the very start of the file (no fence)
 
-The fence line must be the very first line of the file (no leading whitespace, no content before it).
+If present, the fence line must be the very first line of the file (no leading whitespace, no content before it).
 
 ### Example (YAML)
 
@@ -19,7 +19,7 @@ The fence line must be the very first line of the file (no leading whitespace, n
 title: "Hello"
 description: "A short post."
 template: "post"
-sections: "posts"
+section: "posts"
 slug: "posts/hello"
 url_path: "writing/hello"
 aliases: ["posts/hello", "hello"]
@@ -57,7 +57,7 @@ Body content here. For `.md` files it is rendered as Markdown. For `.html` files
   "title": "Hello",
   "description": "A short post.",
   "template": "post",
-  "sections": "posts",
+  "section": "posts",
   "slug": "posts/hello",
   "url_path": "writing/hello",
   "aliases": ["posts/hello", "hello"],
@@ -106,7 +106,7 @@ Top-level:
 - `aliases` ([]string): extra site-relative URL paths that should redirect to the page’s main `url_path`
 - `title` (string)
 - `description` (string)
-- `sections` (string): becomes `.Page.Section` (note the key name is plural)
+- `section` (string): becomes `.Page.Section`
 - `tags` ([]string)
 - `date` / `updated` (timestamps)
 - `weight` (int): optional ordering hint; lower values sort earlier
@@ -117,7 +117,7 @@ Top-level:
 
 Nested / maps:
 
-- `params` (map): merged into `.Page.Params` (overrides config defaults); keys starting with `_` are treated as private and are not exported to `PageLite`
+- `params` (map): merged into `.Page.Params` (overrides config defaults)
 - `headers` (map string->string): per-page headers for the headers build step (keyed by URL path)
 - `rss`:
   - `include` (bool), `title`, `description`, `guid`

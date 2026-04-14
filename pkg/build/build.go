@@ -2,8 +2,6 @@ package build
 
 import (
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -24,28 +22,19 @@ var (
 )
 
 type BuildCtx struct {
-	StartTime       time.Time
-	StartTimestring string
+	StartTime time.Time
 
 	ConfigPath string
 	Dev        bool
 }
 
 func Build(opts *config.Options) error {
-	sourceFS, sourceRoot, configPath, err := resolveSource(opts)
+	configPath := filepath.Clean(opts.ConfigPath)
+	config, err := config.Load(configPath)
 	if err != nil {
 		return err
 	}
-
-	configPath, err = cleanFSPath(configPath)
-	if err != nil {
-		return fmt.Errorf("config %q: %w", configPath, err)
-	}
-
-	config, err := config.LoadFS(sourceFS, configPath)
-	if err != nil {
-		return err
-	}
+	sourceRoot := config.Root
 
 	if opts.SiteURL != "" {
 		config.Site.URL = opts.SiteURL
@@ -75,25 +64,20 @@ func Build(opts *config.Options) error {
 		steps = append(steps, StepSitemap())
 	}
 
-	if opts.OutputPath != "" {
-
-	}
-
-	return build(steps, config, opts, sourceFS, sourceRoot)
+	return build(steps, config, opts, sourceRoot, configPath)
 }
 
 // BuildSteps is a function that builds a site from a DAG of steps.
-func build(steps []Step, config *config.Config, options *config.Options, sourceFS fs.FS, sourceRoot string) error {
+func build(steps []Step, config *config.Config, options *config.Options, sourceRoot, configPath string) error {
 	startTime := time.Now()
 
 	man := manifest.New()
 	man.Set(string(OptionsK), options)
 	man.Set(string(ConfigK), config)
 	man.Set(string(BuildCtxK), &BuildCtx{
-		StartTime:       startTime,
-		StartTimestring: startTime.String(),
-		ConfigPath:      options.ConfigPath,
-		Dev:             options.Dev,
+		StartTime:  startTime,
+		ConfigPath: configPath,
+		Dev:        options.Dev,
 	})
 
 	buildErrors := &errorState{}
@@ -113,30 +97,23 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 		return ErrCircularDependency
 	}
 
-	g, ctx := errgroup.WithContext(options.Context)
-	if options.MaxWorkers > 0 {
-		g.SetLimit(options.MaxWorkers)
-	}
+	done := 0
 
-	var (
-		mu       sync.Mutex
-		done     int
-		schedule func(id string)
-	)
-
-	schedule = func(id string) {
-		step := dag.m[id]
-		g.Go(func() error {
+	if options.MaxWorkers <= 1 {
+		ctx := options.Context
+		for len(ready) > 0 {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
 			}
 
+			id := ready[0]
+			ready = ready[1:]
+
+			step := dag.m[id]
 			sc := StepContext{
-				ctx:        ctx,
 				Manifest:   man,
-				SourceFS:   sourceFS,
 				SourceRoot: sourceRoot,
 				errors:     buildErrors,
 			}
@@ -145,8 +122,6 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 				return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
 			}
 
-			var ready []string
-			mu.Lock()
 			done++
 			for _, req := range dag.adj[step.ID] {
 				dag.deg[req]--
@@ -154,22 +129,63 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 					ready = append(ready, req)
 				}
 			}
-			mu.Unlock()
+		}
+	} else {
+		g, ctx := errgroup.WithContext(options.Context)
+		if options.MaxWorkers > 0 {
+			g.SetLimit(options.MaxWorkers)
+		}
 
-			for _, id := range ready {
-				schedule(id)
-			}
+		var (
+			mu       sync.Mutex
+			schedule func(id string)
+		)
 
-			return nil
-		})
-	}
+		schedule = func(id string) {
+			step := dag.m[id]
+			g.Go(func() error {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
 
-	for _, id := range ready {
-		schedule(id)
-	}
+				sc := StepContext{
+					Manifest:   man,
+					SourceRoot: sourceRoot,
+					errors:     buildErrors,
+				}
 
-	if err := g.Wait(); err != nil {
-		return err
+				if err := step.Fn(ctx, &sc); err != nil {
+					return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
+				}
+
+				var next []string
+				mu.Lock()
+				done++
+				for _, req := range dag.adj[step.ID] {
+					dag.deg[req]--
+					if dag.deg[req] == 0 {
+						next = append(next, req)
+					}
+				}
+				mu.Unlock()
+
+				for _, id := range next {
+					schedule(id)
+				}
+
+				return nil
+			})
+		}
+
+		for _, id := range ready {
+			schedule(id)
+		}
+
+		if err := g.Wait(); err != nil {
+			return err
+		}
 	}
 
 	if done != len(steps) {
@@ -182,12 +198,8 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 		return fmt.Errorf("%w: %v", ErrCircularDependency, stuck)
 	}
 
-	report := func(claim manifest.Claim, err error) {
-		buildErrors.Add(claim, err)
-	}
-
 	if !buildErrors.HasErrors() {
-		if err := man.Build(config, options, report, ""); err != nil {
+		if err := man.Build(config, options, buildErrors.Add, ""); err != nil {
 			if buildErrors.HasErrors() {
 				return &Failure{Errors: buildErrors.Slice()}
 			}
@@ -210,19 +222,6 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceF
 	}
 
 	return nil
-}
-
-func resolveSource(opts *config.Options) (fs.FS, string, string, error) {
-	configPath := filepath.Clean(opts.ConfigPath)
-	sourceRoot := filepath.Dir(configPath)
-	if sourceRoot == "" {
-		sourceRoot = "."
-	}
-
-	sourceFS := os.DirFS(sourceRoot)
-	configName := filepath.Base(configPath)
-
-	return sourceFS, sourceRoot, configName, nil
 }
 
 // newDAG constructs a DAG from a slice of steps.

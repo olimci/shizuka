@@ -2,7 +2,7 @@
 title: "Design notes for a calm layout"
 description: "Spacing, color, and rhythm working together for a readable page."
 template: "post"
-sections: "posts"
+section: "posts"
 slug: "posts/design-notes"
 date: 2024-02-10
 tags:

@@ -1,8 +1,6 @@
 # Config (`shizuka.*`)
 
-Shizuka loads configuration from a config file (default path: `shizuka.toml`).
-
-Supported formats: TOML (`.toml`), YAML (`.yaml` / `.yml`), JSON (`.json`).
+Shizuka loads configuration from a TOML config file (default path: `shizuka.toml`).
 
 Unknown keys are treated as errors.
 
@@ -59,7 +57,7 @@ hardbreaks = false
 XHTML = false
 
 [build.steps.content.markdown]
-obsidian_links = false
+wikilinks = false
 
 [build.steps.content.bundle_assets]
 enabled = false
@@ -70,7 +68,7 @@ mode = "fingerprinted"
 markdown = false
 ```
 
-`default_params` are merged into each page’s frontmatter `params` (frontmatter wins). Params with a leading `_` are treated as private and are excluded from `PageLite`.
+`default_params` are merged into each page’s frontmatter `params` (frontmatter wins).
 
 `default_template` is used by `shizuka new` when creating generic pages that do not explicitly pick a template. New files created by `shizuka new` use TOML frontmatter by default.
 
@@ -93,7 +91,7 @@ When fingerprinting is enabled, relative Markdown and HTML body links that point
 
 Markdown-specific authoring options.
 
-- `obsidian_links`: when true, Shizuka rewrites Obsidian-style wikilinks such as `[[about]]`, `[[about|About]]`, and `![[hero.png]]`
+- `wikilinks`: when true, Shizuka rewrites wikilinks such as `[[about]]`, `[[about|About]]`, and `![[hero.png]]`
 
 ### `build.steps.content.raw`
 

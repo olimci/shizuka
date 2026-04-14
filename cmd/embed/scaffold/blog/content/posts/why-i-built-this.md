@@ -2,7 +2,7 @@
 title: "Why I Built This"
 description: "The story behind creating a new static site generator and what makes it different."
 template: "post"
-sections: "posts"
+section: "posts"
 slug: "posts/why-i-built-this"
 date: 2024-01-15
 tags:

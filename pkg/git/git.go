@@ -1,4 +1,4 @@
-package gitmeta
+package git
 
 import (
 	"bytes"

@@ -41,7 +41,7 @@
                         <h2>Latest posts</h2>
                         <p>Short reads to get started.</p>
                     </div>
-                    {{ $posts := where "Section" "posts" .Site.Collections.All
+                    {{ $posts := where "Section" "posts" .Site.Pages.All
                     }} {{ $sorted := sort "Date" "desc" $posts }} {{ if $sorted
                     }}
                     <div class="post-grid">

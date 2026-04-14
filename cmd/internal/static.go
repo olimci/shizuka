@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/olimci/shizuka/pkg/utils/pathutil"
 )
 
 type StaticHandlerOptions struct {
@@ -56,12 +58,12 @@ type redirectRule struct {
 
 func NewStaticHandler(dist string, opts StaticHandlerOptions) http.Handler {
 	headersFile := opts.HeadersFile
-	if strings.TrimSpace(headersFile) == "" {
+	if headersFile == "" {
 		headersFile = "_headers"
 	}
 
 	redirectsFile := opts.RedirectsFile
-	if strings.TrimSpace(redirectsFile) == "" {
+	if redirectsFile == "" {
 		redirectsFile = "_redirects"
 	}
 
@@ -91,7 +93,7 @@ func (h *StaticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if action, ok := matchRedirect(reqPath, redirects); ok {
 		switch action.kind {
 		case redirectActionRewrite:
-			if !isExternalURL(action.target) {
+			if !pathutil.IsExternalURL(action.target) {
 				r = r.Clone(r.Context())
 				if parsed, err := url.Parse(action.target); err == nil {
 					r.URL.Path = parsed.Path
@@ -304,7 +306,7 @@ func matchRedirect(reqPath string, rules []redirectRule) (redirectAction, bool) 
 			target = strings.ReplaceAll(target, ":splat", splat)
 			target = strings.ReplaceAll(target, "*", splat)
 		}
-		if target != "" && !strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "?") && !strings.HasPrefix(target, "#") && !isExternalURL(target) {
+		if target != "" && !strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "?") && !strings.HasPrefix(target, "#") && !pathutil.IsExternalURL(target) {
 			target = "/" + target
 		}
 
@@ -314,7 +316,7 @@ func matchRedirect(reqPath string, rules []redirectRule) (redirectAction, bool) 
 		}
 
 		if status == http.StatusOK {
-			return redirectAction{kind: redirectActionRewrite, target: ensureLeadingSlash(target), status: status}, true
+			return redirectAction{kind: redirectActionRewrite, target: pathutil.EnsureLeadingSlash(target), status: status}, true
 		}
 
 		if status == http.StatusNotFound || status == http.StatusGone {
@@ -336,24 +338,6 @@ func normalizePath(raw string) string {
 		return "/" + clean
 	}
 	return clean
-}
-
-func ensureLeadingSlash(target string) string {
-	if target == "" {
-		return "/"
-	}
-	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
-		return target
-	}
-	return "/" + target
-}
-
-func isExternalURL(target string) bool {
-	parsed, err := url.Parse(target)
-	if err != nil {
-		return false
-	}
-	return parsed.Scheme != "" && parsed.Host != ""
 }
 
 func matchPattern(pattern, value string) (bool, string) {

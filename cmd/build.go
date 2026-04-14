@@ -69,23 +69,22 @@ func buildAction(ctx context.Context, cmd *cli.Command) error {
 			_ = c.Clear()
 		}()
 
-		opts := config.DefaultOptions().
-			WithContext(ctx).
-			WithConfig(cmd.String("config"))
+		opts := config.DefaultOptions()
+		opts.Context = ctx
+		opts.ConfigPath = cmd.String("config")
 
 		if cmd.Bool("dev") {
-			opts.
-				WithDev().
-				WithPageErrorTemplates(map[error]*template.Template{
-					build.ErrNoTemplate:       templateFallback.Get(),
-					build.ErrTemplateNotFound: templateFallback.Get(),
-					nil:                       templateError.Get(),
-				}).
-				WithErrTemplate(templateBuildError.Get())
+			opts.Dev = true
+			opts.PageErrTemplates = map[error]*template.Template{
+				build.ErrNoTemplate:       templateFallback.Get(),
+				build.ErrTemplateNotFound: templateFallback.Get(),
+				nil:                       templateError.Get(),
+			}
+			opts.ErrTemplate = templateBuildError.Get()
 		}
 
 		if n := cmd.Int("workers"); n > 0 {
-			opts.WithMaxWorkers(n)
+			opts.MaxWorkers = n
 		}
 
 		status, err := c.Status("building...")
@@ -103,8 +102,8 @@ func buildAction(ctx context.Context, cmd *cli.Command) error {
 			_ = status.Success(fmt.Sprintf("built (%s)", elapsed))
 		}
 
-		for _, line := range formatBuildError(buildErr) {
-			_ = c.Log(line)
+		if err := logBuildError(c, buildErr); err != nil {
+			return err
 		}
 
 		_ = status.Clear()
@@ -121,23 +120,22 @@ func buildAction(ctx context.Context, cmd *cli.Command) error {
 }
 
 func xBuildAction(ctx context.Context, cmd *cli.Command) error {
-	opts := config.DefaultOptions().
-		WithContext(ctx).
-		WithConfig(cmd.String("config"))
+	opts := config.DefaultOptions()
+	opts.Context = ctx
+	opts.ConfigPath = cmd.String("config")
 
 	if cmd.Bool("dev") {
-		opts.
-			WithDev().
-			WithPageErrorTemplates(map[error]*template.Template{
-				build.ErrNoTemplate:       templateFallback.Get(),
-				build.ErrTemplateNotFound: templateFallback.Get(),
-				nil:                       templateError.Get(),
-			}).
-			WithErrTemplate(templateBuildError.Get())
+		opts.Dev = true
+		opts.PageErrTemplates = map[error]*template.Template{
+			build.ErrNoTemplate:       templateFallback.Get(),
+			build.ErrTemplateNotFound: templateFallback.Get(),
+			nil:                       templateError.Get(),
+		}
+		opts.ErrTemplate = templateBuildError.Get()
 	}
 
 	if n := cmd.Int("workers"); n > 0 {
-		opts.WithMaxWorkers(n)
+		opts.MaxWorkers = n
 	}
 
 	fmt.Println("building...")

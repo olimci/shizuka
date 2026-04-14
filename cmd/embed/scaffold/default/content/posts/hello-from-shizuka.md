@@ -2,7 +2,7 @@
 title: "Hello from Shizuka"
 description: "A short post to show the layout, metadata, and tags."
 template: "post"
-sections: "posts"
+section: "posts"
 slug: "posts/hello-from-shizuka"
 date: 2024-01-15
 tags:

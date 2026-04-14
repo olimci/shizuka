@@ -17,7 +17,6 @@ import (
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/scaffold"
 	"github.com/olimci/shizuka/pkg/version"
-	"github.com/olimci/shizuka/pkg/watcher"
 	"github.com/urfave/cli/v3"
 )
 
@@ -26,14 +25,14 @@ func applyDevBuildOptions(opts *config.Options, undev bool) *config.Options {
 		return opts
 	}
 
-	return opts.
-		WithDev().
-		WithPageErrorTemplates(map[error]*template.Template{
-			build.ErrNoTemplate:       templateFallback.Get(),
-			build.ErrTemplateNotFound: templateFallback.Get(),
-			nil:                       templateError.Get(),
-		}).
-		WithErrTemplate(templateBuildError.Get())
+	opts.Dev = true
+	opts.PageErrTemplates = map[error]*template.Template{
+		build.ErrNoTemplate:       templateFallback.Get(),
+		build.ErrTemplateNotFound: templateFallback.Get(),
+		nil:                       templateError.Get(),
+	}
+	opts.ErrTemplate = templateBuildError.Get()
+	return opts
 }
 
 var devCmd = &cli.Command{
@@ -130,15 +129,15 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 		}
 		defer os.RemoveAll(dist)
 
-		opts := config.DefaultOptions().
-			WithContext(ctx).
-			WithConfig(configPath).
-			WithOutput(dist).
-			WithSiteURL(siteURL)
+		opts := config.DefaultOptions()
+		opts.Context = ctx
+		opts.ConfigPath = configPath
+		opts.OutputPath = dist
+		opts.SiteURL = siteURL
 		opts = applyDevBuildOptions(opts, cmd.Bool("undev"))
 
 		if n := cmd.Int("workers"); n > 0 {
-			opts = opts.WithMaxWorkers(n)
+			opts.MaxWorkers = n
 		}
 
 		hub := internal.NewReloadHub()
@@ -194,7 +193,7 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 			serverErrs <- server.ListenAndServe()
 		}()
 
-		watch, err := watcher.New(configPath, 200*time.Millisecond)
+		watch, err := internal.NewWatcher(configPath, 200*time.Millisecond)
 		if err != nil {
 			return err
 		}
@@ -219,8 +218,8 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 
 			if buildErr != nil {
 				_ = keysStatus.Error(fmt.Sprintf("build failed (%s)", elapsed))
-				for _, line := range formatBuildError(buildErr) {
-					_ = c.Log(line)
+				if err := logBuildError(c, buildErr); err != nil {
+					return err
 				}
 				return nil
 			}
@@ -397,15 +396,15 @@ func xDevAction(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer os.RemoveAll(dist)
 
-	opts := config.DefaultOptions().
-		WithContext(ctx).
-		WithConfig(configPath).
-		WithOutput(dist).
-		WithSiteURL(siteURL)
+	opts := config.DefaultOptions()
+	opts.Context = ctx
+	opts.ConfigPath = configPath
+	opts.OutputPath = dist
+	opts.SiteURL = siteURL
 	opts = applyDevBuildOptions(opts, cmd.Bool("undev"))
 
 	if n := cmd.Int("workers"); n > 0 {
-		opts = opts.WithMaxWorkers(n)
+		opts.MaxWorkers = n
 	}
 
 	hub := internal.NewReloadHub()
@@ -443,7 +442,7 @@ func xDevAction(ctx context.Context, cmd *cli.Command) error {
 		serverErrs <- server.ListenAndServe()
 	}()
 
-	watch, err := watcher.New(configPath, 200*time.Millisecond)
+	watch, err := internal.NewWatcher(configPath, 200*time.Millisecond)
 	if err != nil {
 		return err
 	}

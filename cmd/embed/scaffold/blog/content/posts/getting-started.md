@@ -2,7 +2,7 @@
 title: "Getting Started with Shizuka"
 description: "Learn how to build fast static sites with clean templates and great developer experience."
 template: "post"
-sections: "posts"
+section: "posts"
 slug: "posts/getting-started"
 date: 2024-01-20
 tags:

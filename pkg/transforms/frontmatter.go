@@ -19,7 +19,7 @@ type Frontmatter struct {
 
 	Title       string   `toml:"title" yaml:"title" json:"title"`
 	Description string   `toml:"description" yaml:"description" json:"description"`
-	Section     string   `toml:"sections" yaml:"sections" json:"sections"`
+	Section     string   `toml:"section" yaml:"section" json:"section"`
 	Tags        []string `toml:"tags" yaml:"tags" json:"tags"`
 
 	Date    time.Time `toml:"date" yaml:"date" json:"date"`
@@ -32,7 +32,6 @@ type Frontmatter struct {
 	Headers map[string]string `toml:"headers" yaml:"headers" json:"headers"`
 
 	Template string `toml:"template" yaml:"template" json:"template"`
-	Body     string `toml:"body" yaml:"body" json:"body"`
 
 	Featured bool `toml:"featured" yaml:"featured" json:"featured"`
 	Draft    bool `toml:"draft" yaml:"draft" json:"draft"`
@@ -55,14 +54,13 @@ type SitemapMeta struct {
 var (
 	ErrUnknownFrontmatterType   = errors.New("unknown frontmatter type")
 	ErrFailedToParseFrontmatter = errors.New("invalid frontmatter")
-	ErrNoFrontmatter            = errors.New("frontmatter is required")
 )
 
 // ExtractFrontmatter extracts the frontmatter from a document
 func ExtractFrontmatter(doc []byte) (*Frontmatter, []byte, error) {
 	b := trimBOM(doc)
 
-	switch fmType, start, end, bodyStart := detectFrontmatterBlock(b); fmType {
+	switch fmType, start, end, bodyStart := detectFrontmatter(b); fmType {
 	case "yaml":
 		var fm Frontmatter
 		if err := yaml.Unmarshal(b[start:end], &fm); err != nil {
@@ -82,14 +80,14 @@ func ExtractFrontmatter(doc []byte) (*Frontmatter, []byte, error) {
 		}
 		return &fm, b[bodyStart:], nil
 	case "":
-		return nil, nil, ErrNoFrontmatter
+		return nil, doc, nil
 	default:
 		return nil, nil, ErrUnknownFrontmatterType
 	}
 }
 
-// detectFrontmatterBlock detects the frontmatter block in a document, returns (type, start, end, bodyStart)
-func detectFrontmatterBlock(b []byte) (string, int, int, int) {
+// detectFrontmatter detects the frontmatter block in a document, returns (type, start, end, bodyStart)
+func detectFrontmatter(b []byte) (string, int, int, int) {
 	if len(b) == 0 {
 		return "", 0, 0, 0
 	}

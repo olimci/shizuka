@@ -68,7 +68,7 @@ func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigStepRSS) RSSTemplateD
 
 		link := page.Canon
 		if link == "" {
-			link = page.Meta.URLPath
+			link = page.URLPath
 		}
 
 		items = append(items, RSSItem{

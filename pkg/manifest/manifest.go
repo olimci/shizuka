@@ -3,7 +3,6 @@ package manifest
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -12,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/utils/fileutils"
+	"github.com/olimci/shizuka/pkg/utils/fileutil"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -115,7 +114,7 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, report 
 
 	// Ensure we have a valid destination
 	if strings.TrimSpace(out) == "" {
-		out = config.Build.Output
+		out = config.Resolved.Build.Output
 		if options.OutputPath != "" {
 			out = options.OutputPath
 		}
@@ -182,9 +181,16 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, report 
 			default:
 			}
 
-			if err := writeOutputFile(out, target, artefact.Builder, exists); err != nil {
+			full := filepath.Join(out, target)
+			var err error
+			if exists {
+				err = fileutil.AtomicEdit(full, artefact.Builder)
+			} else {
+				err = fileutil.AtomicWrite(full, artefact.Builder)
+			}
+			if err != nil {
 				if report != nil {
-					err = reportableError(report, artefact.Claim, err)
+					report(artefact.Claim, err)
 				}
 				return err
 			}
@@ -198,37 +204,4 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, report 
 	}
 
 	return nil
-}
-
-func ensureOutputRoot(root string) error {
-	info, err := os.Stat(root)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			if err := os.MkdirAll(root, 0o755); err != nil {
-				return fmt.Errorf("output directory %q: %w", root, err)
-			}
-			return nil
-		}
-		return fmt.Errorf("output directory %q: %w", root, err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("output path %q is not a directory", root)
-	}
-	return nil
-}
-
-func writeOutputFile(root, rel string, gen func(io.Writer) error, exists bool) error {
-	full := filepath.Join(root, rel)
-	if exists {
-		return fileutils.AtomicEdit(full, gen)
-	}
-	return fileutils.AtomicWrite(full, gen)
-}
-
-func reportableError(report func(Claim, error), claim Claim, err error) error {
-	if report == nil || err == nil {
-		return err
-	}
-	report(claim, err)
-	return err
 }

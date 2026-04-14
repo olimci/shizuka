@@ -5,16 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"io/fs"
-	"maps"
-	"mime"
+	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
-	gm "github.com/yuin/goldmark"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,14 +21,21 @@ var (
 	ErrUnsupportedContentType = errors.New("unsupported content type")
 )
 
-// Page represents a page in the site
 type Page struct {
-	Meta PageMeta
-	Tree *PageNode
-	Git  PageGitMeta
+	Parent   *Page
+	Children []*Page
+	Git      PageGitMeta
 
 	Source PageSource
-	Bundle PageBundle
+
+	SourcePath  string
+	ContentPath string
+	URLPath     string
+	OutputPath  string
+	Template    string
+	BuildError  error
+
+	Assets map[string]*PageAsset
 
 	Slug    string
 	Canon   string
@@ -55,92 +60,54 @@ type Page struct {
 
 	Body template.HTML
 
-	Featured bool
-	Draft    bool
-}
-
-// Lite returns a lite representation of the page
-func (p *Page) Lite() *PageLite {
-	params := maps.Clone(p.Params)
-	for k := range params {
-		if strings.HasPrefix(k, "_") {
-			delete(params, k)
-		}
-	}
-
-	return &PageLite{
-		Git:         p.Git,
-		Slug:        p.Slug,
-		Canon:       p.Canon,
-		Aliases:     slices.Clone(p.Aliases),
-		Weight:      p.Weight,
-		Title:       p.Title,
-		Description: p.Description,
-		Section:     p.Section,
-		Tags:        p.Tags,
-		Date:        p.Date,
-		Updated:     p.Updated,
-		PubDate:     p.PubDate,
-		Params:      params,
-		Featured:    p.Featured,
-		Draft:       p.Draft,
-	}
-}
-
-// PageLite is a lite representation of a page, used for links etc
-type PageLite struct {
-	Git PageGitMeta
-
-	Slug    string
-	Canon   string
-	Aliases []string
-	Weight  int
-
-	Title       string
-	Description string
-	Section     string
-	Tags        []string
-
-	Date    time.Time
-	Updated time.Time
-	PubDate time.Time
-
-	Params map[string]any
+	Links []PageLink
 
 	Featured bool
 	Draft    bool
 }
 
-// PageMeta represents metadata for a page
-type PageMeta struct {
-	Source  string
-	URLPath string
-	Target  string
-
-	Template string
-
-	BuildTime       time.Time
-	BuildTimeString string
+type PageLink struct {
+	RawTarget string
+	Fragment  string
+	Label     string
+	Embed     bool
+	Target    *Page
 }
 
-type PageSourceKind string
+func (l PageLink) Resolved() bool {
+	return l.Target != nil
+}
+
+func (p *Page) HasError() bool {
+	return p != nil && p.BuildError != nil
+}
+
+type PageSourceFormat string
 
 const (
-	PageSourceKindMarkdown   PageSourceKind = "markdown"
-	PageSourceKindHTML       PageSourceKind = "html"
-	PageSourceKindStructured PageSourceKind = "structured"
+	PageSourceFormatMarkdown PageSourceFormat = "markdown"
+	PageSourceFormatHTML     PageSourceFormat = "html"
+	PageSourceFormatTOML     PageSourceFormat = "toml"
+	PageSourceFormatYAML     PageSourceFormat = "yaml"
+	PageSourceFormatJSON     PageSourceFormat = "json"
+)
+
+type PageOutputKind string
+
+const (
+	PageOutputKindMarkdown PageOutputKind = "markdown"
+	PageOutputKindHTML     PageOutputKind = "html"
 )
 
 type PageSource struct {
-	Kind     PageSourceKind
-	Ext      string
-	Doc      string
-	Body     string
-	BodyHTML bool
-}
-
-type PageBundle struct {
-	Assets map[string]*PageAsset
+	Format         PageSourceFormat
+	MetadataKind   string
+	RawDocument    string
+	RawBody        string
+	Preprocessed   string
+	OutputKind     PageOutputKind
+	FrontmatterDoc *FrontmatterDoc
+	DataDoc        *DataPageDoc
 }
 
 type PageAsset struct {
@@ -154,165 +121,234 @@ type PageAsset struct {
 	Standalone bool
 }
 
-// PageTemplate is the struct from which page templates are built
+type FrontmatterDoc struct {
+	Meta Frontmatter
+	Body string
+}
+
+type DataPageDoc struct {
+	Meta Frontmatter
+	Body string
+}
+
+type dataPagePayload struct {
+	Slug        string            `toml:"slug" yaml:"slug" json:"slug"`
+	URLPath     string            `toml:"url_path" yaml:"url_path" json:"url_path"`
+	Aliases     []string          `toml:"aliases" yaml:"aliases" json:"aliases"`
+	Title       string            `toml:"title" yaml:"title" json:"title"`
+	Description string            `toml:"description" yaml:"description" json:"description"`
+	Section     string            `toml:"section" yaml:"section" json:"section"`
+	Tags        []string          `toml:"tags" yaml:"tags" json:"tags"`
+	Date        time.Time         `toml:"date" yaml:"date" json:"date"`
+	Updated     time.Time         `toml:"updated" yaml:"updated" json:"updated"`
+	RSS         RSSMeta           `toml:"rss" yaml:"rss" json:"rss"`
+	Sitemap     SitemapMeta       `toml:"sitemap" yaml:"sitemap" json:"sitemap"`
+	Params      map[string]any    `toml:"params" yaml:"params" json:"params"`
+	Headers     map[string]string `toml:"headers" yaml:"headers" json:"headers"`
+	Template    string            `toml:"template" yaml:"template" json:"template"`
+	Body        string            `toml:"body" yaml:"body" json:"body"`
+	Featured    bool              `toml:"featured" yaml:"featured" json:"featured"`
+	Draft       bool              `toml:"draft" yaml:"draft" json:"draft"`
+	Weight      int               `toml:"weight" yaml:"weight" json:"weight"`
+}
+
 type PageTemplate struct {
 	Page  Page
 	Site  Site
 	Error error
 }
 
-// BuildPageFS builds a page from a file within the provided fs.FS.
-func BuildPageFS(fsys fs.FS, source string, _ gm.Markdown) (*Page, error) {
-	var (
-		fm   *Frontmatter
-		body string
-		doc  string
-		kind PageSourceKind
-		html bool
-		err  error
-	)
-
-	switch ext := path.Ext(path.Base(source)); ext {
-	case ".md":
-		fm, body, doc, err = buildMDFromFS(fsys, source)
-		kind = PageSourceKindMarkdown
-	case ".toml":
-		fm, body, doc, err = buildTOMLFromFS(fsys, source)
-		kind = PageSourceKindStructured
-		html = true
-	case ".yaml", ".yml":
-		fm, body, doc, err = buildYamlFromFS(fsys, source)
-		kind = PageSourceKindStructured
-		html = true
-	case ".json":
-		fm, body, doc, err = buildJSONFromFS(fsys, source)
-		kind = PageSourceKindStructured
-		html = true
-	case ".html":
-		fm, body, doc, err = buildHTMLFromFS(fsys, source)
-		kind = PageSourceKindHTML
-		html = true
-	default:
-		return nil, fmt.Errorf("%w %q", ErrUnsupportedContentType, ext)
-	}
-
+func BuildPage(sourceRoot, source string) (*Page, error) {
+	source = path.Clean(strings.TrimSpace(source))
+	doc, err := os.ReadFile(filepath.Join(sourceRoot, filepath.FromSlash(source)))
 	if err != nil {
 		return nil, err
 	}
 
+	var (
+		sourceMeta PageSource
+		meta       Frontmatter
+	)
+
+	switch ext := strings.ToLower(path.Ext(source)); ext {
+	case ".md":
+		docMeta, body, parseErr := parseMarkdownPage(doc)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		meta = docMeta.Meta
+		sourceMeta = PageSource{
+			Format:         PageSourceFormatMarkdown,
+			MetadataKind:   "frontmatter",
+			RawDocument:    string(doc),
+			RawBody:        body,
+			Preprocessed:   body,
+			OutputKind:     PageOutputKindMarkdown,
+			FrontmatterDoc: docMeta,
+		}
+	case ".html":
+		docMeta, body, parseErr := parseHTMLPage(doc)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		meta = docMeta.Meta
+		sourceMeta = PageSource{
+			Format:         PageSourceFormatHTML,
+			MetadataKind:   "frontmatter",
+			RawDocument:    string(doc),
+			RawBody:        body,
+			Preprocessed:   body,
+			OutputKind:     PageOutputKindHTML,
+			FrontmatterDoc: docMeta,
+		}
+	case ".toml":
+		dataDoc, parseErr := parseTOMLPage(doc)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		meta = dataDoc.Meta
+		sourceMeta = PageSource{
+			Format:       PageSourceFormatTOML,
+			MetadataKind: "data",
+			RawDocument:  string(doc),
+			RawBody:      dataDoc.Body,
+			Preprocessed: dataDoc.Body,
+			OutputKind:   PageOutputKindHTML,
+			DataDoc:      dataDoc,
+		}
+	case ".yaml", ".yml":
+		dataDoc, parseErr := parseYAMLPage(doc)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		meta = dataDoc.Meta
+		sourceMeta = PageSource{
+			Format:       PageSourceFormatYAML,
+			MetadataKind: "data",
+			RawDocument:  string(doc),
+			RawBody:      dataDoc.Body,
+			Preprocessed: dataDoc.Body,
+			OutputKind:   PageOutputKindHTML,
+			DataDoc:      dataDoc,
+		}
+	case ".json":
+		dataDoc, parseErr := parseJSONPage(doc)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		meta = dataDoc.Meta
+		sourceMeta = PageSource{
+			Format:       PageSourceFormatJSON,
+			MetadataKind: "data",
+			RawDocument:  string(doc),
+			RawBody:      dataDoc.Body,
+			Preprocessed: dataDoc.Body,
+			OutputKind:   PageOutputKindHTML,
+			DataDoc:      dataDoc,
+		}
+	default:
+		return nil, fmt.Errorf("%w %q", ErrUnsupportedContentType, ext)
+	}
+
 	return &Page{
-		Meta: PageMeta{
-			Template: fm.Template,
-			Source:   source,
-			URLPath:  fm.URLPath,
-		},
-		Source: PageSource{
-			Kind:     kind,
-			Ext:      path.Ext(path.Base(source)),
-			Doc:      doc,
-			Body:     body,
-			BodyHTML: html,
-		},
-		Bundle: PageBundle{
-			Assets: make(map[string]*PageAsset),
-		},
-		Slug:        fm.Slug,
-		Aliases:     slices.Clone(fm.Aliases),
-		Weight:      fm.Weight,
-		Title:       fm.Title,
-		Description: fm.Description,
-		Section:     fm.Section,
-		Tags:        fm.Tags,
-		Date:        fm.Date,
-		Updated:     fm.Updated,
-		PubDate:     firstNonzero(fm.Updated, fm.Date, time.Now()),
-		Params:      fm.Params,
-		Headers:     fm.Headers,
-		RSS:         fm.RSS,
-		Sitemap:     fm.Sitemap,
+		Source:      sourceMeta,
+		SourcePath:  source,
+		URLPath:     meta.URLPath,
+		Template:    meta.Template,
+		Assets:      make(map[string]*PageAsset),
+		Slug:        meta.Slug,
+		Aliases:     slices.Clone(meta.Aliases),
+		Weight:      meta.Weight,
+		Title:       meta.Title,
+		Description: meta.Description,
+		Section:     meta.Section,
+		Tags:        meta.Tags,
+		Date:        meta.Date,
+		Updated:     meta.Updated,
+		PubDate:     firstNonzero(meta.Updated, meta.Date, time.Now()),
+		Params:      meta.Params,
+		Headers:     meta.Headers,
 		Body:        "",
-		Featured:    fm.Featured,
-		Draft:       fm.Draft,
+		Links:       nil,
+		RSS:         meta.RSS,
+		Sitemap:     meta.Sitemap,
+		Featured:    meta.Featured,
+		Draft:       meta.Draft,
 	}, nil
 }
 
-func buildMDFromFS(fsys fs.FS, path string) (*Frontmatter, string, string, error) {
-	doc, err := fs.ReadFile(fsys, path)
-	if err != nil {
-		return nil, "", "", err
-	}
-
+func parseMarkdownPage(doc []byte) (*FrontmatterDoc, string, error) {
 	fm, body, err := ExtractFrontmatter(doc)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", err
+	}
+	if fm == nil {
+		fm = &Frontmatter{}
 	}
 
-	return fm, string(body), string(doc), nil
+	return &FrontmatterDoc{Meta: *fm, Body: string(body)}, string(body), nil
 }
 
-func buildTOMLFromFS(fsys fs.FS, path string) (*Frontmatter, string, string, error) {
-	doc, err := fs.ReadFile(fsys, path)
-	if err != nil {
-		return nil, "", "", err
+func parseTOMLPage(doc []byte) (*DataPageDoc, error) {
+	payload := new(dataPagePayload)
+
+	if _, err := toml.Decode(string(doc), payload); err != nil {
+		return nil, fmt.Errorf("TOML page data: %w", err)
 	}
 
-	fm := new(Frontmatter)
-
-	if _, err := toml.Decode(string(doc), fm); err != nil {
-		return nil, "", "", fmt.Errorf("TOML page data: %w", err)
-	}
-
-	return fm, fm.Body, string(doc), nil
+	return &DataPageDoc{Meta: payload.meta(), Body: payload.Body}, nil
 }
 
-func buildYamlFromFS(fsys fs.FS, path string) (*Frontmatter, string, string, error) {
-	doc, err := fs.ReadFile(fsys, path)
-	if err != nil {
-		return nil, "", "", err
+func parseYAMLPage(doc []byte) (*DataPageDoc, error) {
+	payload := new(dataPagePayload)
+
+	if err := yaml.NewDecoder(strings.NewReader(string(doc))).Decode(payload); err != nil {
+		return nil, fmt.Errorf("YAML page data: %w", err)
 	}
 
-	fm := new(Frontmatter)
-
-	if err := yaml.NewDecoder(strings.NewReader(string(doc))).Decode(fm); err != nil {
-		return nil, "", "", fmt.Errorf("YAML page data: %w", err)
-	}
-
-	return fm, fm.Body, string(doc), nil
+	return &DataPageDoc{Meta: payload.meta(), Body: payload.Body}, nil
 }
 
-func buildJSONFromFS(fsys fs.FS, path string) (*Frontmatter, string, string, error) {
-	doc, err := fs.ReadFile(fsys, path)
-	if err != nil {
-		return nil, "", "", err
+func parseJSONPage(doc []byte) (*DataPageDoc, error) {
+	payload := new(dataPagePayload)
+
+	if err := json.NewDecoder(strings.NewReader(string(doc))).Decode(payload); err != nil {
+		return nil, fmt.Errorf("JSON page data: %w", err)
 	}
 
-	fm := new(Frontmatter)
-
-	if err := json.NewDecoder(strings.NewReader(string(doc))).Decode(fm); err != nil {
-		return nil, "", "", fmt.Errorf("JSON page data: %w", err)
-	}
-
-	return fm, fm.Body, string(doc), nil
+	return &DataPageDoc{Meta: payload.meta(), Body: payload.Body}, nil
 }
 
-func buildHTMLFromFS(fsys fs.FS, path string) (*Frontmatter, string, string, error) {
-	doc, err := fs.ReadFile(fsys, path)
-	if err != nil {
-		return nil, "", "", err
-	}
-
+func parseHTMLPage(doc []byte) (*FrontmatterDoc, string, error) {
 	fm, body, err := ExtractFrontmatter(doc)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", err
+	}
+	if fm == nil {
+		fm = &Frontmatter{}
 	}
 
-	return fm, string(body), string(doc), nil
+	return &FrontmatterDoc{Meta: *fm, Body: string(body)}, string(body), nil
 }
 
-func PageAssetMediaType(source string) string {
-	typ := mime.TypeByExtension(strings.ToLower(path.Ext(source)))
-	if typ == "" {
-		return "application/octet-stream"
+func (p dataPagePayload) meta() Frontmatter {
+	return Frontmatter{
+		Slug:        p.Slug,
+		URLPath:     p.URLPath,
+		Aliases:     slices.Clone(p.Aliases),
+		Title:       p.Title,
+		Description: p.Description,
+		Section:     p.Section,
+		Tags:        slices.Clone(p.Tags),
+		Date:        p.Date,
+		Updated:     p.Updated,
+		RSS:         p.RSS,
+		Sitemap:     p.Sitemap,
+		Params:      p.Params,
+		Headers:     p.Headers,
+		Template:    p.Template,
+		Featured:    p.Featured,
+		Draft:       p.Draft,
+		Weight:      p.Weight,
 	}
-	return typ
 }

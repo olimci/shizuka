@@ -1,4 +1,4 @@
-package fileutils
+package fileutil
 
 import (
 	"os"
@@ -26,6 +26,8 @@ func Walk(root string) (files *set.Set[string], dirs *set.Set[string], err error
 		if err != nil {
 			return err
 		}
+
+		rel = filepath.ToSlash(rel)
 
 		if d.IsDir() {
 			dirs.Add(rel)
@@ -58,6 +60,8 @@ func WalkFiles(root string) (files *set.Set[string], err error) {
 			return err
 		}
 
+		rel = filepath.ToSlash(rel)
+
 		if !d.IsDir() {
 			files.Add(rel)
 		}
@@ -86,6 +90,8 @@ func WalkDirs(root string) (dirs *set.Set[string], err error) {
 		if err != nil {
 			return err
 		}
+
+		rel = filepath.ToSlash(rel)
 
 		if d.IsDir() {
 			dirs.Add(rel)
@@ -121,6 +127,8 @@ func WalkInfo(root string) (files map[string]os.FileInfo, dirs map[string]os.Fil
 		if err != nil {
 			return err
 		}
+
+		rel = filepath.ToSlash(rel)
 
 		if d.IsDir() {
 			dirs[rel] = info

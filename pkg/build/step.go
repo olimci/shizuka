@@ -2,7 +2,6 @@ package build
 
 import (
 	"context"
-	"io/fs"
 
 	"github.com/olimci/shizuka/pkg/manifest"
 )
@@ -29,16 +28,9 @@ func StepFunc(id string, fn func(context.Context, *StepContext) error, deps ...s
 
 // StepContext is the interface for the build step to interact with the build process.
 type StepContext struct {
-	ctx        context.Context
 	Manifest   *manifest.Manifest
-	SourceFS   fs.FS
 	SourceRoot string
 	errors     *errorState
-}
-
-// Context returns the build step context.
-func (sc *StepContext) Context() context.Context {
-	return sc.ctx
 }
 
 // Error records a source-aware build diagnostic.
