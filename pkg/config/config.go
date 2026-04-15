@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -203,30 +202,6 @@ func Load(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
 	if err := decodeFile(resolvedPath, cfg); err != nil {
-		return nil, fmt.Errorf("config %q: %w", path, err)
-	}
-
-	cfg.Root = filepath.Dir(filepath.Clean(resolvedPath))
-	if cfg.Root == "" {
-		cfg.Root = "."
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("config %q: %w", path, err)
-	}
-	return cfg, nil
-}
-
-// LoadFS loads a Config from a file within the provided fs.FS.
-func LoadFS(fsys fs.FS, path string) (*Config, error) {
-	resolvedPath, err := resolvePathFS(fsys, path)
-	if err != nil {
-		return nil, fmt.Errorf("config %q: %w", path, err)
-	}
-
-	cfg := DefaultConfig()
-
-	if err := decodeFS(fsys, resolvedPath, cfg); err != nil {
 		return nil, fmt.Errorf("config %q: %w", path, err)
 	}
 
