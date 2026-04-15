@@ -118,6 +118,9 @@ Top-level:
 Nested / maps:
 
 - `params` (map): merged into `.Page.Params` (overrides config defaults)
+- `queries` (map): named computed queries exposed at `.Page.Queries`
+  - each query must define `query`
+  - one query per page may additionally set `paginate = true`, `page_size`, and `template`
 - `headers` (map string->string): per-page headers for the headers build step (keyed by URL path)
 - `rss`:
   - `include` (bool), `title`, `description`, `guid`

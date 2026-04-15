@@ -28,8 +28,9 @@ type Frontmatter struct {
 	RSS     RSSMeta     `toml:"rss" yaml:"rss" json:"rss"`
 	Sitemap SitemapMeta `toml:"sitemap" yaml:"sitemap" json:"sitemap"`
 
-	Params  map[string]any    `toml:"params" yaml:"params" json:"params"`
-	Headers map[string]string `toml:"headers" yaml:"headers" json:"headers"`
+	Params  map[string]any          `toml:"params" yaml:"params" json:"params"`
+	Queries map[string]PageQueryDef `toml:"queries" yaml:"queries" json:"queries"`
+	Headers map[string]string       `toml:"headers" yaml:"headers" json:"headers"`
 
 	Template string `toml:"template" yaml:"template" json:"template"`
 

@@ -38,7 +38,7 @@ type SitemapTemplateData struct {
 	Items []SitemapItem
 }
 
-func BuildSitemap(pages []*Page, site *Site, cfg *config.ConfigStepSitemap) SitemapTemplateData {
+func BuildSitemap(pages []*Page, site *Site, cfg *config.ConfigSitemap) SitemapTemplateData {
 	items := make([]SitemapItem, 0, len(pages))
 	for _, page := range pages {
 		if !cfg.IncludeDrafts && page.Draft {

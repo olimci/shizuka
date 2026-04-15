@@ -1,10 +1,13 @@
 package manifest
 
 import (
+	"errors"
 	"html/template"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/olimci/shizuka/pkg/transforms"
 )
 
 func StaticArtefact(sourceRoot string, claim Claim) Artefact {
@@ -27,7 +30,10 @@ func TemplateArtefact(claim Claim, tmpl *template.Template, data any) Artefact {
 	return Artefact{
 		Claim: claim,
 		Builder: func(w io.Writer) error {
-			return tmpl.Execute(w, data)
+			if err := tmpl.Execute(w, data); err != nil {
+				return wrapTemplateControlError(err)
+			}
+			return nil
 		},
 	}
 }
@@ -36,7 +42,10 @@ func NamedTemplateArtefact(claim Claim, name string, tmpl *template.Template, da
 	return Artefact{
 		Claim: claim,
 		Builder: func(w io.Writer) error {
-			return tmpl.ExecuteTemplate(w, name, data)
+			if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
+				return wrapTemplateControlError(err)
+			}
+			return nil
 		},
 	}
 }
@@ -49,4 +58,17 @@ func TextArtefact(claim Claim, text string) Artefact {
 			return err
 		},
 	}
+}
+
+func wrapTemplateControlError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.As(err, new(*discardError)) {
+		return err
+	}
+	if transforms.IsDiscardError(err) {
+		return &discardError{Cause: err}
+	}
+	return err
 }

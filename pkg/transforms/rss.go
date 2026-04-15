@@ -50,7 +50,7 @@ type RSSTemplateData struct {
 	Items       []RSSItem
 }
 
-func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigStepRSS) RSSTemplateData {
+func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigRSS) RSSTemplateData {
 	sectionFilter := set.FromSlice(cfg.Sections)
 	items := make([]RSSItem, 0, len(pages))
 	for _, page := range pages {

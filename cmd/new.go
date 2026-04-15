@@ -145,8 +145,13 @@ func newRequestFromCommand(cmd *cli.Command) (newRequest, error) {
 		return newRequest{}, fmt.Errorf("too many arguments")
 	}
 
+	configPath, err := config.ResolvePath(cmd.String("config"))
+	if err != nil {
+		return newRequest{}, err
+	}
+
 	return newRequest{
-		ConfigPath: cmd.String("config"),
+		ConfigPath: configPath,
 		Path:       cmd.Args().First(),
 		Title:      cmd.String("title"),
 		Template:   cmd.String("template"),
@@ -272,13 +277,11 @@ func loadNewContext(configPath string) (*newContext, error) {
 
 	contentSource := "content"
 	defaultTemplate := "page"
-	if cfg.Build.Steps.Content != nil {
-		if cfg.Build.Steps.Content.Source != "" {
-			contentSource = cfg.Build.Steps.Content.Source
-		}
-		if cfg.Build.Steps.Content.DefaultTemplate != "" {
-			defaultTemplate = cfg.Build.Steps.Content.DefaultTemplate
-		}
+	if cfg.Paths.Content != "" {
+		contentSource = cfg.Paths.Content
+	}
+	if cfg.Content.Defaults.Template != "" {
+		defaultTemplate = cfg.Content.Defaults.Template
 	}
 
 	return &newContext{

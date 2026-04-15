@@ -4,7 +4,7 @@ A Shizuka site is a directory with (at minimum) a config file and some content:
 
 ```
 .
-├─ shizuka.toml
+├─ shizuka.toml (or `.yaml` / `.yml` / `.json`)
 ├─ content/
 │  ├─ index.md
 │  └─ posts/
@@ -27,7 +27,7 @@ A Shizuka site is a directory with (at minimum) a config file and some content:
 
 Shizuka outputs “pretty URLs” by writing `index.html` files into directories.
 
-Given default `build.steps.content.destination = "."`:
+Given the default config:
 
 - `content/index.md` -> `dist/index.html`
 - `content/about.md` -> `dist/about/index.html`

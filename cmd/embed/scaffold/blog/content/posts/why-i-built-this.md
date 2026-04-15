@@ -20,15 +20,14 @@ Built in Go with concurrent execution. Build times scale linearly with content, 
 
 ## Simple Configuration
 
-One TOML file. That's it. No plugins to install, no config sprawl.
+One config file. That's it. No plugins to install, no config sprawl.
 
 ```toml
+version = "0.1.0"
+
 [site]
 title = "My Site"
 url = "https://example.com"
-
-[build]
-output = "dist"
 ```
 
 ## Clean Templates

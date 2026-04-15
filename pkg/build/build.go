@@ -29,7 +29,10 @@ type BuildCtx struct {
 }
 
 func Build(opts *config.Options) error {
-	configPath := filepath.Clean(opts.ConfigPath)
+	configPath, err := config.ResolvePath(filepath.Clean(opts.ConfigPath))
+	if err != nil {
+		return err
+	}
 	config, err := config.Load(configPath)
 	if err != nil {
 		return err
@@ -44,23 +47,21 @@ func Build(opts *config.Options) error {
 	}
 
 	steps := make([]Step, 0)
-	if config.Build.Steps.Static != nil {
-		steps = append(steps, StepStatic())
-	}
-	if config.Build.Steps.Content != nil {
-		useGit := config.Build.Steps.Content.Git != nil && config.Build.Steps.Content.Git.Enabled
-		steps = append(steps, StepContent(useGit)...)
-	}
-	if config.Build.Steps.Headers != nil {
+	steps = append(steps, StepStatic())
+
+	useGit := config.Content.Git != nil && config.Content.Git.Enabled
+	steps = append(steps, StepContent(useGit)...)
+
+	if config.Headers != nil {
 		steps = append(steps, StepHeaders())
 	}
-	if config.Build.Steps.Redirects != nil {
+	if config.Redirects != nil {
 		steps = append(steps, StepRedirects())
 	}
-	if config.Build.Steps.RSS != nil {
+	if config.RSS != nil {
 		steps = append(steps, StepRSS())
 	}
-	if config.Build.Steps.Sitemap != nil {
+	if config.Sitemap != nil {
 		steps = append(steps, StepSitemap())
 	}
 

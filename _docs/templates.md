@@ -6,7 +6,7 @@ Shizuka templates are Go `html/template` files. Each content page selects a temp
 
 By default, Shizuka loads templates via:
 
-- `build.steps.content.template_glob` (default: `templates/*.tmpl`)
+- `paths.templates` (default: `templates/*.tmpl`)
 
 ## How template names are chosen
 
@@ -15,14 +15,14 @@ Each template file should define one named template, and frontmatter should refe
 - `templates/page.tmpl` should contain `{{ define "page" }}...{{ end }}`
 - `templates/post.tmpl` should contain `{{ define "post" }}...{{ end }}`
 
-Defined template names must be unique across all files matched by `template_glob`.
+Defined template names must be unique across all files matched by `paths.templates`.
 
 ## Template input data
 
 Each page is rendered with this root object:
 
 - `.Page`: the current page
-- `.Site`: global site data and page indexes
+- `.Site`: global site data
 
 ### `.Page` fields
 
@@ -46,49 +46,31 @@ Key fields you can use in templates:
 - `.Page.Links` (`[]PageLink`; resolved internal page links discovered from Markdown and wikilinks)
 - `.Page.Parent`, `.Page.Children` (hierarchical navigation inferred from `index.*` pages in content directories)
 - `.Page.Params` (arbitrary map)
+- `.Page.Queries` (`map[string]*QueryResult`) for frontmatter-defined computed queries
 - `.Page.Assets` (`map[string]*PageAsset`) for owned bundle assets
 - `.Page.Headers` (used by the headers build step; see `_docs/config.md`)
+- `.Page.Pagination` (`*PaginationState`) for paginated page renders only
 
 `PageLink` contains: `RawTarget`, `Fragment`, `Label`, `Embed`, `Target` (`*Page`).
+
+`QueryResult` contains:
+
+- `.Rows` (`[]map[string]any`)
+- `.Pages` (`[]*Page`) when the query includes `_page`
 
 ### `.Site` fields
 
 - `.Site.Title`, `.Site.Description`, `.Site.URL`
+- `.Site.Params`
+- `.Site.Queries` (`map[string]*QueryResult`) for config-defined computed queries
 - `.Site.Meta.IsDev`, `.Site.Meta.ConfigPath`, `.Site.Meta.BuildTime`
 - `.Site.Meta.Git.Available`, `.Site.Meta.Git.RepoRoot`, `.Site.Meta.Git.GitDir`
 - `.Site.Meta.Git.Branch`, `.Site.Meta.Git.CommitHash`, `.Site.Meta.Git.ShortHash`, `.Site.Meta.Git.Dirty`
-- `.Site.Pages`:
-  - `.All`
-  - `.Published`, `.Drafts`, `.Featured`
-  - `.Linked`
-  - `.Latest`, `.RecentlyUpdated`, `.Undated`
-  - `.BySlug`
-  - `.BySection`, `.ByTag`
-  - `.ByYear`
-  - `.ByYearMonth`
-
-All site page collections use the same `*Page` type as `.Page`.
 
 ## Built-in template functions
 
 Shizuka registers a small set of helpers:
 
-- `where field value pages` -> filtered `[]*Page`
-  - supported `field` values: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Weight"`, `"Featured"`, `"Draft"`, `"Date:before"`, `"Date:after"`, `"Updated:before"`, `"Updated:after"`, `"Tags"`, `"Tags:not"`
-- `whereEq field value pages` -> pages where `field == value`
-- `whereNe field value pages` -> pages where `field != value`
-- `whereHas field value pages` -> pages where a list-like field contains `value`
-- `whereIn field pages value...` -> pages where `field` matches any of the provided values
-  - `whereEq` / `whereNe` / `whereHas` / `whereIn` support: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Weight"`, `"Featured"`, `"Draft"`, `"Date"`, `"Updated"`, `"PubDate"`, `"Tags"`
-  - `whereEq` / `whereNe` / `whereHas` also support page params via `"Params.some_key"`
-- `sort field order pages` -> sorted `[]*Page`
-  - `order` must be `"asc"` or `"desc"`
-  - `field` values: `"Title"`, `"Description"`, `"Section"`, `"Slug"`, `"Weight"`, `"Date"`, `"Updated"`, `"PubDate"`
-- `limit n pages` -> first `n` pages
-- `offset n pages` -> pages after skipping the first `n`
-- `first pages` / `last pages` -> a single `*Page` (or `nil` if empty)
-- `groupBy field pages` -> `map[string][]*Page`
-  - supported `field` values: `"Section"`, `"Tags"`, `"Year"`, `"YearMonth"`, `"Featured"`, `"Draft"`
 - `datefmt layout t` -> formatted time string (returns `""` for zero time)
 - `default fallback value` -> `fallback` when `value` is empty / zero
 - `uniq values` -> deduplicated `[]string` preserving original order
@@ -97,6 +79,14 @@ Shizuka registers a small set of helpers:
 - `assetMeta key page` -> `*PageAsset` for a bundle asset, or `nil`
 - `dict key value ...` -> `map[string]any`
 - `merge map ...` -> merged `map[string]any` (later maps win)
+- `discard` -> aborts the current template artefact without failing the build
+- `query sql args...` -> `*QueryResult`
+- `asPages` / `AsPages` -> `[]*Page` from a page-backed `QueryResult`
+- `asPage` / `AsPage` -> first `*Page` from a page-backed `QueryResult`
+- `first` / `First` -> first row or item from a `QueryResult`, `[]map[string]any`, or `[]*Page`
+  - built-in tables: `pages`, `site`, `page_links`, `page_assets`
+  - page conversion expects the query result to include `_page`; `select * from pages ...` works, while projected queries like `select Title from pages` do not
+  - positional placeholders use `?`, for example: `{{ query "select * from pages where Section = ? order by Date desc limit ?" "posts" 5 | asPages }}`
 
 Everything else is standard Go template behavior (`range`, `if`, `len`, `index`, etc).
 

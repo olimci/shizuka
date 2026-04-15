@@ -18,6 +18,7 @@ import (
 	"github.com/olimci/shizuka/pkg/transforms"
 	"github.com/olimci/shizuka/pkg/utils/fileutil"
 	"github.com/olimci/shizuka/pkg/utils/pathutil"
+	"github.com/olimci/structql"
 )
 
 var (
@@ -31,6 +32,7 @@ const (
 	PagesK        = manifest.K[[]*transforms.Page]("pages")
 	ContentFilesK = manifest.K[[]string]("contentfiles")
 	SiteK         = manifest.K[*transforms.Site]("site")
+	DBK           = manifest.K[*structql.DB]("db")
 	TemplatesK    = manifest.K[*template.Template]("templates")
 	BuildCtxK     = manifest.K[*BuildCtx]("buildctx")
 	SiteGitK      = manifest.K[*transforms.SiteGitMeta]("sitegit")
@@ -39,30 +41,29 @@ const (
 func StepStatic() Step {
 	return StepFunc("static", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
-		sourceRoot := cfg.Resolved.Build.Steps.Static
-		if sourceRoot == nil {
-			return nil
+		staticRoot, err := cfg.StaticSourcePath()
+		if err != nil {
+			return err
 		}
 
 		m := NewMinifier(cfg.Build.Minify)
 
-		files, err := fileutil.WalkFiles(sourceRoot.Source)
+		files, err := fileutil.WalkFiles(staticRoot)
 		if err != nil {
 			return err
 		}
 
 		for _, rel := range files.Values() {
-			source, err := filepath.Rel(sc.SourceRoot, filepath.Join(sourceRoot.Source, filepath.FromSlash(rel)))
+			source, err := filepath.Rel(sc.SourceRoot, filepath.Join(staticRoot, filepath.FromSlash(rel)))
 			if err != nil {
 				return err
 			}
 			source = filepath.ToSlash(source)
-			target := path.Join(sourceRoot.Destination, rel)
 			sc.Manifest.Emit(manifest.StaticArtefact(sc.SourceRoot, manifest.Claim{
 				Owner:  "static",
 				Source: source,
-				Target: target,
-				Canon:  path.Join(sourceRoot.Destination, rel),
+				Target: rel,
+				Canon:  rel,
 			}).Post(m))
 		}
 
@@ -97,7 +98,7 @@ func StepContent(useGit bool) []Step {
 				continue
 			}
 
-			if page == nil || (page.Draft && !opts.Dev) {
+			if page.Draft && !opts.Dev {
 				continue
 			}
 
@@ -133,7 +134,7 @@ func StepContent(useGit bool) []Step {
 				Site: *site,
 			}).Post(m))
 
-			if page.Source.Format == transforms.PageSourceFormatMarkdown && cfg.Build.Steps.Content.Raw.Markdown {
+			if page.Source.Format == transforms.PageSourceFormatMarkdown && cfg.Content.Raw.Markdown {
 				target := "index.md"
 				if page.URLPath != "" {
 					target = path.Join(page.URLPath, "index.md")
@@ -170,13 +171,13 @@ func StepContent(useGit bool) []Step {
 			Description: cfg.Site.Description,
 			URL:         cfg.Site.URL,
 			Params:      maps.Clone(cfg.Site.Params),
+			Queries:     nil,
 			Meta: transforms.SiteMeta{
 				ConfigPath: opts.ConfigPath,
 				IsDev:      opts.Dev,
 				Git:        *siteGit,
 				BuildTime:  buildCtx.StartTime,
 			},
-			Pages: transforms.NewSitePages(pages),
 		}
 
 		seenSlugs := make(map[string]string)
@@ -217,30 +218,35 @@ func StepContent(useGit bool) []Step {
 
 	templates := StepFunc("pages:templates", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
-		tmplCfg := cfg.Resolved.Build.Steps.Content
-		if tmplCfg == nil {
-			return nil
+		templateGlob, err := cfg.TemplateGlob()
+		if err != nil {
+			return err
 		}
 
-		tmpl, err := parseTemplates(sc.SourceRoot, tmplCfg.TemplateGlob, transforms.DefaultTemplateFuncs())
+		funcs := transforms.DefaultTemplateFuncs()
+		if db := manifest.GetAs(sc.Manifest, DBK); db != nil {
+			maps.Copy(funcs, QueryFuncMap(db))
+		}
+
+		tmpl, err := parseTemplates(sc.SourceRoot, templateGlob, funcs)
 		if err != nil {
-			return fmt.Errorf("template glob %q: %w", tmplCfg.TemplateGlob, err)
+			return fmt.Errorf("template glob %q: %w", templateGlob, err)
 		}
 
 		manifest.SetAs(sc.Manifest, TemplatesK, tmpl)
 		return nil
-	})
+	}, "pages:query")
 
 	index := StepFunc("pages:index", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
-		contentCfg := cfg.Resolved.Build.Steps.Content
-		if contentCfg == nil {
-			return nil
+		contentRoot, err := cfg.ContentSourcePath()
+		if err != nil {
+			return err
 		}
 
-		files, err := fileutil.WalkFiles(contentCfg.Source)
+		files, err := fileutil.WalkFiles(contentRoot)
 		if err != nil {
-			return fmt.Errorf("content source %q: %w", contentCfg.Source, err)
+			return fmt.Errorf("content source %q: %w", contentRoot, err)
 		}
 
 		contentFiles := files.Values()
@@ -256,7 +262,7 @@ func StepContent(useGit bool) []Step {
 				continue
 			}
 
-			absSource := filepath.Join(contentCfg.Source, filepath.FromSlash(rel))
+			absSource := filepath.Join(contentRoot, filepath.FromSlash(rel))
 			source, err := filepath.Rel(sc.SourceRoot, absSource)
 			if err != nil {
 				source = filepath.ToSlash(absSource)
@@ -282,17 +288,17 @@ func StepContent(useGit bool) []Step {
 			}
 			page = builtPage
 
-			params := maps.Clone(cfg.Build.Steps.Content.DefaultParams)
+			params := maps.Clone(cfg.Content.Defaults.Params)
 			maps.Copy(params, page.Params)
 			page.Params = params
 			page.SourcePath = source
 			page.ContentPath = rel
 
 			if page.Template == "" {
-				page.Template = cfg.Build.Steps.Content.DefaultTemplate
+				page.Template = cfg.Content.Defaults.Template
 			}
 			if page.Section == "" {
-				page.Section = cfg.Build.Steps.Content.DefaultSection
+				page.Section = cfg.Content.Defaults.Section
 			}
 
 			pageURLPath := strings.TrimSpace(page.URLPath)
@@ -388,15 +394,18 @@ func StepContent(useGit bool) []Step {
 
 	assets := StepFunc("pages:assets", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
-		if cfg.Build.Steps.Content == nil || !cfg.Build.Steps.Content.BundleAssets.Enabled {
+		if !cfg.Content.Bundles.Enabled {
 			return nil
 		}
 
-		contentCfg := cfg.Resolved.Build.Steps.Content
+		contentRoot, err := cfg.ContentSourcePath()
+		if err != nil {
+			return err
+		}
 		contentFiles := manifest.GetAs(sc.Manifest, ContentFilesK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
-		mode := cfg.Build.Steps.Content.BundleAssets.Mode
-		outputRoot := strings.TrimPrefix(path.Clean(cfg.Build.Steps.Content.BundleAssets.Output), "/")
+		mode := cfg.Content.Bundles.Mode
+		outputRoot := strings.TrimPrefix(path.Clean(cfg.Content.Bundles.Output), "/")
 		outputRoot = strings.TrimPrefix(outputRoot, ".")
 		outputRoot = strings.Trim(outputRoot, "/")
 		if outputRoot == "" {
@@ -405,7 +414,7 @@ func StepContent(useGit bool) []Step {
 
 		owned := make(map[string]string)
 		emitted := make(map[string]string)
-		contentRootRel, err := filepath.Rel(sc.SourceRoot, contentCfg.Source)
+		contentRootRel, err := filepath.Rel(sc.SourceRoot, contentRoot)
 		if err != nil {
 			return err
 		}
@@ -478,7 +487,7 @@ func StepContent(useGit bool) []Step {
 				continue
 			}
 
-			body, links := preprocessMarkdown(page, pages, cfg.Build.Steps.Content.Markdown.Wikilinks)
+			body, links := preprocessMarkdown(page, pages, cfg.Content.Markdown.Wikilinks)
 			page.Source.Preprocessed = body
 			page.Links = links
 		}
@@ -489,7 +498,7 @@ func StepContent(useGit bool) []Step {
 	render := StepFunc("pages:render", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
-		md := cfg.Build.Steps.Content.GoldmarkConfig.Build()
+		md := cfg.Content.Markdown.Goldmark.Build()
 
 		for _, page := range pages {
 			if page == nil || page.HasError() {
@@ -517,13 +526,47 @@ func StepContent(useGit bool) []Step {
 		}
 
 		return nil
-	}, "pages:preprocess")
+	}, "pages:computed")
+
+	query := StepFunc("pages:query", func(_ context.Context, sc *StepContext) error {
+		site := manifest.GetAs(sc.Manifest, SiteK)
+		pages := manifest.GetAs(sc.Manifest, PagesK)
+
+		db, err := BuildQueryDB(site, pages)
+		if err != nil {
+			return err
+		}
+
+		manifest.SetAs(sc.Manifest, DBK, db)
+		return nil
+	}, "pages:resolve", "pages:preprocess")
+
+	computed := StepFunc("pages:computed", func(_ context.Context, sc *StepContext) error {
+		cfg := manifest.GetAs(sc.Manifest, ConfigK)
+		site := manifest.GetAs(sc.Manifest, SiteK)
+		pages := manifest.GetAs(sc.Manifest, PagesK)
+		tmpl := manifest.GetAs(sc.Manifest, TemplatesK)
+		db := manifest.GetAs(sc.Manifest, DBK)
+
+		siteQueries, err := ComputeSiteQueries(db, cfg.Site.Queries)
+		if err != nil {
+			return err
+		}
+		site.Queries = siteQueries
+
+		expandedPages, err := ComputePageQueries(site, pages, tmpl, db)
+		if err != nil {
+			return err
+		}
+		manifest.SetAs(sc.Manifest, PagesK, expandedPages)
+		return nil
+	}, "pages:query", "pages:templates")
 
 	steps := []Step{index, assets}
 	if useGit {
 		steps = append(steps, StepGit())
 	}
-	steps = append(steps, preprocess, templates, resolve, render, buildStep)
+	steps = append(steps, preprocess, resolve, query, templates, computed, render, buildStep)
 	return steps
 }
 
@@ -531,7 +574,7 @@ func StepGit() Step {
 	return StepFunc("git", func(ctx context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
-		gitCfg := cfg.Build.Steps.Content.Git
+		gitCfg := cfg.Content.Git
 		if gitCfg == nil || !gitCfg.Enabled {
 			return nil
 		}
@@ -599,12 +642,12 @@ func StepHeaders() Step {
 	return StepFunc("headers", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
-		headersCfg := cfg.Build.Steps.Headers
+		headersCfg := cfg.Headers
 		if headersCfg == nil {
 			return nil
 		}
 
-		headers := headersCfg.Headers
+		headers := headersCfg.Values
 		for _, page := range pages {
 			if page == nil || page.HasError() {
 				continue
@@ -645,13 +688,13 @@ func StepRedirects() Step {
 	return StepFunc("redirects", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		pages := manifest.GetAs(sc.Manifest, PagesK)
-		redirectsCfg := cfg.Build.Steps.Redirects
+		redirectsCfg := cfg.Redirects
 		if redirectsCfg == nil {
 			return nil
 		}
 
-		redirects := make([]config.Redirect, 0, len(redirectsCfg.Redirects))
-		redirects = append(redirects, redirectsCfg.Redirects...)
+		redirects := make([]config.Redirect, 0, len(redirectsCfg.Entries))
+		redirects = append(redirects, redirectsCfg.Entries...)
 
 		for _, page := range pages {
 			if page == nil || page.HasError() {
@@ -715,14 +758,15 @@ func StepRSS() Step {
 	return StepFunc("rss", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		site := manifest.GetAs(sc.Manifest, SiteK)
-		if cfg.Build.Steps.RSS == nil {
+		pages := manifest.GetAs(sc.Manifest, PagesK)
+		if cfg.RSS == nil {
 			return nil
 		}
 
 		sc.Manifest.Emit(manifest.TemplateArtefact(
-			manifest.NewInternalClaim("rss", cfg.Build.Steps.RSS.Output),
+			manifest.NewInternalClaim("rss", cfg.RSS.Output),
 			transforms.RSSTemplate.Get(),
-			transforms.BuildRSS(site.Pages.All(), site, cfg.Build.Steps.RSS),
+			transforms.BuildRSS(pages, site, cfg.RSS),
 		))
 		return nil
 	}, "pages:resolve")
@@ -732,14 +776,15 @@ func StepSitemap() Step {
 	return StepFunc("sitemap", func(_ context.Context, sc *StepContext) error {
 		cfg := manifest.GetAs(sc.Manifest, ConfigK)
 		site := manifest.GetAs(sc.Manifest, SiteK)
-		if cfg.Build.Steps.Sitemap == nil {
+		pages := manifest.GetAs(sc.Manifest, PagesK)
+		if cfg.Sitemap == nil {
 			return nil
 		}
 
 		sc.Manifest.Emit(manifest.TemplateArtefact(
-			manifest.NewInternalClaim("sitemap", cfg.Build.Steps.Sitemap.Output),
+			manifest.NewInternalClaim("sitemap", cfg.Sitemap.Output),
 			transforms.SitemapTemplate.Get(),
-			transforms.BuildSitemap(site.Pages.All(), site, cfg.Build.Steps.Sitemap),
+			transforms.BuildSitemap(pages, site, cfg.Sitemap),
 		))
 		return nil
 	}, "pages:resolve")

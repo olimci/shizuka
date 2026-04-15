@@ -5,7 +5,7 @@ import (
 	"html/template"
 	"maps"
 	"path"
-	"slices"
+	"reflect"
 	"strings"
 	"time"
 	"unicode"
@@ -13,17 +13,7 @@ import (
 
 func DefaultTemplateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"where":     TemplateFuncWhere,
-		"whereEq":   TemplateFuncWhereEq,
-		"whereNe":   TemplateFuncWhereNe,
-		"whereHas":  TemplateFuncWhereHas,
-		"whereIn":   TemplateFuncWhereIn,
-		"sort":      TemplateFuncSortBy,
-		"limit":     TemplateFuncLimit,
-		"offset":    TemplateFuncOffset,
-		"first":     TemplateFuncFirst,
-		"last":      TemplateFuncLast,
-		"groupBy":   TemplateFuncGroupBy,
+		"discard":   TemplateFuncDiscard,
 		"datefmt":   TemplateFuncDateFmt,
 		"default":   TemplateFuncDefault,
 		"uniq":      TemplateFuncUniq,
@@ -33,207 +23,17 @@ func DefaultTemplateFuncs() template.FuncMap {
 		"dict":      TemplateFuncDict,
 		"merge":     TemplateFuncMerge,
 		"rawHTML":   TemplateFuncRawHTML,
+		"first":     TemplateFuncFirst,
+		"First":     TemplateFuncFirst,
+		"asPages":   TemplateFuncAsPages,
+		"AsPages":   TemplateFuncAsPages,
+		"asPage":    TemplateFuncAsPage,
+		"AsPage":    TemplateFuncAsPage,
 	}
 }
 
-// TemplateFuncWhere filters pages using the legacy field mini-language.
-func TemplateFuncWhere(field string, value any, pages []*Page) []*Page {
-	switch field {
-	case "Tags":
-		return TemplateFuncWhereHas(field, value, pages)
-	case "Tags:not":
-		return TemplateFuncWhereNe("Tags", value, pages)
-	case "Date:before":
-		return filterPages(pages, func(page *Page) bool {
-			v, ok := value.(time.Time)
-			return ok && page.Date.Before(v)
-		})
-	case "Date:after":
-		return filterPages(pages, func(page *Page) bool {
-			v, ok := value.(time.Time)
-			return ok && page.Date.After(v)
-		})
-	case "Updated:before":
-		return filterPages(pages, func(page *Page) bool {
-			v, ok := value.(time.Time)
-			return ok && page.Updated.Before(v)
-		})
-	case "Updated:after":
-		return filterPages(pages, func(page *Page) bool {
-			v, ok := value.(time.Time)
-			return ok && page.Updated.After(v)
-		})
-	default:
-		return TemplateFuncWhereEq(field, value, pages)
-	}
-}
-
-// TemplateFuncWhereEq filters pages whose field equals value.
-func TemplateFuncWhereEq(field string, value any, pages []*Page) []*Page {
-	return filterPages(pages, func(page *Page) bool {
-		return pageFieldEquals(page, field, value)
-	})
-}
-
-// TemplateFuncWhereNe filters pages whose field does not equal value.
-func TemplateFuncWhereNe(field string, value any, pages []*Page) []*Page {
-	return filterPages(pages, func(page *Page) bool {
-		return !pageFieldEquals(page, field, value)
-	})
-}
-
-// TemplateFuncWhereHas filters pages whose list-like field contains value.
-func TemplateFuncWhereHas(field string, value any, pages []*Page) []*Page {
-	return filterPages(pages, func(page *Page) bool {
-		return pageFieldHas(page, field, value)
-	})
-}
-
-// TemplateFuncWhereIn filters pages whose field matches any provided value.
-func TemplateFuncWhereIn(field string, pages []*Page, values ...any) []*Page {
-	return filterPages(pages, func(page *Page) bool {
-		for _, value := range values {
-			if pageFieldEquals(page, field, value) || pageFieldHas(page, field, value) {
-				return true
-			}
-		}
-		return false
-	})
-}
-
-// TemplateFuncSortBy sorts pages by a field and order.
-func TemplateFuncSortBy(field string, order string, pages []*Page) []*Page {
-	out := slices.Clone(pages)
-
-	if order != "asc" && order != "desc" {
-		return []*Page{}
-	}
-
-	switch field {
-	case "Title":
-		slices.SortStableFunc(out, func(a, b *Page) int {
-			return strings.Compare(a.Title, b.Title)
-		})
-	case "Weight":
-		slices.SortStableFunc(out, func(a, b *Page) int {
-			if a.Weight < b.Weight {
-				return -1
-			} else if a.Weight > b.Weight {
-				return 1
-			}
-			return 0
-		})
-	case "Description":
-		slices.SortStableFunc(out, func(a, b *Page) int {
-			return strings.Compare(a.Description, b.Description)
-		})
-	case "Section":
-		slices.SortStableFunc(out, func(a, b *Page) int {
-			return strings.Compare(a.Section, b.Section)
-		})
-	case "Slug":
-		slices.SortStableFunc(out, func(a, b *Page) int {
-			return strings.Compare(a.Slug, b.Slug)
-		})
-	case "Date":
-		slices.SortStableFunc(out, func(a, b *Page) int {
-			return a.Date.Compare(b.Date)
-		})
-	case "Updated":
-		slices.SortStableFunc(out, func(a, b *Page) int {
-			return a.Updated.Compare(b.Updated)
-		})
-	case "PubDate":
-		slices.SortStableFunc(out, func(a, b *Page) int {
-			return a.PubDate.Compare(b.PubDate)
-		})
-	default:
-		return []*Page{}
-	}
-
-	if order == "desc" {
-		slices.Reverse(out)
-	}
-
-	return out
-}
-
-// TemplateFuncLimit limits the number of pages returned.
-func TemplateFuncLimit(limit int, pages []*Page) []*Page {
-	if limit <= 0 {
-		return []*Page{}
-	}
-	if len(pages) <= limit {
-		return pages
-	}
-
-	return pages[:limit]
-}
-
-// TemplateFuncOffset skips the first n pages.
-func TemplateFuncOffset(offset int, pages []*Page) []*Page {
-	if offset <= 0 {
-		return pages
-	}
-	if offset >= len(pages) {
-		return []*Page{}
-	}
-	return pages[offset:]
-}
-
-// TemplateFuncFirst returns the first page, or nil when empty.
-func TemplateFuncFirst(pages []*Page) *Page {
-	if len(pages) == 0 {
-		return nil
-	}
-	return pages[0]
-}
-
-// TemplateFuncLast returns the last page, or nil when empty.
-func TemplateFuncLast(pages []*Page) *Page {
-	if len(pages) == 0 {
-		return nil
-	}
-	return pages[len(pages)-1]
-}
-
-// TemplateFuncGroupBy groups pages by a supported field.
-func TemplateFuncGroupBy(field string, pages []*Page) map[string][]*Page {
-	out := make(map[string][]*Page)
-
-	for _, page := range pages {
-		switch field {
-		case "Section":
-			if page.Section != "" {
-				out[page.Section] = append(out[page.Section], page)
-			}
-		case "Tags":
-			for _, tag := range page.Tags {
-				if tag == "" {
-					continue
-				}
-				out[tag] = append(out[tag], page)
-			}
-		case "Year":
-			if !page.Date.IsZero() {
-				key := page.Date.Format("2006")
-				out[key] = append(out[key], page)
-			}
-		case "YearMonth":
-			if !page.Date.IsZero() {
-				key := page.Date.Format("2006-01")
-				out[key] = append(out[key], page)
-			}
-		case "Featured":
-			key := fmt.Sprintf("%t", page.Featured)
-			out[key] = append(out[key], page)
-		case "Draft":
-			key := fmt.Sprintf("%t", page.Draft)
-			out[key] = append(out[key], page)
-		}
-	}
-
-	return out
+func TemplateFuncDiscard() (string, error) {
+	return "", &DiscardError{}
 }
 
 // TemplateFuncDateFmt formats a time using Go's time layout.
@@ -343,75 +143,68 @@ func TemplateFuncRawHTML(value string) template.HTML {
 	return template.HTML(value)
 }
 
-func filterPages(pages []*Page, fn func(*Page) bool) []*Page {
-	out := make([]*Page, 0, len(pages))
-	for _, page := range pages {
-		if fn(page) {
-			out = append(out, page)
+func TemplateFuncFirst(value any) any {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case *QueryResult:
+		if v == nil || len(v.Rows) == 0 {
+			return nil
 		}
+		return v.Rows[0]
+	case []map[string]any:
+		if len(v) == 0 {
+			return nil
+		}
+		return v[0]
+	case []*Page:
+		if len(v) == 0 {
+			return nil
+		}
+		return v[0]
 	}
-	return out
+
+	rv := reflect.ValueOf(value)
+	if !rv.IsValid() {
+		return nil
+	}
+	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+		return nil
+	}
+	if rv.Len() == 0 {
+		return nil
+	}
+	return rv.Index(0).Interface()
 }
 
-func pageFieldEquals(page *Page, field string, value any) bool {
-	switch field {
-	case "Title":
-		v, ok := value.(string)
-		return ok && page.Title == v
-	case "Description":
-		v, ok := value.(string)
-		return ok && page.Description == v
-	case "Section":
-		v, ok := value.(string)
-		return ok && page.Section == v
-	case "Slug":
-		v, ok := value.(string)
-		return ok && page.Slug == v
-	case "Weight":
-		v, ok := value.(int)
-		return ok && page.Weight == v
-	case "Featured":
-		v, ok := value.(bool)
-		return ok && page.Featured == v
-	case "Draft":
-		v, ok := value.(bool)
-		return ok && page.Draft == v
-	case "Date":
-		v, ok := value.(time.Time)
-		return ok && page.Date.Equal(v)
-	case "Updated":
-		v, ok := value.(time.Time)
-		return ok && page.Updated.Equal(v)
-	case "PubDate":
-		v, ok := value.(time.Time)
-		return ok && page.PubDate.Equal(v)
-	case "Tags":
-		return pageFieldHas(page, field, value)
-	default:
-		if key, ok := strings.CutPrefix(field, "Params."); ok {
-			return page.Params[key] == value
+func TemplateFuncAsPages(value any) ([]*Page, error) {
+	switch v := value.(type) {
+	case nil:
+		return nil, nil
+	case []*Page:
+		return v, nil
+	case *QueryResult:
+		if v == nil {
+			return nil, nil
 		}
-		return false
+		if v.Pages == nil {
+			return nil, fmt.Errorf("asPages requires the result to include the _page column")
+		}
+		return v.Pages, nil
+	default:
+		return nil, fmt.Errorf("asPages requires a QueryResult or []*Page, got %T", value)
 	}
 }
 
-func pageFieldHas(page *Page, field string, value any) bool {
-	switch field {
-	case "Tags":
-		v, ok := value.(string)
-		return ok && slices.Contains(page.Tags, v)
-	default:
-		if key, ok := strings.CutPrefix(field, "Params."); ok {
-			switch values := page.Params[key].(type) {
-			case []string:
-				v, ok := value.(string)
-				return ok && slices.Contains(values, v)
-			case []any: // TODO: this seems generally bad:
-				return slices.Contains(values, value)
-			}
-		}
-		return false
+func TemplateFuncAsPage(value any) (*Page, error) {
+	pages, err := TemplateFuncAsPages(value)
+	if err != nil {
+		return nil, err
 	}
+	if len(pages) == 0 {
+		return nil, nil
+	}
+	return pages[0], nil
 }
 
 func isTemplateEmpty(value any) bool {
@@ -424,8 +217,12 @@ func isTemplateEmpty(value any) bool {
 		return len(v) == 0
 	case []*Page:
 		return len(v) == 0
+	case []map[string]any:
+		return len(v) == 0
 	case map[string]any:
 		return len(v) == 0
+	case *QueryResult:
+		return v == nil || len(v.Rows) == 0
 	case time.Time:
 		return v.IsZero()
 	case bool:

@@ -17,6 +17,24 @@ import (
 
 var ErrConflicts = errors.New("conflicts")
 
+type discardError struct {
+	Cause error
+}
+
+func (e *discardError) Error() string {
+	if e == nil || e.Cause == nil {
+		return "discard artefact"
+	}
+	return e.Cause.Error()
+}
+
+func (e *discardError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
 // K is a typed key
 type K[T any] string
 
@@ -114,7 +132,11 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, report 
 
 	// Ensure we have a valid destination
 	if strings.TrimSpace(out) == "" {
-		out = config.Resolved.Build.Output
+		resolvedOut, err := config.OutputPath()
+		if err != nil {
+			return err
+		}
+		out = resolvedOut
 		if options.OutputPath != "" {
 			out = options.OutputPath
 		}
@@ -189,6 +211,16 @@ func (m *Manifest) Build(config *config.Config, options *config.Options, report 
 				err = fileutil.AtomicWrite(full, artefact.Builder)
 			}
 			if err != nil {
+				var discardErr *discardError
+				if errors.As(err, &discardErr) {
+					if removeErr := os.Remove(full); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
+						if report != nil {
+							report(artefact.Claim, removeErr)
+						}
+						return removeErr
+					}
+					return nil
+				}
 				if report != nil {
 					report(artefact.Claim, err)
 				}

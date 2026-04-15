@@ -44,11 +44,10 @@
                 <h2 class="section-title">Recent Posts</h2>
                 <p class="section-subtitle">Latest thoughts and tutorials</p>
 
-                {{ $posts := where "Section" "posts" .Site.Pages.All }}
-                {{ $sorted := sort "Date" "desc" $posts }}
-                {{ if $sorted }}
+                {{ $posts := query "select * from pages where Section = ? and Draft = ? order by Date desc" "posts" false | asPages }}
+                {{ if $posts }}
                 <div class="posts-list">
-                    {{ range $sorted }}
+                    {{ range $posts }}
                     <article class="post-card">
                         <div class="post-meta">
                             {{ if not (.Date.IsZero) }}

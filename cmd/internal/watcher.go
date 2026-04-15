@@ -46,7 +46,10 @@ func (w *Watcher) Start(ctx context.Context) error {
 		return fmt.Errorf("config file %q: %w", w.configPath, err)
 	}
 	if cfg, err := config.Load(w.configPath); err == nil {
-		paths, globs := cfg.WatchedPaths()
+		paths, globs, err := cfg.WatchedPaths()
+		if err != nil {
+			lazySend(w.Errors, err)
+		}
 		if err := w.addPaths(paths...); err != nil {
 			lazySend(w.Errors, err)
 		}
@@ -215,7 +218,11 @@ func (w *Watcher) rebuild() {
 		lazySend(w.Errors, err)
 		return
 	}
-	paths, globs := cfg.WatchedPaths()
+	paths, globs, err := cfg.WatchedPaths()
+	if err != nil {
+		lazySend(w.Errors, err)
+		return
+	}
 
 	w.removeAllWatches()
 	if err := w.addPath(w.configPath); err != nil {

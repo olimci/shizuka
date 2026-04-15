@@ -105,10 +105,13 @@ func devWatchingStatus(siteURL string) string {
 
 func devAction(ctx context.Context, cmd *cli.Command) error {
 	port := fmt.Sprintf(":%d", cmd.Int("port"))
-	configPath := cmd.String("config")
+	configPath, err := config.ResolvePath(cmd.String("config"))
+	if err != nil {
+		return err
+	}
 	siteURL := fmt.Sprintf("http://localhost:%d/", cmd.Int("port"))
 
-	err := coffee.Do(func(ctx context.Context, c *coffee.Coffee) error {
+	err = coffee.Do(func(ctx context.Context, c *coffee.Coffee) error {
 		defer func() {
 			_ = c.Clear()
 			_ = c.ClearHeader()
@@ -143,12 +146,12 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 		hub := internal.NewReloadHub()
 
 		headersFile := "_headers"
-		if cfg.Build.Steps.Headers != nil && cfg.Build.Steps.Headers.Output != "" {
-			headersFile = cfg.Build.Steps.Headers.Output
+		if cfg.Headers != nil && cfg.Headers.Output != "" {
+			headersFile = cfg.Headers.Output
 		}
 		redirectsFile := "_redirects"
-		if cfg.Build.Steps.Redirects != nil && cfg.Build.Steps.Redirects.Output != "" {
-			redirectsFile = cfg.Build.Steps.Redirects.Output
+		if cfg.Redirects != nil && cfg.Redirects.Output != "" {
+			redirectsFile = cfg.Redirects.Output
 		}
 
 		staticHandler := internal.NewStaticHandler(dist, internal.StaticHandlerOptions{
@@ -378,7 +381,10 @@ func scaffoldSiteForDev(ctx context.Context, c *coffee.Coffee) error {
 
 func xDevAction(ctx context.Context, cmd *cli.Command) error {
 	port := fmt.Sprintf(":%d", cmd.Int("port"))
-	configPath := cmd.String("config")
+	configPath, err := config.ResolvePath(cmd.String("config"))
+	if err != nil {
+		return err
+	}
 	siteURL := fmt.Sprintf("http://localhost:%d/", cmd.Int("port"))
 
 	fmt.Println(devHeader())
@@ -410,12 +416,12 @@ func xDevAction(ctx context.Context, cmd *cli.Command) error {
 	hub := internal.NewReloadHub()
 
 	headersFile := "_headers"
-	if cfg.Build.Steps.Headers != nil && cfg.Build.Steps.Headers.Output != "" {
-		headersFile = cfg.Build.Steps.Headers.Output
+	if cfg.Headers != nil && cfg.Headers.Output != "" {
+		headersFile = cfg.Headers.Output
 	}
 	redirectsFile := "_redirects"
-	if cfg.Build.Steps.Redirects != nil && cfg.Build.Steps.Redirects.Output != "" {
-		redirectsFile = cfg.Build.Steps.Redirects.Output
+	if cfg.Redirects != nil && cfg.Redirects.Output != "" {
+		redirectsFile = cfg.Redirects.Output
 	}
 
 	staticHandler := internal.NewStaticHandler(dist, internal.StaticHandlerOptions{

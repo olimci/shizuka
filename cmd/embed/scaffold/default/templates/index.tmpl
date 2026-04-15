@@ -41,11 +41,9 @@
                         <h2>Latest posts</h2>
                         <p>Short reads to get started.</p>
                     </div>
-                    {{ $posts := where "Section" "posts" .Site.Pages.All
-                    }} {{ $sorted := sort "Date" "desc" $posts }} {{ if $sorted
-                    }}
+                    {{ $posts := query "select * from pages where Section = ? and Draft = ? order by Date desc" "posts" false | asPages }} {{ if $posts }}
                     <div class="post-grid">
-                        {{ range $sorted }}
+                        {{ range $posts }}
                         <article class="post-card">
                             {{ if not (.Date.IsZero) }}
                             <p class="post-date">

@@ -54,13 +54,16 @@ type Page struct {
 	Updated time.Time
 	PubDate time.Time
 
-	Params map[string]any
+	Params  map[string]any
+	Queries map[string]*QueryResult
 
 	Headers map[string]string
 
 	Body template.HTML
 
 	Links []PageLink
+
+	Pagination *PaginationState
 
 	Featured bool
 	Draft    bool
@@ -132,24 +135,25 @@ type DataPageDoc struct {
 }
 
 type dataPagePayload struct {
-	Slug        string            `toml:"slug" yaml:"slug" json:"slug"`
-	URLPath     string            `toml:"url_path" yaml:"url_path" json:"url_path"`
-	Aliases     []string          `toml:"aliases" yaml:"aliases" json:"aliases"`
-	Title       string            `toml:"title" yaml:"title" json:"title"`
-	Description string            `toml:"description" yaml:"description" json:"description"`
-	Section     string            `toml:"section" yaml:"section" json:"section"`
-	Tags        []string          `toml:"tags" yaml:"tags" json:"tags"`
-	Date        time.Time         `toml:"date" yaml:"date" json:"date"`
-	Updated     time.Time         `toml:"updated" yaml:"updated" json:"updated"`
-	RSS         RSSMeta           `toml:"rss" yaml:"rss" json:"rss"`
-	Sitemap     SitemapMeta       `toml:"sitemap" yaml:"sitemap" json:"sitemap"`
-	Params      map[string]any    `toml:"params" yaml:"params" json:"params"`
-	Headers     map[string]string `toml:"headers" yaml:"headers" json:"headers"`
-	Template    string            `toml:"template" yaml:"template" json:"template"`
-	Body        string            `toml:"body" yaml:"body" json:"body"`
-	Featured    bool              `toml:"featured" yaml:"featured" json:"featured"`
-	Draft       bool              `toml:"draft" yaml:"draft" json:"draft"`
-	Weight      int               `toml:"weight" yaml:"weight" json:"weight"`
+	Slug        string                  `toml:"slug" yaml:"slug" json:"slug"`
+	URLPath     string                  `toml:"url_path" yaml:"url_path" json:"url_path"`
+	Aliases     []string                `toml:"aliases" yaml:"aliases" json:"aliases"`
+	Title       string                  `toml:"title" yaml:"title" json:"title"`
+	Description string                  `toml:"description" yaml:"description" json:"description"`
+	Section     string                  `toml:"section" yaml:"section" json:"section"`
+	Tags        []string                `toml:"tags" yaml:"tags" json:"tags"`
+	Date        time.Time               `toml:"date" yaml:"date" json:"date"`
+	Updated     time.Time               `toml:"updated" yaml:"updated" json:"updated"`
+	RSS         RSSMeta                 `toml:"rss" yaml:"rss" json:"rss"`
+	Sitemap     SitemapMeta             `toml:"sitemap" yaml:"sitemap" json:"sitemap"`
+	Params      map[string]any          `toml:"params" yaml:"params" json:"params"`
+	Queries     map[string]PageQueryDef `toml:"queries" yaml:"queries" json:"queries"`
+	Headers     map[string]string       `toml:"headers" yaml:"headers" json:"headers"`
+	Template    string                  `toml:"template" yaml:"template" json:"template"`
+	Body        string                  `toml:"body" yaml:"body" json:"body"`
+	Featured    bool                    `toml:"featured" yaml:"featured" json:"featured"`
+	Draft       bool                    `toml:"draft" yaml:"draft" json:"draft"`
+	Weight      int                     `toml:"weight" yaml:"weight" json:"weight"`
 }
 
 type PageTemplate struct {
@@ -267,6 +271,7 @@ func BuildPage(sourceRoot, source string) (*Page, error) {
 		Updated:     meta.Updated,
 		PubDate:     firstNonzero(meta.Updated, meta.Date, time.Now()),
 		Params:      meta.Params,
+		Queries:     nil,
 		Headers:     meta.Headers,
 		Body:        "",
 		Links:       nil,
@@ -345,10 +350,22 @@ func (p dataPagePayload) meta() Frontmatter {
 		RSS:         p.RSS,
 		Sitemap:     p.Sitemap,
 		Params:      p.Params,
+		Queries:     clonePageQueryDefs(p.Queries),
 		Headers:     p.Headers,
 		Template:    p.Template,
 		Featured:    p.Featured,
 		Draft:       p.Draft,
 		Weight:      p.Weight,
 	}
+}
+
+func clonePageQueryDefs(in map[string]PageQueryDef) map[string]PageQueryDef {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]PageQueryDef, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }

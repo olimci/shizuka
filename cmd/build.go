@@ -69,9 +69,14 @@ func buildAction(ctx context.Context, cmd *cli.Command) error {
 			_ = c.Clear()
 		}()
 
+		configPath, err := config.ResolvePath(cmd.String("config"))
+		if err != nil {
+			return err
+		}
+
 		opts := config.DefaultOptions()
 		opts.Context = ctx
-		opts.ConfigPath = cmd.String("config")
+		opts.ConfigPath = configPath
 
 		if cmd.Bool("dev") {
 			opts.Dev = true
@@ -120,9 +125,14 @@ func buildAction(ctx context.Context, cmd *cli.Command) error {
 }
 
 func xBuildAction(ctx context.Context, cmd *cli.Command) error {
+	configPath, err := config.ResolvePath(cmd.String("config"))
+	if err != nil {
+		return err
+	}
+
 	opts := config.DefaultOptions()
 	opts.Context = ctx
-	opts.ConfigPath = cmd.String("config")
+	opts.ConfigPath = configPath
 
 	if cmd.Bool("dev") {
 		opts.Dev = true

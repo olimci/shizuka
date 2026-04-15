@@ -18,163 +18,122 @@ import (
 	gmhtml "github.com/yuin/goldmark/renderer/html"
 )
 
-// Config represents the configuration for the build process.
+// Config represents the site configuration.
 type Config struct {
-	Shizuka ConfigShizuka `toml:"shizuka"`
-	Site    ConfigSite    `toml:"site"`
-	Build   ConfigBuild   `toml:"build"`
+	Version   string           `toml:"version" yaml:"version" json:"version"`
+	Site      ConfigSite       `toml:"site" yaml:"site" json:"site"`
+	Paths     ConfigPaths      `toml:"paths" yaml:"paths" json:"paths"`
+	Build     ConfigBuild      `toml:"build" yaml:"build" json:"build"`
+	Content   ConfigContent    `toml:"content" yaml:"content" json:"content"`
+	Headers   *ConfigHeaders   `toml:"headers" yaml:"headers" json:"headers"`
+	Redirects *ConfigRedirects `toml:"redirects" yaml:"redirects" json:"redirects"`
+	RSS       *ConfigRSS       `toml:"rss" yaml:"rss" json:"rss"`
+	Sitemap   *ConfigSitemap   `toml:"sitemap" yaml:"sitemap" json:"sitemap"`
 
-	Root     string         `toml:"-"`
-	Resolved ConfigResolved `toml:"-"`
-}
-
-type ConfigShizuka struct {
-	Version string `toml:"version"`
+	Root string `toml:"-" yaml:"-" json:"-"`
 }
 
 type ConfigSite struct {
-	Title       string `toml:"title"`
-	Description string `toml:"description"`
-	URL         string `toml:"url"`
+	Title       string `toml:"title" yaml:"title" json:"title"`
+	Description string `toml:"description" yaml:"description" json:"description"`
+	URL         string `toml:"url" yaml:"url" json:"url"`
 
-	Params map[string]any `toml:"params"`
+	Params  map[string]any             `toml:"params" yaml:"params" json:"params"`
+	Queries map[string]ConfigSiteQuery `toml:"queries" yaml:"queries" json:"queries"`
+}
+
+type ConfigSiteQuery struct {
+	Query string `toml:"query" yaml:"query" json:"query"`
+}
+
+type ConfigPaths struct {
+	Output    string `toml:"output" yaml:"output" json:"output"`
+	Content   string `toml:"content" yaml:"content" json:"content"`
+	Static    string `toml:"static" yaml:"static" json:"static"`
+	Templates string `toml:"templates" yaml:"templates" json:"templates"`
 }
 
 type ConfigBuild struct {
-	Output string `toml:"output"`
-	Minify bool   `toml:"minify"`
-
-	Steps ConfigBuildSteps `toml:"steps"`
+	Minify bool `toml:"minify" yaml:"minify" json:"minify"`
 }
 
-type ConfigResolved struct {
-	Build ResolvedBuild `toml:"-"`
+type ConfigContent struct {
+	Defaults ConfigContentDefaults `toml:"defaults" yaml:"defaults" json:"defaults"`
+	Markdown ConfigContentMarkdown `toml:"markdown" yaml:"markdown" json:"markdown"`
+	Bundles  ConfigContentBundles  `toml:"bundles" yaml:"bundles" json:"bundles"`
+	Raw      ConfigContentRaw      `toml:"raw" yaml:"raw" json:"raw"`
+	Git      *ConfigContentGit     `toml:"git" yaml:"git" json:"git"`
 }
 
-type ResolvedBuild struct {
-	Output string
-	Steps  ResolvedBuildSteps
-}
-
-type ResolvedBuildSteps struct {
-	Static    *ResolvedStepStatic
-	Content   *ResolvedStepContent
-	Headers   *ResolvedStepOutput
-	Redirects *ResolvedStepRedirects
-	RSS       *ResolvedStepOutput
-	Sitemap   *ResolvedStepOutput
-}
-
-type ResolvedStepStatic struct {
-	Source      string
-	Destination string
-}
-
-type ResolvedStepContent struct {
-	TemplateGlob string
-	Source       string
-	Destination  string
-}
-
-type ResolvedStepOutput struct {
-	Output string
-}
-
-type ResolvedStepRedirects struct {
-	Output  string
-	Shorten string
-}
-
-type ConfigBuildSteps struct {
-	Static    *ConfigStepStatic    `toml:"static"`
-	Content   *ConfigStepContent   `toml:"content"`
-	Headers   *ConfigStepHeaders   `toml:"headers"`
-	Redirects *ConfigStepRedirects `toml:"redirects"`
-	RSS       *ConfigStepRSS       `toml:"rss"`
-	Sitemap   *ConfigStepSitemap   `toml:"sitemap"`
-}
-
-type ConfigStepStatic struct {
-	Source      string `toml:"source"`
-	Destination string `toml:"destination"`
-}
-
-type ConfigStepContent struct {
-	TemplateGlob    string                `toml:"template_glob"`
-	Source          string                `toml:"source"`
-	Destination     string                `toml:"destination"`
-	DefaultTemplate string                `toml:"default_template"`
-	DefaultSection  string                `toml:"default_section"`
-	DefaultParams   map[string]any        `toml:"default_params"`
-	GoldmarkConfig  ConfigGoldmark        `toml:"goldmark_config"`
-	Markdown        ConfigContentMarkdown `toml:"markdown"`
-	BundleAssets    ConfigContentBundles  `toml:"bundle_assets"`
-	Raw             ConfigContentRaw      `toml:"raw"`
-	Git             *ConfigStepContentGit `toml:"git"`
+type ConfigContentDefaults struct {
+	Template string         `toml:"template" yaml:"template" json:"template"`
+	Section  string         `toml:"section" yaml:"section" json:"section"`
+	Params   map[string]any `toml:"params" yaml:"params" json:"params"`
 }
 
 type ConfigContentMarkdown struct {
-	Wikilinks bool `toml:"wikilinks"`
+	Wikilinks bool           `toml:"wikilinks" yaml:"wikilinks" json:"wikilinks"`
+	Goldmark  ConfigGoldmark `toml:"goldmark" yaml:"goldmark" json:"goldmark"`
 }
 
 type ConfigContentBundles struct {
-	Enabled bool   `toml:"enabled"`
-	Output  string `toml:"output"`
-	Mode    string `toml:"mode"`
+	Enabled bool   `toml:"enabled" yaml:"enabled" json:"enabled"`
+	Output  string `toml:"output" yaml:"output" json:"output"`
+	Mode    string `toml:"mode" yaml:"mode" json:"mode"`
 }
 
 type ConfigContentRaw struct {
-	Markdown bool `toml:"markdown"`
+	Markdown bool `toml:"markdown" yaml:"markdown" json:"markdown"`
 }
 
-type ConfigStepContentGit struct {
-	Enabled  bool `toml:"enabled"`
-	Backfill bool `toml:"backfill"`
+type ConfigContentGit struct {
+	Enabled  bool `toml:"enabled" yaml:"enabled" json:"enabled"`
+	Backfill bool `toml:"backfill" yaml:"backfill" json:"backfill"`
 }
 
-type ConfigStepHeaders struct {
-	Headers map[string]map[string]string `toml:"headers"`
-	Output  string                       `toml:"output"`
+type ConfigHeaders struct {
+	Output string                       `toml:"output" yaml:"output" json:"output"`
+	Values map[string]map[string]string `toml:"values" yaml:"values" json:"values"`
 }
 
-type ConfigStepRedirects struct {
-	Shorten   string     `toml:"shorten"`
-	Redirects []Redirect `toml:"redirects"`
-	Output    string     `toml:"output"`
+type ConfigRedirects struct {
+	Output  string     `toml:"output" yaml:"output" json:"output"`
+	Shorten string     `toml:"shorten" yaml:"shorten" json:"shorten"`
+	Entries []Redirect `toml:"entries" yaml:"entries" json:"entries"`
 }
 
-type ConfigStepRSS struct {
-	Output        string   `toml:"output"`
-	Sections      []string `toml:"sections"`
-	Limit         int      `toml:"limit"`
-	IncludeDrafts bool     `toml:"include_drafts"`
+type ConfigRSS struct {
+	Output        string   `toml:"output" yaml:"output" json:"output"`
+	Sections      []string `toml:"sections" yaml:"sections" json:"sections"`
+	Limit         int      `toml:"limit" yaml:"limit" json:"limit"`
+	IncludeDrafts bool     `toml:"include_drafts" yaml:"include_drafts" json:"include_drafts"`
 }
 
-type ConfigStepSitemap struct {
-	Output        string `toml:"output"`
-	IncludeDrafts bool   `toml:"include_drafts"`
+type ConfigSitemap struct {
+	Output        string `toml:"output" yaml:"output" json:"output"`
+	IncludeDrafts bool   `toml:"include_drafts" yaml:"include_drafts" json:"include_drafts"`
 }
 
 type Redirect struct {
-	From   string `toml:"from"`
-	To     string `toml:"to"`
-	Status int    `toml:"status"`
+	From   string `toml:"from" yaml:"from" json:"from"`
+	To     string `toml:"to" yaml:"to" json:"to"`
+	Status int    `toml:"status" yaml:"status" json:"status"`
 }
 
 type ConfigGoldmark struct {
-	Extensions []string               `toml:"extensions"`
-	Parser     ConfigGoldmarkParser   `toml:"parser"`
-	Renderer   ConfigGoldmarkRenderer `toml:"renderer"`
+	Extensions []string               `toml:"extensions" yaml:"extensions" json:"extensions"`
+	Parser     ConfigGoldmarkParser   `toml:"parser" yaml:"parser" json:"parser"`
+	Renderer   ConfigGoldmarkRenderer `toml:"renderer" yaml:"renderer" json:"renderer"`
 }
 
 type ConfigGoldmarkParser struct {
-	AutoHeadingID bool `toml:"auto_heading_id"`
-	Attribute     bool `toml:"attribute"`
+	AutoHeadingID bool `toml:"auto_heading_id" yaml:"auto_heading_id" json:"auto_heading_id"`
+	Attribute     bool `toml:"attribute" yaml:"attribute" json:"attribute"`
 }
 
 type ConfigGoldmarkRenderer struct {
-	Hardbreaks bool `toml:"hardbreaks"`
-	XHTML      bool `toml:"XHTML"`
+	Hardbreaks bool `toml:"hardbreaks" yaml:"hardbreaks" json:"hardbreaks"`
+	XHTML      bool `toml:"XHTML" yaml:"XHTML" json:"XHTML"`
 }
 
 // DefaultConfig constructs a new Config with default values.
@@ -200,35 +159,35 @@ func DefaultConfig() *Config {
 	}
 
 	return &Config{
-		Shizuka: ConfigShizuka{
-			Version: version.String(),
-		},
+		Version: version.String(),
 		Site: ConfigSite{
 			Title:       "Shizuka",
 			Description: "Shizuka site",
 			URL:         "https://example.com",
+			Params:      map[string]any{},
+			Queries:     map[string]ConfigSiteQuery{},
+		},
+		Paths: ConfigPaths{
+			Output:    "dist",
+			Content:   "content",
+			Static:    "static",
+			Templates: "templates/*.tmpl",
 		},
 		Build: ConfigBuild{
-			Output: "dist",
 			Minify: true,
-			Steps: ConfigBuildSteps{
-				Static: &ConfigStepStatic{
-					Source:      "static",
-					Destination: ".",
-				},
-				Content: &ConfigStepContent{
-					TemplateGlob:    "templates/*.tmpl",
-					Source:          "content",
-					Destination:     ".",
-					DefaultTemplate: "page",
-					DefaultParams:   map[string]any{},
-					GoldmarkConfig:  defaultGoldmark,
-					BundleAssets: ConfigContentBundles{
-						Enabled: false,
-						Output:  "_assets",
-						Mode:    "fingerprinted",
-					},
-				},
+		},
+		Content: ConfigContent{
+			Defaults: ConfigContentDefaults{
+				Template: "page",
+				Params:   map[string]any{},
+			},
+			Markdown: ConfigContentMarkdown{
+				Goldmark: defaultGoldmark,
+			},
+			Bundles: ConfigContentBundles{
+				Enabled: false,
+				Output:  "_assets",
+				Mode:    "fingerprinted",
 			},
 		},
 	}
@@ -236,20 +195,23 @@ func DefaultConfig() *Config {
 
 // Load loads a Config from a file.
 func Load(path string) (*Config, error) {
+	resolvedPath, err := ResolvePath(path)
+	if err != nil {
+		return nil, fmt.Errorf("config %q: %w", path, err)
+	}
+
 	cfg := DefaultConfig()
 
-	if err := decodeFile(path, cfg); err != nil {
+	if err := decodeFile(resolvedPath, cfg); err != nil {
 		return nil, fmt.Errorf("config %q: %w", path, err)
 	}
 
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("config %q: %w", path, err)
-	}
-	cfg.Root = filepath.Dir(filepath.Clean(path))
+	cfg.Root = filepath.Dir(filepath.Clean(resolvedPath))
 	if cfg.Root == "" {
 		cfg.Root = "."
 	}
-	if err := cfg.resolvePaths(); err != nil {
+
+	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config %q: %w", path, err)
 	}
 	return cfg, nil
@@ -257,20 +219,23 @@ func Load(path string) (*Config, error) {
 
 // LoadFS loads a Config from a file within the provided fs.FS.
 func LoadFS(fsys fs.FS, path string) (*Config, error) {
+	resolvedPath, err := resolvePathFS(fsys, path)
+	if err != nil {
+		return nil, fmt.Errorf("config %q: %w", path, err)
+	}
+
 	cfg := DefaultConfig()
 
-	if err := decodeFS(fsys, path, cfg); err != nil {
+	if err := decodeFS(fsys, resolvedPath, cfg); err != nil {
 		return nil, fmt.Errorf("config %q: %w", path, err)
 	}
 
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("config %q: %w", path, err)
-	}
-	cfg.Root = filepath.Dir(filepath.Clean(path))
+	cfg.Root = filepath.Dir(filepath.Clean(resolvedPath))
 	if cfg.Root == "" {
 		cfg.Root = "."
 	}
-	if err := cfg.resolvePaths(); err != nil {
+
+	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config %q: %w", path, err)
 	}
 	return cfg, nil
@@ -278,6 +243,10 @@ func LoadFS(fsys fs.FS, path string) (*Config, error) {
 
 // Validate validates the Config.
 func (c *Config) Validate() error {
+	if strings.TrimSpace(c.Version) == "" {
+		c.Version = version.String()
+	}
+
 	if c.Site.URL == "" {
 		return errors.New("site.url is required")
 	}
@@ -291,60 +260,24 @@ func (c *Config) Validate() error {
 	if c.Site.Params == nil {
 		c.Site.Params = map[string]any{}
 	}
-
-	if c.Build.Output == "" {
-		c.Build.Output = "dist"
+	if c.Site.Queries == nil {
+		c.Site.Queries = map[string]ConfigSiteQuery{}
+	}
+	if c.Content.Defaults.Params == nil {
+		c.Content.Defaults.Params = map[string]any{}
 	}
 
-	if c.Build.Steps.Static != nil {
-		if c.Build.Steps.Static.Source == "" {
-			c.Build.Steps.Static.Source = "static"
+	if c.Headers != nil {
+		if c.Headers.Values == nil {
+			c.Headers.Values = map[string]map[string]string{}
 		}
-		if c.Build.Steps.Static.Destination == "" {
-			c.Build.Steps.Static.Destination = "."
-		}
-	}
-
-	if c.Build.Steps.Content != nil {
-		if c.Build.Steps.Content.TemplateGlob == "" {
-			c.Build.Steps.Content.TemplateGlob = "templates/*.tmpl"
-		}
-		if c.Build.Steps.Content.Source == "" {
-			c.Build.Steps.Content.Source = "content"
-		}
-		if c.Build.Steps.Content.Destination == "" {
-			c.Build.Steps.Content.Destination = "."
-		}
-		if c.Build.Steps.Content.DefaultTemplate == "" {
-			c.Build.Steps.Content.DefaultTemplate = "page"
-		}
-		if c.Build.Steps.Content.DefaultParams == nil {
-			c.Build.Steps.Content.DefaultParams = map[string]any{}
-		}
-		if c.Build.Steps.Content.BundleAssets.Output == "" {
-			c.Build.Steps.Content.BundleAssets.Output = "_assets"
-		}
-		if c.Build.Steps.Content.BundleAssets.Mode == "" {
-			c.Build.Steps.Content.BundleAssets.Mode = "fingerprinted"
-		}
-		switch c.Build.Steps.Content.BundleAssets.Mode {
-		case "fingerprinted", "adjacent":
-		default:
-			return fmt.Errorf("build.steps.content.bundle_assets.mode must be \"fingerprinted\" or \"adjacent\" (got %q)", c.Build.Steps.Content.BundleAssets.Mode)
+		if c.Headers.Output == "" {
+			c.Headers.Output = "_headers"
 		}
 	}
 
-	if c.Build.Steps.Headers != nil {
-		if c.Build.Steps.Headers.Headers == nil {
-			c.Build.Steps.Headers.Headers = make(map[string]map[string]string)
-		}
-		if c.Build.Steps.Headers.Output == "" {
-			c.Build.Steps.Headers.Output = "_headers"
-		}
-	}
-
-	if c.Build.Steps.Redirects != nil {
-		shorten := c.Build.Steps.Redirects.Shorten
+	if c.Redirects != nil {
+		shorten := c.Redirects.Shorten
 		if shorten == "" {
 			shorten = "/s"
 		}
@@ -352,104 +285,105 @@ func (c *Config) Validate() error {
 			shorten = "/" + shorten
 		}
 		shorten = strings.TrimSuffix(shorten, "/")
-		c.Build.Steps.Redirects.Shorten = shorten
+		c.Redirects.Shorten = shorten
 
-		if c.Build.Steps.Redirects.Output == "" {
-			c.Build.Steps.Redirects.Output = "_redirects"
+		if c.Redirects.Output == "" {
+			c.Redirects.Output = "_redirects"
 		}
 	}
 
-	if c.Build.Steps.RSS != nil {
-		if c.Build.Steps.RSS.Output == "" {
-			c.Build.Steps.RSS.Output = "rss.xml"
-		}
+	if c.RSS != nil && c.RSS.Output == "" {
+		c.RSS.Output = "rss.xml"
+	}
+	if c.Sitemap != nil && c.Sitemap.Output == "" {
+		c.Sitemap.Output = "sitemap.xml"
 	}
 
-	if c.Build.Steps.Sitemap != nil {
-		if c.Build.Steps.Sitemap.Output == "" {
-			c.Build.Steps.Sitemap.Output = "sitemap.xml"
-		}
+	if c.Content.Bundles.Output == "" {
+		c.Content.Bundles.Output = "_assets"
+	}
+	if c.Content.Bundles.Mode == "" {
+		c.Content.Bundles.Mode = "fingerprinted"
+	}
+	switch c.Content.Bundles.Mode {
+	case "fingerprinted", "adjacent":
+	default:
+		return fmt.Errorf("content.bundles.mode must be \"fingerprinted\" or \"adjacent\" (got %q)", c.Content.Bundles.Mode)
+	}
+
+	if _, err := c.OutputPath(); err != nil {
+		return err
+	}
+	if _, err := c.StaticSourcePath(); err != nil {
+		return err
+	}
+	if _, err := c.ContentSourcePath(); err != nil {
+		return err
+	}
+	if _, err := c.TemplateGlob(); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (c *Config) WatchedPaths() (paths []string, globs []string) {
-	paths = make([]string, 0)
-	globs = make([]string, 0)
-
-	if c.Resolved.Build.Steps.Static != nil && c.Resolved.Build.Steps.Static.Source != "" {
-		paths = append(paths, c.Resolved.Build.Steps.Static.Source)
+func (c *Config) WatchedPaths() (paths []string, globs []string, err error) {
+	staticPath, err := c.StaticSourcePath()
+	if err != nil {
+		return nil, nil, err
+	}
+	contentPath, err := c.ContentSourcePath()
+	if err != nil {
+		return nil, nil, err
+	}
+	templateGlob, err := c.TemplateGlob()
+	if err != nil {
+		return nil, nil, err
 	}
 
-	if c.Resolved.Build.Steps.Content != nil {
-		if c.Resolved.Build.Steps.Content.Source != "" {
-			paths = append(paths, c.Resolved.Build.Steps.Content.Source)
-		}
-		if c.Resolved.Build.Steps.Content.TemplateGlob != "" {
-			globs = append(globs, c.Resolved.Build.Steps.Content.TemplateGlob)
-		}
-	}
-
-	return paths, globs
+	return []string{staticPath, contentPath}, []string{templateGlob}, nil
 }
 
-func (c *Config) resolvePaths() error {
+func (c *Config) OutputPath() (string, error) {
+	return c.resolvePath("paths.output", c.Paths.Output)
+}
+
+func (c *Config) StaticSourcePath() (string, error) {
+	return c.resolvePath("paths.static", c.Paths.Static)
+}
+
+func (c *Config) ContentSourcePath() (string, error) {
+	return c.resolvePath("paths.content", c.Paths.Content)
+}
+
+func (c *Config) TemplateGlob() (string, error) {
+	return c.resolveGlob("paths.templates", c.Paths.Templates)
+}
+
+func (c *Config) resolvePath(label, raw string) (string, error) {
 	root := c.Root
 	if root == "" {
 		root = "."
 	}
 
-	output, err := pathutil.ResolvePath(root, c.Build.Output)
+	resolved, err := pathutil.ResolvePath(root, raw)
 	if err != nil {
-		return fmt.Errorf("build.output: %w", err)
+		return "", fmt.Errorf("%s: %w", label, err)
 	}
-	c.Resolved.Build.Output = output.Path
+	return resolved.Path, nil
+}
 
-	if c.Build.Steps.Static != nil {
-		source, err := pathutil.ResolvePath(root, c.Build.Steps.Static.Source)
-		if err != nil {
-			return fmt.Errorf("build.steps.static.source: %w", err)
-		}
-		c.Resolved.Build.Steps.Static = &ResolvedStepStatic{
-			Source:      source.Path,
-			Destination: c.Build.Steps.Static.Destination,
-		}
+func (c *Config) resolveGlob(label, raw string) (string, error) {
+	root := c.Root
+	if root == "" {
+		root = "."
 	}
 
-	if c.Build.Steps.Content != nil {
-		source, err := pathutil.ResolvePath(root, c.Build.Steps.Content.Source)
-		if err != nil {
-			return fmt.Errorf("build.steps.content.source: %w", err)
-		}
-		glob, err := pathutil.ResolveGlob(root, c.Build.Steps.Content.TemplateGlob)
-		if err != nil {
-			return fmt.Errorf("build.steps.content.template_glob: %w", err)
-		}
-		c.Resolved.Build.Steps.Content = &ResolvedStepContent{
-			Source:       source.Path,
-			TemplateGlob: glob.Path,
-			Destination:  c.Build.Steps.Content.Destination,
-		}
+	resolved, err := pathutil.ResolveGlob(root, raw)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", label, err)
 	}
-
-	if c.Build.Steps.Headers != nil {
-		c.Resolved.Build.Steps.Headers = &ResolvedStepOutput{Output: c.Build.Steps.Headers.Output}
-	}
-	if c.Build.Steps.Redirects != nil {
-		c.Resolved.Build.Steps.Redirects = &ResolvedStepRedirects{
-			Output:  c.Build.Steps.Redirects.Output,
-			Shorten: c.Build.Steps.Redirects.Shorten,
-		}
-	}
-	if c.Build.Steps.RSS != nil {
-		c.Resolved.Build.Steps.RSS = &ResolvedStepOutput{Output: c.Build.Steps.RSS.Output}
-	}
-	if c.Build.Steps.Sitemap != nil {
-		c.Resolved.Build.Steps.Sitemap = &ResolvedStepOutput{Output: c.Build.Steps.Sitemap.Output}
-	}
-
-	return nil
+	return resolved.Path, nil
 }
 
 func (cfg ConfigGoldmark) Build() gm.Markdown {

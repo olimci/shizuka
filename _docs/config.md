@@ -1,85 +1,179 @@
 # Config (`shizuka.*`)
 
-Shizuka loads configuration from a TOML config file (default path: `shizuka.toml`).
+Shizuka loads configuration from TOML, YAML, or JSON.
+
+If you do not pass `--config`, Shizuka looks for `shizuka.toml` first, then `shizuka.yaml`, `shizuka.yml`, and `shizuka.json`.
 
 Unknown keys are treated as errors.
 
 ## Minimal config
 
-The built-in scaffolds generate a minimal config that relies on Shizuka defaults for most build behavior:
+The built-in scaffolds generate a minimal config that relies on Shizuka defaults for most behavior:
 
 ```toml
-shizuka.version = "0.1.0"
+version = "0.1.0"
 
 [site]
 title = "My site"
 description = "A small static site."
 url = "https://example.com/"
+
+[site.queries.posts]
+query = "select * from pages where Section = 'posts' order by Date desc"
+```
+
+Equivalent YAML:
+
+```yaml
+version: "0.1.0"
+site:
+  title: "My site"
+  description: "A small static site."
+  url: "https://example.com/"
+  queries:
+    posts:
+      query: "select * from pages where Section = 'posts' order by Date desc"
+```
+
+Equivalent JSON:
+
+```json
+{
+  "version": "0.1.0",
+  "site": {
+    "title": "My site",
+    "description": "A small static site.",
+    "url": "https://example.com/",
+    "queries": {
+      "posts": {
+        "query": "select * from pages where Section = 'posts' order by Date desc"
+      }
+    }
+  }
+}
 ```
 
 `site.url` is required and must start with `http://` or `https://`.
 
-## Build config
+`site.queries` defines named computed queries exposed in templates at `.Site.Queries`.
 
-All build options live under `[build]`.
+## Full layout
+
+Shizuka groups config by domain instead of build pipeline steps:
 
 ```toml
-[build]
+version = "0.1.0"
+
+[site]
+title = "My site"
+description = "A small static site."
+url = "https://example.com/"
+
+[paths]
 output = "dist"
+content = "content"
+static = "static"
+templates = "templates/*.tmpl"
+
+[build]
 minify = true
 
-[build.steps.static]
-source = "static"
-destination = "."
+[content.defaults]
+template = "page"
+section = ""
 
-[build.steps.content]
-source = "content"
-destination = "."
-template_glob = "templates/*.tmpl"
-default_template = "page"
-
-[build.steps.content.git]
-enabled = false
-backfill = true
-
-[build.steps.content.default_params]
+[content.defaults.params]
 author = "Your Name"
 
-[build.steps.content.goldmark_config]
+[content.markdown]
+wikilinks = false
+
+[content.markdown.goldmark]
 extensions = ["gfm", "table", "strikethrough", "tasklist", "deflist", "footnotes", "typographer"]
 
-[build.steps.content.goldmark_config.parser]
+[content.markdown.goldmark.parser]
 auto_heading_id = false
 attribute = false
 
-[build.steps.content.goldmark_config.renderer]
+[content.markdown.goldmark.renderer]
 hardbreaks = false
 XHTML = false
 
-[build.steps.content.markdown]
-wikilinks = false
-
-[build.steps.content.bundle_assets]
+[content.bundles]
 enabled = false
 output = "_assets"
 mode = "fingerprinted"
 
-[build.steps.content.raw]
+[content.raw]
 markdown = false
+
+[content.git]
+enabled = false
+backfill = true
+
+[headers]
+output = "_headers"
+
+[headers.values]
+"/" = { "X-Frame-Options" = "DENY" }
+
+[redirects]
+output = "_redirects"
+shorten = "/s"
+
+[[redirects.entries]]
+from = "/old"
+to = "/new"
+status = 301
+
+[rss]
+output = "rss.xml"
+sections = ["posts"]
+limit = 50
+include_drafts = false
+
+[sitemap]
+output = "sitemap.xml"
+include_drafts = false
 ```
 
-`default_params` are merged into each page’s frontmatter `params` (frontmatter wins).
+## Sections
 
-`default_template` is used by `shizuka new` when creating generic pages that do not explicitly pick a template. New files created by `shizuka new` use TOML frontmatter by default.
+### `paths`
 
-### `build.steps.content.bundle_assets`
+Filesystem locations for the site.
 
-Enables implicit page bundle asset discovery under `content/`.
+- `output`: build destination root, default `dist`
+- `content`: content source root, default `content`
+- `static`: static asset source root, default `static`
+- `templates`: template glob, default `templates/*.tmpl`
 
-- same-stem sibling files such as `posts/hello.png`
-- same-stem directories such as `posts/hello/hero.png`
+### `build`
 
-Supported settings:
+Build-wide toggles.
+
+- `minify`: minify rendered HTML and copied assets where supported; default `true`
+
+### `content.defaults`
+
+Defaults applied while indexing pages.
+
+- `template`: fallback template name; default `page`
+- `section`: fallback section name
+- `params`: merged into page `params`, with frontmatter winning on conflicts
+
+`content.defaults.template` is used by `shizuka new` when creating generic pages that do not explicitly pick a template. New files created by `shizuka new` use TOML frontmatter by default.
+
+### `content.markdown`
+
+Markdown-specific behavior.
+
+- `wikilinks`: when true, Shizuka rewrites wikilinks such as `[[about]]`, `[[about|About]]`, and `![[hero.png]]`
+- `goldmark`: Goldmark parser/renderer configuration
+
+### `content.bundles`
+
+Implicit page bundle asset discovery under `content/`.
 
 - `enabled`: turns bundle asset handling on or off
 - `output`: root output path for fingerprinted assets
@@ -87,19 +181,13 @@ Supported settings:
 
 When fingerprinting is enabled, relative Markdown and HTML body links that point at owned bundle assets are rewritten to the emitted asset URL.
 
-### `build.steps.content.markdown`
-
-Markdown-specific authoring options.
-
-- `wikilinks`: when true, Shizuka rewrites wikilinks such as `[[about]]`, `[[about|About]]`, and `![[hero.png]]`
-
-### `build.steps.content.raw`
+### `content.raw`
 
 Controls extra sidecar outputs for content sources.
 
 - `markdown`: when true, Markdown pages also emit a raw `.md` variant such as `posts/hello.md`
 
-### `build.steps.content.git`
+### `content.git`
 
 Enables git-backed metadata for content pages and for the site build.
 
@@ -108,76 +196,42 @@ Enables git-backed metadata for content pages and for the site build.
 
 When enabled, Shizuka exposes git metadata on `.Page.Git` and `.Site.Meta.Git`.
 
-```toml
-[build.steps.content.git]
-enabled = true
-backfill = true
-```
+### `headers`
 
-### `build.steps.headers`
+Writes a Netlify-style `_headers` file.
 
-Writes a Netlify-style `_headers` file. The final headers are:
+- `output`: output filename, default `_headers`
+- `values`: base header map keyed by URL path
 
-- whatever you put in config, plus
-- per-page `headers` from frontmatter (merged under that page’s URL path, e.g. `posts/hello`)
+Per-page `headers` from frontmatter are merged under that page’s URL path, for example `posts/hello`.
 
-```toml
-[build.steps.headers]
-output = "_headers"
-
-[build.steps.headers.headers]
-"/" = { "X-Frame-Options" = "DENY" }
-```
-
-### `build.steps.redirects`
+### `redirects`
 
 Writes a Netlify-style `_redirects` file.
 
-- `shorten` defaults to `"/s"`; when set explicitly, the value is used as written except that Shizuka still requires a leading `/` and removes a trailing `/`
-- for pages in section `"posts"`, a non-empty `slug` generates a short redirect: `{site.url}{shorten}/{last-slug-segment} -> {page.url_path}`
-- per-page `aliases` from frontmatter also generate redirects to that page’s primary `url_path`
-- you can also specify explicit redirects in config
-- generated short redirects do not change `.Page.Canon`; canonical URLs still point at the page’s actual URL path
+- `output`: output filename, default `_redirects`
+- `shorten`: base path for generated short redirects, default `"/s"`
+- `entries`: explicit redirects
+
+Generated redirects also include:
+
+- alias redirects from frontmatter `aliases`
+- short redirects for pages in section `"posts"` when `slug` is set
 
 URL paths are site-relative and do not include a leading `/` (for example `posts/hello`).
 
-```toml
-[build.steps.redirects]
-output = "_redirects"
-shorten = "/s"
-
-[[build.steps.redirects.redirects]]
-from = "/old"
-to = "/new"
-status = 301
-```
-
-### `build.steps.rss`
+### `rss`
 
 Builds an RSS feed at `output` (default `rss.xml`).
 
 Only pages matching all of the following are included:
 
 - `rss.include = true` in frontmatter
-- `sections` matches one of `build.steps.rss.sections`
-- not a draft (unless `include_drafts = true`)
+- `sections` matches one of `rss.sections`
+- not a draft unless `include_drafts = true`
 
-```toml
-[build.steps.rss]
-output = "rss.xml"
-sections = ["posts"]
-limit = 50
-include_drafts = false
-```
-
-### `build.steps.sitemap`
+### `sitemap`
 
 Builds `sitemap.xml` by default.
 
 Only pages with `sitemap.include = true` are included, and drafts are excluded unless configured otherwise.
-
-```toml
-[build.steps.sitemap]
-output = "sitemap.xml"
-include_drafts = false
-```
