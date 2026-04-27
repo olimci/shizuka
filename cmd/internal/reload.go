@@ -133,7 +133,7 @@ func injectReloadScript(html string) string {
 
 func ReloadMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !shouldInjectReload(r) {
+		if !shouldInject(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -191,7 +191,7 @@ func ReloadMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func shouldInjectReload(r *http.Request) bool {
+func shouldInject(r *http.Request) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}

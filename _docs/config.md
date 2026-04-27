@@ -17,9 +17,6 @@ version = "0.1.0"
 title = "My site"
 description = "A small static site."
 url = "https://example.com/"
-
-[site.queries.posts]
-query = "select * from pages where Section = 'posts' order by Date desc"
 ```
 
 Equivalent YAML:
@@ -30,9 +27,6 @@ site:
   title: "My site"
   description: "A small static site."
   url: "https://example.com/"
-  queries:
-    posts:
-      query: "select * from pages where Section = 'posts' order by Date desc"
 ```
 
 Equivalent JSON:
@@ -43,19 +37,12 @@ Equivalent JSON:
   "site": {
     "title": "My site",
     "description": "A small static site.",
-    "url": "https://example.com/",
-    "queries": {
-      "posts": {
-        "query": "select * from pages where Section = 'posts' order by Date desc"
-      }
-    }
+    "url": "https://example.com/"
   }
 }
 ```
 
 `site.url` is required and must start with `http://` or `https://`.
-
-`site.queries` defines named computed queries exposed in templates at `.Site.Queries`.
 
 ## Full layout
 
@@ -162,8 +149,6 @@ Defaults applied while indexing pages.
 - `section`: fallback section name
 - `params`: merged into page `params`, with frontmatter winning on conflicts
 
-`content.defaults.template` is used by `shizuka new` when creating generic pages that do not explicitly pick a template. New files created by `shizuka new` use TOML frontmatter by default.
-
 ### `content.markdown`
 
 Markdown-specific behavior.
@@ -192,7 +177,7 @@ Controls extra sidecar outputs for content sources.
 Enables git-backed metadata for content pages and for the site build.
 
 - `enabled`: turns git integration on or off
-- `backfill`: when true, missing page `date` and `updated` values are filled from git history
+- `backfill`: when true, missing page `created` and `updated` values are filled from git history
 
 When enabled, Shizuka exposes git metadata on `.Page.Git` and `.Site.Meta.Git`.
 

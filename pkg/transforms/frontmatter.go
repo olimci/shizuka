@@ -22,7 +22,7 @@ type Frontmatter struct {
 	Section     string   `toml:"section" yaml:"section" json:"section"`
 	Tags        []string `toml:"tags" yaml:"tags" json:"tags"`
 
-	Date    time.Time `toml:"date" yaml:"date" json:"date"`
+	Created time.Time `toml:"created" yaml:"created" json:"created"`
 	Updated time.Time `toml:"updated" yaml:"updated" json:"updated"`
 
 	RSS     RSSMeta     `toml:"rss" yaml:"rss" json:"rss"`

@@ -39,7 +39,7 @@ Key fields you can use in templates:
 - `.Page.Weight` (`int`)
 - `.Page.Canon` (absolute canonical URL)
 - `.Page.Section`
-- `.Page.Date`, `.Page.Updated`, `.Page.PubDate` (`time.Time`)
+- `.Page.Created`, `.Page.Updated`, `.Page.PubDate` (`time.Time`)
 - `.Page.Git.Tracked`, `.Page.Git.Created`, `.Page.Git.Updated`
 - `.Page.Git.CommitHash`, `.Page.Git.ShortHash`, `.Page.Git.AuthorName`
 - `.Page.Body` (`template.HTML`)
@@ -50,8 +50,9 @@ Key fields you can use in templates:
 - `.Page.Assets` (`map[string]*PageAsset`) for owned bundle assets
 - `.Page.Headers` (used by the headers build step; see `_docs/config.md`)
 - `.Page.Pagination` (`*PaginationState`) for paginated page renders only
+- `.Page.Group` (`*QueryGroupState`) for grouped query-generated pages only
 
-`PageLink` contains: `RawTarget`, `Fragment`, `Label`, `Embed`, `Target` (`*Page`).
+`PageLink` contains: `Source`, `RawTarget`, `Fragment`, `Label`, `Embed`, `Target` (`*Page`).
 
 `QueryResult` contains:
 
@@ -62,7 +63,6 @@ Key fields you can use in templates:
 
 - `.Site.Title`, `.Site.Description`, `.Site.URL`
 - `.Site.Params`
-- `.Site.Queries` (`map[string]*QueryResult`) for config-defined computed queries
 - `.Site.Meta.IsDev`, `.Site.Meta.ConfigPath`, `.Site.Meta.BuildTime`
 - `.Site.Meta.Git.Available`, `.Site.Meta.Git.RepoRoot`, `.Site.Meta.Git.GitDir`
 - `.Site.Meta.Git.Branch`, `.Site.Meta.Git.CommitHash`, `.Site.Meta.Git.ShortHash`, `.Site.Meta.Git.Dirty`
@@ -84,9 +84,10 @@ Shizuka registers a small set of helpers:
 - `asPages` / `AsPages` -> `[]*Page` from a page-backed `QueryResult`
 - `asPage` / `AsPage` -> first `*Page` from a page-backed `QueryResult`
 - `first` / `First` -> first row or item from a `QueryResult`, `[]map[string]any`, or `[]*Page`
-  - built-in tables: `pages`, `site`, `page_links`, `page_assets`
+  - built-in tables: `pages`, `page_links`, `page_assets`
   - page conversion expects the query result to include `_page`; `select * from pages ...` works, while projected queries like `select Title from pages` do not
-  - positional placeholders use `?`, for example: `{{ query "select * from pages where Section = ? order by Date desc limit ?" "posts" 5 | asPages }}`
+  - `page_links` and `page_assets` expose canonical nested fields such as `Source.URLPath`, `Target.Title`, and `Owner.Slug`
+  - positional placeholders use `?`, for example: `{{ query "select * from pages where Section = ? order by Created desc limit ?" "posts" 5 | asPages }}`
 
 Everything else is standard Go template behavior (`range`, `if`, `len`, `index`, etc).
 

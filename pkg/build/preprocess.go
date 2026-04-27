@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/olimci/shizuka/pkg/transforms"
+	"github.com/olimci/shizuka/pkg/utils/pathutil"
 )
 
 var (
@@ -13,18 +14,66 @@ var (
 	wikilinkPattern     = regexp.MustCompile(`(!?)\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]`)
 )
 
-func preprocessMarkdown(page *transforms.Page, pages []*transforms.Page, wikilinks bool) (string, []transforms.PageLink) {
+type pageLookup struct {
+	exact     map[string]*transforms.Page
+	basename  map[string]*transforms.Page
+	ambiguous map[string]struct{}
+}
+
+func newPageLookup(pages []*transforms.Page) *pageLookup {
+	lookup := &pageLookup{
+		exact:     make(map[string]*transforms.Page),
+		basename:  make(map[string]*transforms.Page),
+		ambiguous: make(map[string]struct{}),
+	}
+
+	for _, page := range pages {
+		if page == nil || page.HasError() {
+			continue
+		}
+
+		for _, candidate := range []string{
+			page.Slug,
+			page.URLPath,
+			pathutil.URLPathForContentPath(page.ContentPath),
+		} {
+			candidate = strings.Trim(strings.TrimSpace(candidate), "/")
+			if candidate == "" {
+				continue
+			}
+			lookup.exact[candidate] = page
+		}
+
+		rel := page.ContentPath
+		if rel == "" {
+			continue
+		}
+		base := strings.TrimSuffix(path.Base(rel), path.Ext(rel))
+		if base == "" {
+			continue
+		}
+		if existing, ok := lookup.basename[base]; !ok {
+			lookup.basename[base] = page
+		} else if existing != nil && existing.SourcePath != page.SourcePath {
+			lookup.ambiguous[base] = struct{}{}
+		}
+	}
+
+	return lookup
+}
+
+func preprocessMarkdown(page *transforms.Page, lookup *pageLookup, wikilinks bool) (string, []transforms.PageLink) {
 	body := page.Source.RawBody
 	links := make([]transforms.PageLink, 0)
 
 	if wikilinks {
 		var wikilinkLinks []transforms.PageLink
-		body, wikilinkLinks = rewriteMarkdownWikilinks(body, page, pages)
+		body, wikilinkLinks = rewriteMarkdownWikilinks(body, page, lookup)
 		links = append(links, wikilinkLinks...)
 	}
 
 	body = rewriteMarkdownBundleLinks(body, page.Assets)
-	links = append(links, discoverMarkdownLinks(page.Source.RawBody, page, pages)...)
+	links = append(links, discoverMarkdownLinks(page.Source.RawBody, page, lookup)...)
 
 	return body, links
 }
@@ -44,7 +93,7 @@ func rewriteMarkdownBundleLinks(body string, assets map[string]*transforms.PageA
 	})
 }
 
-func rewriteMarkdownWikilinks(body string, page *transforms.Page, pages []*transforms.Page) (string, []transforms.PageLink) {
+func rewriteMarkdownWikilinks(body string, page *transforms.Page, lookup *pageLookup) (string, []transforms.PageLink) {
 	links := make([]transforms.PageLink, 0)
 
 	body = wikilinkPattern.ReplaceAllStringFunc(body, func(match string) string {
@@ -78,12 +127,13 @@ func rewriteMarkdownWikilinks(body string, page *transforms.Page, pages []*trans
 		}
 
 		link := transforms.PageLink{
+			Source:    page,
 			RawTarget: target,
 			Fragment:  fragment,
 			Label:     alias,
 			Embed:     embed,
 		}
-		if linkedPage, ok := resolvePageTarget(pages, target); ok {
+		if linkedPage, ok := resolvePageTarget(lookup, target); ok {
 			link.Target = linkedPage
 		}
 
@@ -113,7 +163,7 @@ func rewriteMarkdownWikilinks(body string, page *transforms.Page, pages []*trans
 	return body, links
 }
 
-func discoverMarkdownLinks(body string, page *transforms.Page, pages []*transforms.Page) []transforms.PageLink {
+func discoverMarkdownLinks(body string, page *transforms.Page, lookup *pageLookup) []transforms.PageLink {
 	if page == nil || page.Source.Format != transforms.PageSourceFormatMarkdown {
 		return nil
 	}
@@ -141,11 +191,12 @@ func discoverMarkdownLinks(body string, page *transforms.Page, pages []*transfor
 		}
 
 		link := transforms.PageLink{
+			Source:    page,
 			RawTarget: rawTarget,
 			Fragment:  fragment,
 			Label:     label,
 		}
-		if linkedPage, ok := resolvePageTarget(pages, normalizedTarget); ok {
+		if linkedPage, ok := resolvePageTarget(lookup, normalizedTarget); ok {
 			link.Target = linkedPage
 		}
 		if link.Target == nil {
@@ -243,50 +294,23 @@ func resolveWikilinkAsset(assets map[string]*transforms.PageAsset, target string
 	return asset.URL, asset.MediaType, true
 }
 
-func resolvePageTarget(pages []*transforms.Page, target string) (*transforms.Page, bool) {
+func resolvePageTarget(lookup *pageLookup, target string) (*transforms.Page, bool) {
+	if lookup == nil {
+		return nil, false
+	}
+
 	target = strings.Trim(strings.TrimSpace(target), "/")
 	if target == "" {
 		return nil, false
 	}
 
-	var (
-		exact     *transforms.Page
-		basename  *transforms.Page
-		ambiguous bool
-	)
-
-	for _, page := range pages {
-		if page == nil || page.HasError() {
-			continue
-		}
-
-		if page.Slug == target || page.URLPath == target {
-			return page, true
-		}
-
-		rel := page.ContentPath
-		if rel == "" {
-			continue
-		}
-
-		if transforms.URLPathForContentPath(rel) == target {
-			exact = page
-		}
-
-		base := strings.TrimSuffix(path.Base(rel), path.Ext(rel))
-		if base == target {
-			if basename == nil {
-				basename = page
-			} else if basename.SourcePath != page.SourcePath {
-				ambiguous = true
-			}
-		}
-	}
-
-	if exact != nil {
+	if exact := lookup.exact[target]; exact != nil {
 		return exact, true
 	}
-	if basename != nil && !ambiguous {
+	if _, ambiguous := lookup.ambiguous[target]; ambiguous {
+		return nil, false
+	}
+	if basename := lookup.basename[target]; basename != nil {
 		return basename, true
 	}
 	return nil, false

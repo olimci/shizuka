@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 
@@ -307,9 +308,7 @@ func mergeTemplateVars(cfg map[string]scaffold.TemplateCfgVar, overrides map[str
 		merged[key] = variable.Default
 	}
 
-	for key, value := range overrides {
-		merged[key] = value
-	}
+	maps.Copy(merged, overrides)
 
 	return merged
 }

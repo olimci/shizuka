@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/olimci/shizuka/pkg/utils/errutil"
 )
 
 func DefaultTemplateFuncs() template.FuncMap {
@@ -24,16 +26,13 @@ func DefaultTemplateFuncs() template.FuncMap {
 		"merge":     TemplateFuncMerge,
 		"rawHTML":   TemplateFuncRawHTML,
 		"first":     TemplateFuncFirst,
-		"First":     TemplateFuncFirst,
 		"asPages":   TemplateFuncAsPages,
-		"AsPages":   TemplateFuncAsPages,
 		"asPage":    TemplateFuncAsPage,
-		"AsPage":    TemplateFuncAsPage,
 	}
 }
 
 func TemplateFuncDiscard() (string, error) {
-	return "", &DiscardError{}
+	return "", errutil.Discard()
 }
 
 // TemplateFuncDateFmt formats a time using Go's time layout.

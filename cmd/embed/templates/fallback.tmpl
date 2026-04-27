@@ -23,7 +23,7 @@
                 <div class="panel-h">
                     <div>metadata</div>
                     <div class="right">
-                        {{- if not .Page.Date.IsZero -}} {{ .Page.Date.Format
+                        {{- if not .Page.Created.IsZero -}} {{ .Page.Created.Format
                         "2006-01-02" }} {{- else -}} undated {{- end -}}
                     </div>
                 </div>
@@ -50,9 +50,9 @@
                     {{- end }} {{- if .Page.Section }}
                     <dt>section</dt>
                     <dd>{{ .Page.Section }}</dd>
-                    {{- end }} {{- if not .Page.Date.IsZero }}
-                    <dt>date</dt>
-                    <dd>{{ .Page.Date.Format "2006-01-02 15:04:05" }}</dd>
+                    {{- end }} {{- if not .Page.Created.IsZero }}
+                    <dt>created</dt>
+                    <dd>{{ .Page.Created.Format "2006-01-02 15:04:05" }}</dd>
                     {{- end }} {{- if not .Page.Updated.IsZero }}
                     <dt>updated</dt>
                     <dd>{{ .Page.Updated.Format "2006-01-02 15:04:05" }}</dd>

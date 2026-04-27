@@ -54,18 +54,7 @@ func Open(ctx context.Context, startDir string) (*Repo, error) {
 	}, nil
 }
 
-func (r *Repo) Root() string {
-	if r == nil {
-		return ""
-	}
-	return r.root
-}
-
 func (r *Repo) SiteInfo(ctx context.Context) (*transforms.SiteGitMeta, error) {
-	if r == nil {
-		return nil, fmt.Errorf("%w: nil repo", ErrUnavailable)
-	}
-
 	head, err := runGit(ctx, r.root, "rev-parse", "HEAD")
 	if err != nil {
 		return nil, err
@@ -95,10 +84,6 @@ func (r *Repo) SiteInfo(ctx context.Context) (*transforms.SiteGitMeta, error) {
 }
 
 func (r *Repo) FileInfo(ctx context.Context, relPath string, followRenames bool) (*transforms.PageGitMeta, error) {
-	if r == nil {
-		return nil, fmt.Errorf("%w: nil repo", ErrUnavailable)
-	}
-
 	relPath = filepath.ToSlash(filepath.Clean(strings.TrimSpace(relPath)))
 	if relPath == "." || relPath == "" || strings.HasPrefix(relPath, "../") {
 		return &transforms.PageGitMeta{}, nil

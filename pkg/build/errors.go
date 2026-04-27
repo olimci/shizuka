@@ -171,8 +171,7 @@ func (f *Failure) Summary() string {
 }
 
 func AsFailure(err error) (*Failure, bool) {
-	var failure *Failure
-	if errors.As(err, &failure) {
+	if failure, ok := errors.AsType[*Failure](err); ok {
 		return failure, true
 	}
 	return nil, false

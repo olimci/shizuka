@@ -4,7 +4,7 @@ description: "The story behind creating a new static site generator and what mak
 template: "post"
 section: "posts"
 slug: "posts/why-i-built-this"
-date: 2024-01-15
+created: 2024-01-15
 tags:
   - meta
   - shizuka

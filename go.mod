@@ -7,11 +7,10 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/olimci/coffee v0.0.0-20260404132717-265618e6243c
-	github.com/olimci/structql v0.0.0-20260414223902-ea63710c64df
+	github.com/olimci/structql v0.0.0-20260418001028-ca2b891caa4e
 	github.com/tdewolff/minify/v2 v2.24.12
 	github.com/urfave/cli/v3 v3.8.0
 	github.com/yuin/goldmark v1.8.2
-	golang.org/x/sync v0.20.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

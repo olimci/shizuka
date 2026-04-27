@@ -1,15 +1,17 @@
 package build
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/manifest"
+	"github.com/olimci/shizuka/pkg/options"
+	"github.com/olimci/shizuka/pkg/profile"
+	"github.com/olimci/shizuka/pkg/registry"
 	"github.com/olimci/shizuka/pkg/utils/set"
-	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -28,63 +30,98 @@ type BuildCtx struct {
 	Dev        bool
 }
 
-func Build(opts *config.Options) error {
+type dag struct {
+	m   map[string]Step
+	adj map[string][]string
+	deg map[string]int
+}
+
+func Build(opt ...options.Option) (err error) {
+	opts := options.DefaultOptions().Apply(opt...)
+
+	profileState := opts.ProfileState
+	if profileState == nil && opts.ProfileOutputPath != "" {
+		profileState = profile.NewState()
+	}
+
+	defer func() {
+		report := profileState.Finalise()
+		if opts.ProfileOutputPath == "" {
+			return
+		}
+		if writeErr := profile.WriteJSON(opts.ProfileOutputPath, report); writeErr != nil && err == nil {
+			err = writeErr
+		}
+	}()
+
+	profileState.Begin()
+
+	initSpan := profileState.StartSpan("init", "root", nil)
+
 	configPath, err := config.ResolvePath(filepath.Clean(opts.ConfigPath))
 	if err != nil {
 		return err
 	}
-	config, err := config.Load(configPath)
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		return err
 	}
-	sourceRoot := config.Root
 
 	if opts.SiteURL != "" {
-		config.Site.URL = opts.SiteURL
-		if err := config.Validate(); err != nil {
+		cfg.Site.URL = opts.SiteURL
+		if err := cfg.Validate(); err != nil {
 			return err
 		}
 	}
 
 	steps := make([]Step, 0)
-	steps = append(steps, StepStatic())
+	steps = append(steps, StepStatic(cfg))
+	steps = append(steps, StepContent(cfg, opts)...)
 
-	useGit := config.Content.Git != nil && config.Content.Git.Enabled
-	steps = append(steps, StepContent(useGit)...)
-
-	if config.Headers != nil {
-		steps = append(steps, StepHeaders())
+	if cfg.Headers != nil {
+		steps = append(steps, StepHeaders(cfg))
 	}
-	if config.Redirects != nil {
-		steps = append(steps, StepRedirects())
+	if cfg.Redirects != nil {
+		steps = append(steps, StepRedirects(cfg))
 	}
-	if config.RSS != nil {
-		steps = append(steps, StepRSS())
+	if cfg.RSS != nil {
+		steps = append(steps, StepRSS(cfg))
 	}
-	if config.Sitemap != nil {
-		steps = append(steps, StepSitemap())
+	if cfg.Sitemap != nil {
+		steps = append(steps, StepSitemap(cfg))
 	}
 
-	return build(steps, config, opts, sourceRoot, configPath)
+	initSpan.End(nil)
+
+	return build(steps, cfg, opts, cfg.Root, configPath, profileState)
 }
 
-// BuildSteps is a function that builds a site from a DAG of steps.
-func build(steps []Step, config *config.Config, options *config.Options, sourceRoot, configPath string) error {
+func build(steps []Step, cfg *config.Config, options *options.Options, sourceRoot, configPath string, profileState *profile.State) error {
 	startTime := time.Now()
 
 	man := manifest.New()
-	man.Set(string(OptionsK), options)
-	man.Set(string(ConfigK), config)
-	man.Set(string(BuildCtxK), &BuildCtx{
+	reg := registry.New()
+	cacheReg := options.CacheRegistry
+	if cacheReg == nil {
+		cacheReg = registry.New()
+	}
+	registry.SetAs(reg, BuildCtxK, &BuildCtx{
 		StartTime:  startTime,
 		ConfigPath: configPath,
 		Dev:        options.Dev,
 	})
 
+	ctx, cancel := context.WithCancel(options.Context)
+	defer cancel()
+
 	buildErrors := &errorState{}
+	if err := man.Begin(ctx, cfg, options, buildErrors.Add, "", profileState); err != nil {
+		return err
+	}
 
 	dag, err := newDAG(steps)
 	if err != nil {
+		_ = man.Complete(false)
 		return err
 	}
 
@@ -95,129 +132,120 @@ func build(steps []Step, config *config.Config, options *config.Options, sourceR
 		}
 	}
 	if len(ready) == 0 {
+		_ = man.Complete(false)
 		return ErrCircularDependency
 	}
 
+	maxWorkers := options.MaxWorkers
+	if maxWorkers <= 0 {
+		maxWorkers = len(steps)
+		if maxWorkers == 0 {
+			maxWorkers = 1
+		}
+	}
+
+	type result struct {
+		id  string
+		err error
+	}
+
+	results := make(chan result)
+	active := 0
 	done := 0
 
-	if options.MaxWorkers <= 1 {
-		ctx := options.Context
-		for len(ready) > 0 {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
+	startStep := func(id string) {
+		active++
+
+		step := dag.m[id]
+		go func() {
+			sc := StepContext{
+				Manifest:     man,
+				Registry:     reg,
+				Cache:        cacheReg,
+				SourceRoot:   sourceRoot,
+				ConfigPath:   configPath,
+				ChangedPaths: normalizeChangedPaths(options.ChangedPaths),
+				errors:       buildErrors,
 			}
 
+			stepSpan := profileState.StartSpan("step", step.ID, nil)
+			err := step.Fn(ctx, &sc)
+			stepSpan.End(nil)
+
+			if err != nil {
+				results <- result{
+					id:  step.ID,
+					err: fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err),
+				}
+				return
+			}
+
+			results <- result{id: step.ID}
+		}()
+	}
+
+	for done < len(steps) {
+		for active < maxWorkers && len(ready) > 0 {
 			id := ready[0]
 			ready = ready[1:]
+			startStep(id)
+		}
 
-			step := dag.m[id]
-			sc := StepContext{
-				Manifest:   man,
-				SourceRoot: sourceRoot,
-				errors:     buildErrors,
+		if active == 0 {
+			var stuck []string
+			for id, d := range dag.deg {
+				if d != 0 {
+					stuck = append(stuck, id)
+				}
 			}
+			cancel()
+			_ = man.Complete(false)
+			return fmt.Errorf("%w: %v", ErrCircularDependency, stuck)
+		}
 
-			if err := step.Fn(ctx, &sc); err != nil {
-				return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
+		select {
+		case <-ctx.Done():
+			_ = man.Complete(false)
+			return ctx.Err()
+
+		case res := <-results:
+			active--
+			if res.err != nil {
+				cancel()
+				_ = man.Complete(false)
+				return res.err
 			}
 
 			done++
-			for _, req := range dag.adj[step.ID] {
-				dag.deg[req]--
-				if dag.deg[req] == 0 {
-					ready = append(ready, req)
+			for _, dep := range dag.adj[res.id] {
+				dag.deg[dep]--
+				if dag.deg[dep] == 0 {
+					ready = append(ready, dep)
 				}
 			}
-		}
-	} else {
-		g, ctx := errgroup.WithContext(options.Context)
-		if options.MaxWorkers > 0 {
-			g.SetLimit(options.MaxWorkers)
-		}
-
-		var (
-			mu       sync.Mutex
-			schedule func(id string)
-		)
-
-		schedule = func(id string) {
-			step := dag.m[id]
-			g.Go(func() error {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				default:
-				}
-
-				sc := StepContext{
-					Manifest:   man,
-					SourceRoot: sourceRoot,
-					errors:     buildErrors,
-				}
-
-				if err := step.Fn(ctx, &sc); err != nil {
-					return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
-				}
-
-				var next []string
-				mu.Lock()
-				done++
-				for _, req := range dag.adj[step.ID] {
-					dag.deg[req]--
-					if dag.deg[req] == 0 {
-						next = append(next, req)
-					}
-				}
-				mu.Unlock()
-
-				for _, id := range next {
-					schedule(id)
-				}
-
-				return nil
-			})
-		}
-
-		for _, id := range ready {
-			schedule(id)
-		}
-
-		if err := g.Wait(); err != nil {
-			return err
 		}
 	}
 
-	if done != len(steps) {
-		var stuck []string
-		for id, d := range dag.deg {
-			if d != 0 {
-				stuck = append(stuck, id)
-			}
+	manifestErr := man.Complete(!buildErrors.HasErrors())
+	if manifestErr != nil {
+		if buildErrors.HasErrors() {
+			return &Failure{Errors: buildErrors.Slice()}
 		}
-		return fmt.Errorf("%w: %v", ErrCircularDependency, stuck)
-	}
-
-	if !buildErrors.HasErrors() {
-		if err := man.Build(config, options, buildErrors.Add, ""); err != nil {
-			if buildErrors.HasErrors() {
-				return &Failure{Errors: buildErrors.Slice()}
-			}
-			return err
-		}
+		return manifestErr
 	}
 
 	if buildErrors.HasErrors() {
 		failure := &Failure{Errors: buildErrors.Slice()}
 		if options.Dev && options.ErrTemplate != nil {
-			man := manifest.New()
-			man.Emit(manifest.TemplateArtefact(
-				manifest.Claim{Owner: "build", Target: "index.html", Canon: "/"},
-				options.ErrTemplate,
-				failure,
-			))
-			_ = man.Build(config, options, nil, "")
+			errMan := manifest.New()
+			if err := errMan.Begin(options.Context, cfg, options, nil, "", profileState); err == nil {
+				errMan.Emit(manifest.TemplateArtefact(
+					manifest.Claim{Owner: "build", Target: "index.html", Canon: "/"},
+					options.ErrTemplate,
+					failure,
+				))
+				_ = errMan.Complete(true)
+			}
 		}
 		return failure
 	}
@@ -261,11 +289,4 @@ func newDAG(steps []Step) (*dag, error) {
 	}
 
 	return d, nil
-}
-
-// dag is an internal struct representing a directed acyclic graph
-type dag struct {
-	m   map[string]Step
-	adj map[string][]string
-	deg map[string]int
 }

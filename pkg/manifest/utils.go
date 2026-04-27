@@ -1,10 +1,6 @@
 package manifest
 
 import (
-	"errors"
-	"fmt"
-	"io/fs"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -68,54 +64,9 @@ func makeArtefacts(as []Artefact) (artefacts map[string]Artefact, conflicts map[
 	return artefacts, conflicts
 }
 
-func walkDestination(root string) (*set.Set[string], *set.Set[string], error) {
-	fsys := os.DirFS(root)
-	files := set.New[string]()
-	dirs := set.New[string]()
-
-	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		p = path.Clean(p)
-		if p == "." {
-			dirs.Add(".")
-			return nil
-		}
-
-		if d.IsDir() {
-			dirs.Add(p)
-			return nil
-		}
-
-		files.Add(p)
-		return nil
-	})
-
-	return files, dirs, err
-}
-
 func displayPath(root, rel string) string {
 	if rel == "." {
 		return root
 	}
 	return filepath.Clean(filepath.Join(root, rel))
-}
-
-func ensureOutputRoot(root string) error {
-	info, err := os.Stat(root)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			if err := os.MkdirAll(root, 0o755); err != nil {
-				return fmt.Errorf("output directory %q: %w", root, err)
-			}
-			return nil
-		}
-		return fmt.Errorf("output directory %q: %w", root, err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("output path %q is not a directory", root)
-	}
-	return nil
 }

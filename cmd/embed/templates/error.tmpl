@@ -22,7 +22,7 @@
                 <div class="panel-h">
                     <div>metadata</div>
                     <div class="right">
-                        {{- if not .Page.Date.IsZero -}} {{ .Page.Date.Format
+                        {{- if not .Page.Created.IsZero -}} {{ .Page.Created.Format
                         "2006-01-02" }} {{- else -}} undated {{- end -}}
                     </div>
                 </div>

@@ -22,7 +22,6 @@ func Execute(ctx context.Context, args []string) error {
 		Commands: []*cli.Command{
 			versionCmd,
 			initCmd,
-			newCmd,
 			buildCmd,
 			devCmd,
 
@@ -54,7 +53,6 @@ var xCmd = &cli.Command{
 	Commands: []*cli.Command{
 		xVersionCmd,
 		xInitCmd,
-		xNewCmd,
 		xBuildCmd,
 		xDevCmd,
 	},

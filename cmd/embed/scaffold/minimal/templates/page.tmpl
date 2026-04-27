@@ -12,9 +12,9 @@
         <div class="container">
             <header>
                 <h1>{{.Page.Title}}</h1>
-                {{if not (.Page.Date.IsZero)}}
+                {{if not (.Page.Created.IsZero)}}
                 <p class="meta">
-                    Published on {{.Page.Date.Format "January 2, 2006"}}
+                    Published on {{.Page.Created.Format "January 2, 2006"}}
                 </p>
                 {{end}}
             </header>

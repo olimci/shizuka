@@ -37,12 +37,7 @@ type ConfigSite struct {
 	Description string `toml:"description" yaml:"description" json:"description"`
 	URL         string `toml:"url" yaml:"url" json:"url"`
 
-	Params  map[string]any             `toml:"params" yaml:"params" json:"params"`
-	Queries map[string]ConfigSiteQuery `toml:"queries" yaml:"queries" json:"queries"`
-}
-
-type ConfigSiteQuery struct {
-	Query string `toml:"query" yaml:"query" json:"query"`
+	Params map[string]any `toml:"params" yaml:"params" json:"params"`
 }
 
 type ConfigPaths struct {
@@ -86,7 +81,6 @@ type ConfigContentRaw struct {
 }
 
 type ConfigContentGit struct {
-	Enabled  bool `toml:"enabled" yaml:"enabled" json:"enabled"`
 	Backfill bool `toml:"backfill" yaml:"backfill" json:"backfill"`
 }
 
@@ -164,7 +158,6 @@ func DefaultConfig() *Config {
 			Description: "Shizuka site",
 			URL:         "https://example.com",
 			Params:      map[string]any{},
-			Queries:     map[string]ConfigSiteQuery{},
 		},
 		Paths: ConfigPaths{
 			Output:    "dist",
@@ -234,9 +227,6 @@ func (c *Config) Validate() error {
 
 	if c.Site.Params == nil {
 		c.Site.Params = map[string]any{}
-	}
-	if c.Site.Queries == nil {
-		c.Site.Queries = map[string]ConfigSiteQuery{}
 	}
 	if c.Content.Defaults.Params == nil {
 		c.Content.Defaults.Params = map[string]any{}

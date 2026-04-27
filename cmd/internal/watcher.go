@@ -252,3 +252,15 @@ func (w *Watcher) addDirectoryIfNeeded(p string) {
 		lazySend(w.Errors, fmt.Errorf("directory %q: %w", p, err))
 	}
 }
+
+type WatchEvent struct {
+	Reason string
+	Paths  []string
+}
+
+func lazySend[T any](ch chan<- T, value T) {
+	select {
+	case ch <- value:
+	default:
+	}
+}

@@ -23,7 +23,7 @@ section: "posts"
 slug: "posts/hello"
 url_path: "writing/hello"
 aliases: ["posts/hello", "hello"]
-date: 2024-01-15
+created: 2024-01-15
 updated: 2024-02-01
 weight: 10
 tags: ["intro", "shizuka"]
@@ -108,7 +108,7 @@ Top-level:
 - `description` (string)
 - `section` (string): becomes `.Page.Section`
 - `tags` ([]string)
-- `date` / `updated` (timestamps)
+- `created` / `updated` (timestamps)
 - `weight` (int): optional ordering hint; lower values sort earlier
 - `template` (string): required for rendering
 - `body` (string): only for structured pages (`*.toml`/`*.yaml`/`*.json`)
@@ -120,7 +120,14 @@ Nested / maps:
 - `params` (map): merged into `.Page.Params` (overrides config defaults)
 - `queries` (map): named computed queries exposed at `.Page.Queries`
   - each query must define `query`
-  - one query per page may additionally set `paginate = true`, `page_size`, and `template`
+  - one query per page may additionally expand into generated pages with:
+    - `paginate = true`
+    - `page_size`
+    - `template`
+    - `group_by`: result column name to split into grouped collection pages
+    - `group_format`: `fmt.Sprintf` format for each group path segment (default `%v`)
+    - `page_format`: `fmt.Sprintf` format for the pagination path segment (default `page/%d`)
+    - `redirect_page_1 = true`: make the bare collection path redirect to the formatted first page via aliases
 - `headers` (map string->string): per-page headers for the headers build step (keyed by URL path)
 - `rss`:
   - `include` (bool), `title`, `description`, `guid`

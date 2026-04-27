@@ -36,10 +36,10 @@
                     {{end}}
 
                     <div class="article-meta">
-                        {{if not (.Page.Date.IsZero)}}
+                        {{if not (.Page.Created.IsZero)}}
                         <div class="article-meta-item">
                             <span>📅</span>
-                            <time>{{.Page.Date.Format "January 2, 2006"}}</time>
+                            <time>{{.Page.Created.Format "January 2, 2006"}}</time>
                         </div>
                         {{end}}
                         {{if not (.Page.Updated.IsZero)}}

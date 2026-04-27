@@ -4,7 +4,7 @@ description: "Spacing, color, and rhythm working together for a readable page."
 template: "post"
 section: "posts"
 slug: "posts/design-notes"
-date: 2024-02-10
+created: 2024-02-10
 tags:
   - design
   - css

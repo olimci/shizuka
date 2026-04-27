@@ -7,8 +7,7 @@ type Site struct {
 	Description string
 	URL         string
 
-	Params  map[string]any
-	Queries map[string]*QueryResult
+	Params map[string]any
 
 	Meta SiteMeta
 }

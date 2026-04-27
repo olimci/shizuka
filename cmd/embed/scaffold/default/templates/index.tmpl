@@ -41,13 +41,13 @@
                         <h2>Latest posts</h2>
                         <p>Short reads to get started.</p>
                     </div>
-                    {{ $posts := query "select * from pages where Section = ? and Draft = ? order by Date desc" "posts" false | asPages }} {{ if $posts }}
+                    {{ $posts := query "select * from pages where Section = ? and Draft = ? order by Created desc" "posts" false | asPages }} {{ if $posts }}
                     <div class="post-grid">
                         {{ range $posts }}
                         <article class="post-card">
-                            {{ if not (.Date.IsZero) }}
+                            {{ if not (.Created.IsZero) }}
                             <p class="post-date">
-                                {{ .Date.Format "Jan 2, 2006" }}
+                                {{ .Created.Format "Jan 2, 2006" }}
                             </p>
                             {{ end }}
                             <h3>

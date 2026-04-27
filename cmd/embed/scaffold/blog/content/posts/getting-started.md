@@ -4,7 +4,7 @@ description: "Learn how to build fast static sites with clean templates and grea
 template: "post"
 section: "posts"
 slug: "posts/getting-started"
-date: 2024-01-20
+created: 2024-01-20
 tags:
   - shizuka
   - tutorial
@@ -49,7 +49,7 @@ Create a new post in `content/posts/`:
 ```markdown
 ---
 title: "My First Post"
-date: 2024-01-20
+created: 2024-01-20
 tags: ["hello", "world"]
 ---
 

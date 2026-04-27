@@ -31,7 +31,7 @@
                         <p class="lead">{{.Page.Description}}</p>
                         {{end}}
                         <div class="article-meta">
-                            {{if not (.Page.Date.IsZero)}}<span>{{.Page.Date.Format "January 2, 2006"}}</span>{{end}}
+                            {{if not (.Page.Created.IsZero)}}<span>{{.Page.Created.Format "January 2, 2006"}}</span>{{end}}
                             {{if not (.Page.Updated.IsZero)}}<span>Updated {{.Page.Updated.Format "January 2, 2006"}}</span>{{end}}
                         </div>
                         {{ if .Page.Tags }}

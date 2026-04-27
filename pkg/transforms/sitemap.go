@@ -1,37 +1,26 @@
 package transforms
 
 import (
+	"encoding/xml"
 	"fmt"
-	"html/template"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/utils/lazy"
 )
 
-var SitemapTemplate = lazy.New(func() *template.Template {
-	return template.Must(template.New("sitemap").Parse(
-		`<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-{{- range .Items }}
-<url>
-<loc>{{ .Loc }}</loc>{{ if .LastMod }}
-<lastmod>{{ .LastMod }}</lastmod>{{ end }}{{ if .ChangeFreq }}
-<changefreq>{{ .ChangeFreq }}</changefreq>{{ end }}{{ if .Priority }}
-<priority>{{ .Priority }}</priority>{{ end }}
-</url>
-{{- end }}
-</urlset>
-`))
-})
+type sitemapDocument struct {
+	XMLName xml.Name      `xml:"urlset"`
+	Xmlns   string        `xml:"xmlns,attr"`
+	Items   []SitemapItem `xml:"url"`
+}
 
 type SitemapItem struct {
-	Loc        string
-	LastMod    string
-	ChangeFreq string
-	Priority   string
+	Loc        string `xml:"loc"`
+	LastMod    string `xml:"lastmod,omitempty"`
+	ChangeFreq string `xml:"changefreq,omitempty"`
+	Priority   string `xml:"priority,omitempty"`
 }
 
 type SitemapTemplateData struct {
@@ -48,7 +37,7 @@ func BuildSitemap(pages []*Page, site *Site, cfg *config.ConfigSitemap) SitemapT
 			continue
 		}
 
-		lastMod := firstNonzero(page.Updated, page.Date, time.Now())
+		lastMod := firstNonzero(page.Updated, page.Created, time.Now())
 
 		loc := page.Canon
 		if loc == "" {
@@ -70,4 +59,17 @@ func BuildSitemap(pages []*Page, site *Site, cfg *config.ConfigSitemap) SitemapT
 	return SitemapTemplateData{
 		Items: items,
 	}
+}
+
+func RenderSitemap(data SitemapTemplateData) (string, error) {
+	doc := sitemapDocument{
+		Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9",
+		Items: data.Items,
+	}
+
+	out, err := xml.Marshal(doc)
+	if err != nil {
+		return "", err
+	}
+	return xml.Header + string(out), nil
 }

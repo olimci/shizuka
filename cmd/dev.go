@@ -15,25 +15,13 @@ import (
 	"github.com/olimci/shizuka/cmd/internal"
 	"github.com/olimci/shizuka/pkg/build"
 	"github.com/olimci/shizuka/pkg/config"
+	"github.com/olimci/shizuka/pkg/options"
+	"github.com/olimci/shizuka/pkg/profile"
+	"github.com/olimci/shizuka/pkg/registry"
 	"github.com/olimci/shizuka/pkg/scaffold"
 	"github.com/olimci/shizuka/pkg/version"
 	"github.com/urfave/cli/v3"
 )
-
-func applyDevBuildOptions(opts *config.Options, undev bool) *config.Options {
-	if undev {
-		return opts
-	}
-
-	opts.Dev = true
-	opts.PageErrTemplates = map[error]*template.Template{
-		build.ErrNoTemplate:       templateFallback.Get(),
-		build.ErrTemplateNotFound: templateFallback.Get(),
-		nil:                       templateError.Get(),
-	}
-	opts.ErrTemplate = templateBuildError.Get()
-	return opts
-}
 
 var devCmd = &cli.Command{
 	Name:  "dev",
@@ -60,6 +48,10 @@ var devCmd = &cli.Command{
 		&cli.BoolFlag{
 			Name:  "undev",
 			Usage: "Run dev server with production-like build options",
+		},
+		&cli.StringFlag{
+			Name:  "profile",
+			Usage: "Write profiler output JSON to the given path after each build",
 		},
 	},
 	Action: devAction,
@@ -91,16 +83,12 @@ var xDevCmd = &cli.Command{
 			Name:  "undev",
 			Usage: "Run dev server with production-like build options",
 		},
+		&cli.StringFlag{
+			Name:  "profile",
+			Usage: "Write profiler output JSON to the given path after each build",
+		},
 	},
 	Action: xDevAction,
-}
-
-func devHeader() string {
-	return version.Banner(repoLink) + "\n"
-}
-
-func devWatchingStatus(siteURL string) string {
-	return fmt.Sprintf("watching for changes, open %s", siteURL)
 }
 
 func devAction(ctx context.Context, cmd *cli.Command) error {
@@ -119,7 +107,7 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 		}()
 
 		_ = c.SetWindowTitle("shizuka dev")
-		_ = c.LogHeader(devHeader())
+		_ = c.LogHeader(version.Banner(repoLink) + "\n")
 
 		cfg, err := loadDevConfigInteractive(ctx, c, configPath)
 		if err != nil {
@@ -132,15 +120,27 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 		}
 		defer os.RemoveAll(dist)
 
-		opts := config.DefaultOptions()
-		opts.Context = ctx
-		opts.ConfigPath = configPath
-		opts.OutputPath = dist
-		opts.SiteURL = siteURL
-		opts = applyDevBuildOptions(opts, cmd.Bool("undev"))
-
-		if n := cmd.Int("workers"); n > 0 {
-			opts.MaxWorkers = n
+		cacheRegistry := registry.New()
+		buildOptions := func(changedPaths []string) []options.Option {
+			return options.Filter(
+				options.WithContext(ctx),
+				options.WithConfigPath(configPath),
+				options.WithOutputPath(dist),
+				options.WithSiteURL(siteURL),
+				options.WithCacheRegistry(cacheRegistry),
+				options.If(options.WithChangedPaths(changedPaths), changedPaths != nil),
+				options.If(options.WithProfile(profile.NewState()), cmd.String("profile") != ""),
+				options.If(options.WithProfileOutputPath(cmd.String("profile")), cmd.String("profile") != ""),
+				options.If(options.WithDev(true), !cmd.Bool("undev")),
+				options.If(options.WithSkipOutputCleanup(true), !cmd.Bool("undev")),
+				options.If(options.WithPageErrTemplates(map[error]*template.Template{
+					build.ErrNoTemplate:       templateFallback.Get(),
+					build.ErrTemplateNotFound: templateFallback.Get(),
+					nil:                       templateError.Get(),
+				}), !cmd.Bool("undev")),
+				options.If(options.WithErrTemplate(templateBuildError.Get()), !cmd.Bool("undev")),
+				options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.Int("workers") > 0),
+			)
 		}
 
 		hub := internal.NewReloadHub()
@@ -173,14 +173,14 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 			Handler: mux,
 		}
 
-		keysStatus, err := c.Status(devWatchingStatus(siteURL))
+		keysStatus, err := c.Status(fmt.Sprintf("watching for changes, open %s", siteURL))
 		if err != nil {
 			return err
 		}
 
 		keys, err := c.Keybinds([]coffee.Keybind{
-			{Key: "n", Event: "new", Description: "new content"},
 			{Key: "r", Event: "rebuild", Description: "rebuild"},
+			{Key: "R", Event: "rebuild-reset", Description: "rebuild + clear cache"},
 			{Key: "q", Event: "quit", Description: "quit"},
 		})
 		if err != nil {
@@ -206,9 +206,13 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 
-		runBuild := func(trigger string) error {
+		runBuild := func(trigger string, changedPaths []string, clearCache bool) error {
 			if err := c.Clear(); err != nil {
 				return err
+			}
+
+			if clearCache {
+				cacheRegistry = registry.New()
 			}
 
 			if err := keysStatus.Working(fmt.Sprintf("building (%s)", trigger)); err != nil {
@@ -216,7 +220,7 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 			}
 
 			start := time.Now()
-			buildErr := build.Build(opts)
+			buildErr := build.Build(buildOptions(changedPaths)...)
 			elapsed := time.Since(start).Truncate(time.Millisecond)
 
 			if buildErr != nil {
@@ -228,12 +232,12 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 			}
 
 			_ = c.Logf("built (%s)", elapsed)
-			_ = keysStatus.Idle(devWatchingStatus(siteURL))
+			_ = keysStatus.Idle(fmt.Sprintf("watching for changes, open %s", siteURL))
 			hub.Broadcast("reload")
 			return nil
 		}
 
-		if err := runBuild("initial"); err != nil {
+		if err := runBuild("initial", nil, false); err != nil {
 			return err
 		}
 
@@ -256,27 +260,19 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 				case "quit":
 					_ = server.Close()
 					return nil
-				case "new":
-					res, err := createNewContentInteractive(ctx, c, newRequest{
-						ConfigPath: configPath,
-					})
-					if err != nil {
-						_ = c.Logf("new content failed: %s", err)
-						_ = keysStatus.Idle(devWatchingStatus(siteURL))
-						continue
-					}
-
-					_ = c.Logf("created %s", res.Path)
-					_ = keysStatus.Idle(devWatchingStatus(siteURL))
 				case "rebuild":
-					if err := runBuild("manual"); err != nil {
+					if err := runBuild("manual", nil, false); err != nil {
+						return err
+					}
+				case "rebuild-reset":
+					if err := runBuild("manual cache reset", nil, true); err != nil {
 						return err
 					}
 				}
 			case err := <-watch.Errors:
 				_ = c.Logf("watch error: %s", err)
-			case <-watch.Events:
-				if err := runBuild("changes"); err != nil {
+			case ev := <-watch.Events:
+				if err := runBuild("changes", ev.Paths, false); err != nil {
 					return err
 				}
 			}
@@ -387,9 +383,8 @@ func xDevAction(ctx context.Context, cmd *cli.Command) error {
 	}
 	siteURL := fmt.Sprintf("http://localhost:%d/", cmd.Int("port"))
 
-	fmt.Println(devHeader())
-	fmt.Println(devWatchingStatus(siteURL))
-	fmt.Println()
+	fmt.Println(version.Banner(repoLink) + "\n")
+	fmt.Printf("watching for changes, open %s\n\n", siteURL)
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -402,15 +397,27 @@ func xDevAction(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer os.RemoveAll(dist)
 
-	opts := config.DefaultOptions()
-	opts.Context = ctx
-	opts.ConfigPath = configPath
-	opts.OutputPath = dist
-	opts.SiteURL = siteURL
-	opts = applyDevBuildOptions(opts, cmd.Bool("undev"))
-
-	if n := cmd.Int("workers"); n > 0 {
-		opts.MaxWorkers = n
+	cacheRegistry := registry.New()
+	buildOptions := func(changedPaths []string) []options.Option {
+		return options.Filter(
+			options.If(options.WithContext(ctx), true),
+			options.If(options.WithConfigPath(configPath), true),
+			options.If(options.WithOutputPath(dist), true),
+			options.If(options.WithSiteURL(siteURL), true),
+			options.WithCacheRegistry(cacheRegistry),
+			options.If(options.WithChangedPaths(changedPaths), changedPaths != nil),
+			options.If(options.WithProfile(profile.NewState()), cmd.String("profile") != ""),
+			options.If(options.WithProfileOutputPath(cmd.String("profile")), cmd.String("profile") != ""),
+			options.If(options.WithDev(true), !cmd.Bool("undev")),
+			options.If(options.WithSkipOutputCleanup(true), !cmd.Bool("undev")),
+			options.If(options.WithPageErrTemplates(map[error]*template.Template{
+				build.ErrNoTemplate:       templateFallback.Get(),
+				build.ErrTemplateNotFound: templateFallback.Get(),
+				nil:                       templateError.Get(),
+			}), !cmd.Bool("undev")),
+			options.If(options.WithErrTemplate(templateBuildError.Get()), !cmd.Bool("undev")),
+			options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.Int("workers") > 0),
+		)
 	}
 
 	hub := internal.NewReloadHub()
@@ -458,8 +465,9 @@ func xDevAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	runBuild := func(trigger string) {
-		if buildErr := build.Build(opts); buildErr != nil {
+	runBuild := func(trigger string, changedPaths []string) {
+		buildErr := build.Build(buildOptions(changedPaths)...)
+		if buildErr != nil {
 			fmt.Printf("build failed (%s)\n", trigger)
 			for _, line := range formatBuildError(buildErr) {
 				fmt.Println(line)
@@ -471,7 +479,7 @@ func xDevAction(ctx context.Context, cmd *cli.Command) error {
 		hub.Broadcast("reload")
 	}
 
-	runBuild("initial")
+	runBuild("initial", nil)
 
 	for {
 		select {
@@ -485,8 +493,8 @@ func xDevAction(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("dev server %q: %w", port, err)
 		case err := <-watch.Errors:
 			fmt.Printf("watch error: %s\n", err)
-		case <-watch.Events:
-			runBuild("changes")
+		case ev := <-watch.Events:
+			runBuild("changes", ev.Paths)
 		}
 	}
 }

@@ -8,96 +8,16 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/transforms"
 	"github.com/olimci/shizuka/pkg/utils/pathutil"
 	"github.com/olimci/structql"
 )
 
-type pageQueryRow struct {
-	Page        any `structql:"_page"`
-	SourcePath  string
-	ContentPath string
-	URLPath     string
-	OutputPath  string
-	Template    string
-	Slug        string
-	Canon       string
-	Aliases     []string
-	Weight      int
-	Title       string
-	Description string
-	Section     string
-	Tags        []string
-	Params      map[string]any
-	Headers     map[string]string
-	Date        time.Time
-	Updated     time.Time
-	PubDate     time.Time
-	Featured    bool
-	Draft       bool
-}
-
-type siteQueryRow struct {
-	Title          string
-	Description    string
-	URL            string
-	Params         map[string]any
-	ConfigPath     string
-	IsDev          bool
-	BuildTime      time.Time
-	GitAvailable   bool
-	GitRepoRoot    string
-	GitDir         string
-	GitBranch      string
-	GitCommitHash  string
-	GitShortHash   string
-	GitDirty       bool
-	PageCount      int
-	PublishedCount int
-	DraftCount     int
-}
-
-type pageLinkQueryRow struct {
-	SourcePage    any `structql:"_source_page"`
-	TargetPage    any `structql:"_target_page"`
-	SourcePath    string
-	SourceURLPath string
-	SourceSlug    string
-	RawTarget     string
-	Fragment      string
-	Label         string
-	Embed         bool
-	Resolved      bool
-	TargetPath    string
-	TargetURLPath string
-	TargetSlug    string
-}
-
-type pageAssetQueryRow struct {
-	Page         any `structql:"_page"`
-	OwnerPath    string
-	OwnerURLPath string
-	OwnerSlug    string
-	Key          string
-	Source       string
-	Target       string
-	URL          string
-	Hash         string
-	Size         int64
-	MediaType    string
-	Standalone   bool
-}
-
-func BuildQueryDB(site *transforms.Site, pages []*transforms.Page) (*structql.DB, error) {
+func BuildQueryDB(pages []*transforms.Page) (*structql.DB, error) {
 	db := structql.NewDB()
 
 	if err := registerPagesTable(db, pages); err != nil {
-		return nil, err
-	}
-	if err := registerSiteTable(db, site, pages); err != nil {
 		return nil, err
 	}
 	if err := registerPageLinksTable(db, pages); err != nil {
@@ -119,91 +39,29 @@ func QueryFuncMap(db *structql.DB) template.FuncMap {
 }
 
 func registerPagesTable(db *structql.DB, pages []*transforms.Page) error {
-	rows := make([]pageQueryRow, 0, len(pages))
+	rows := make([]*transforms.Page, 0, len(pages))
 	for _, page := range pages {
 		if page == nil || page.HasError() {
 			continue
 		}
-		rows = append(rows, pageQueryRow{
-			Page:        page,
-			SourcePath:  page.SourcePath,
-			ContentPath: page.ContentPath,
-			URLPath:     page.URLPath,
-			OutputPath:  page.OutputPath,
-			Template:    page.Template,
-			Slug:        page.Slug,
-			Canon:       page.Canon,
-			Aliases:     slices.Clone(page.Aliases),
-			Weight:      page.Weight,
-			Title:       page.Title,
-			Description: page.Description,
-			Section:     page.Section,
-			Tags:        slices.Clone(page.Tags),
-			Params:      maps.Clone(page.Params),
-			Headers:     maps.Clone(page.Headers),
-			Date:        page.Date,
-			Updated:     page.Updated,
-			PubDate:     page.PubDate,
-			Featured:    page.Featured,
-			Draft:       page.Draft,
-		})
+		page.QueryPage = page
+		rows = append(rows, page)
 	}
 
 	return registerTable(db, "pages", rows)
 }
 
-func registerSiteTable(db *structql.DB, site *transforms.Site, pages []*transforms.Page) error {
-	rows := []siteQueryRow{}
-	if site != nil {
-		rows = append(rows, siteQueryRow{
-			Title:          site.Title,
-			Description:    site.Description,
-			URL:            site.URL,
-			Params:         maps.Clone(site.Params),
-			ConfigPath:     site.Meta.ConfigPath,
-			IsDev:          site.Meta.IsDev,
-			BuildTime:      site.Meta.BuildTime,
-			GitAvailable:   site.Meta.Git.Available,
-			GitRepoRoot:    site.Meta.Git.RepoRoot,
-			GitDir:         site.Meta.Git.GitDir,
-			GitBranch:      site.Meta.Git.Branch,
-			GitCommitHash:  site.Meta.Git.CommitHash,
-			GitShortHash:   site.Meta.Git.ShortHash,
-			GitDirty:       site.Meta.Git.Dirty,
-			PageCount:      len(pages),
-			PublishedCount: countPublishedPages(pages),
-			DraftCount:     countDraftPages(pages),
-		})
-	}
-
-	return registerTable(db, "site", rows)
-}
-
 func registerPageLinksTable(db *structql.DB, pages []*transforms.Page) error {
-	rows := make([]pageLinkQueryRow, 0)
+	rows := make([]transforms.PageLink, 0)
 	for _, page := range pages {
 		if page == nil || page.HasError() {
 			continue
 		}
-		for _, link := range page.Links {
-			row := pageLinkQueryRow{
-				SourcePage:    page,
-				TargetPage:    link.Target,
-				SourcePath:    page.SourcePath,
-				SourceURLPath: page.URLPath,
-				SourceSlug:    page.Slug,
-				RawTarget:     link.RawTarget,
-				Fragment:      link.Fragment,
-				Label:         link.Label,
-				Embed:         link.Embed,
-				Resolved:      link.Resolved(),
+		for i := range page.Links {
+			if page.Links[i].Source == nil {
+				page.Links[i].Source = page
 			}
-			if link.Target != nil {
-				row.TargetPath = link.Target.SourcePath
-				row.TargetURLPath = link.Target.URLPath
-				row.TargetSlug = link.Target.Slug
-			}
-			rows = append(rows, row)
+			rows = append(rows, page.Links[i])
 		}
 	}
 
@@ -211,7 +69,7 @@ func registerPageLinksTable(db *structql.DB, pages []*transforms.Page) error {
 }
 
 func registerPageAssetsTable(db *structql.DB, pages []*transforms.Page) error {
-	rows := make([]pageAssetQueryRow, 0)
+	rows := make([]*transforms.PageAsset, 0)
 	for _, page := range pages {
 		if page == nil || page.HasError() {
 			continue
@@ -220,20 +78,10 @@ func registerPageAssetsTable(db *structql.DB, pages []*transforms.Page) error {
 			if asset == nil {
 				continue
 			}
-			rows = append(rows, pageAssetQueryRow{
-				Page:         page,
-				OwnerPath:    page.SourcePath,
-				OwnerURLPath: page.URLPath,
-				OwnerSlug:    page.Slug,
-				Key:          asset.Key,
-				Source:       asset.Source,
-				Target:       asset.Target,
-				URL:          asset.URL,
-				Hash:         asset.Hash,
-				Size:         asset.Size,
-				MediaType:    asset.MediaType,
-				Standalone:   asset.Standalone,
-			})
+			if asset.Owner == nil {
+				asset.Owner = page
+			}
+			rows = append(rows, asset)
 		}
 	}
 
@@ -249,28 +97,6 @@ func registerTable[T any](db *structql.DB, name string, rows []T) error {
 		return fmt.Errorf("register table %q: %w", name, err)
 	}
 	return nil
-}
-
-func countPublishedPages(pages []*transforms.Page) int {
-	count := 0
-	for _, page := range pages {
-		if page == nil || page.HasError() || page.Draft {
-			continue
-		}
-		count++
-	}
-	return count
-}
-
-func countDraftPages(pages []*transforms.Page) int {
-	count := 0
-	for _, page := range pages {
-		if page == nil || page.HasError() || !page.Draft {
-			continue
-		}
-		count++
-	}
-	return count
 }
 
 func runQuery(db *structql.DB, sql string, args ...any) (*structql.Result, error) {
@@ -337,38 +163,26 @@ func resultPages(result *structql.Result) ([]*transforms.Page, error) {
 			return nil, fmt.Errorf("query result row %d is missing _page", rowIdx)
 		}
 
-		page, ok := row[pageColumn].(*transforms.Page)
-		if !ok || page == nil {
-			return nil, fmt.Errorf("query result expected _page to be a *Page in row %d", rowIdx)
+		switch value := row[pageColumn].(type) {
+		case *transforms.Page:
+			if value == nil {
+				return nil, fmt.Errorf("query result expected _page to be a non-nil *Page in row %d", rowIdx)
+			}
+			out = append(out, value)
+		case transforms.Page:
+			if value.QueryPage == nil {
+				return nil, fmt.Errorf("query result expected _page value to carry QueryPage in row %d", rowIdx)
+			}
+			out = append(out, value.QueryPage)
+		default:
+			return nil, fmt.Errorf("query result expected _page to be a Page or *Page in row %d", rowIdx)
 		}
-		out = append(out, page)
 	}
 
 	return out, nil
 }
 
-func ComputeSiteQueries(db *structql.DB, defs map[string]config.ConfigSiteQuery) (map[string]*transforms.QueryResult, error) {
-	if len(defs) == 0 {
-		return nil, nil
-	}
-
-	out := make(map[string]*transforms.QueryResult, len(defs))
-	for key, def := range defs {
-		key = strings.TrimSpace(key)
-		if key == "" {
-			return nil, fmt.Errorf("site query key cannot be empty")
-		}
-		result, err := queryResult(db, def.Query)
-		if err != nil {
-			return nil, fmt.Errorf("site query %q: %w", key, err)
-		}
-		out[key] = result
-	}
-
-	return out, nil
-}
-
-type PaginationPlan struct {
+type QueryExpansionPlan struct {
 	Key      string
 	Def      transforms.PageQueryDef
 	Variants []*transforms.Page
@@ -401,7 +215,7 @@ func ComputePageQueries(site *transforms.Site, pages []*transforms.Page, tmpl *t
 	return out, nil
 }
 
-func computeQueriesForPage(site *transforms.Site, page *transforms.Page, tmpl *template.Template, db *structql.DB) (map[string]*transforms.QueryResult, *PaginationPlan, error) {
+func computeQueriesForPage(site *transforms.Site, page *transforms.Page, tmpl *template.Template, db *structql.DB) (map[string]*transforms.QueryResult, *QueryExpansionPlan, error) {
 	frontmatterQueries := map[string]transforms.PageQueryDef(nil)
 	dataQueries := map[string]transforms.PageQueryDef(nil)
 	if page.Source.FrontmatterDoc != nil {
@@ -420,8 +234,8 @@ func computeQueriesForPage(site *transforms.Site, page *transforms.Page, tmpl *t
 	}
 
 	results := make(map[string]*transforms.QueryResult, len(defs))
-	var paginationKey string
-	var paginationDef transforms.PageQueryDef
+	var expansionKey string
+	var expansionDef transforms.PageQueryDef
 
 	for key, def := range defs {
 		key = strings.TrimSpace(key)
@@ -435,21 +249,21 @@ func computeQueriesForPage(site *transforms.Site, page *transforms.Page, tmpl *t
 		}
 		results[key] = result
 
-		if !def.Paginate {
+		if !queryNeedsExpansion(def) {
 			continue
 		}
-		if paginationKey != "" {
-			return nil, nil, fmt.Errorf("multiple paginated page queries are not allowed (%q, %q)", paginationKey, key)
+		if expansionKey != "" {
+			return nil, nil, fmt.Errorf("multiple expanding page queries are not allowed (%q, %q)", expansionKey, key)
 		}
-		paginationKey = key
-		paginationDef = def
+		expansionKey = key
+		expansionDef = def
 	}
 
-	if paginationKey == "" {
+	if expansionKey == "" {
 		return results, nil, nil
 	}
 
-	plan, err := buildPaginationPlan(site, page, tmpl, paginationKey, paginationDef, results)
+	plan, err := buildQueryExpansionPlan(site, page, tmpl, expansionKey, expansionDef, results)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -461,23 +275,23 @@ func pageQueryDefs(page *transforms.Page) map[string]transforms.PageQueryDef {
 		return nil
 	}
 	if page.Source.FrontmatterDoc != nil {
-		return clonePageQueryDefMap(page.Source.FrontmatterDoc.Meta.Queries)
+		return maps.Clone(page.Source.FrontmatterDoc.Meta.Queries)
 	}
 	if page.Source.DataDoc != nil {
-		return clonePageQueryDefMap(page.Source.DataDoc.Meta.Queries)
+		return maps.Clone(page.Source.DataDoc.Meta.Queries)
 	}
 	return nil
 }
 
-func buildPaginationPlan(site *transforms.Site, page *transforms.Page, tmpl *template.Template, key string, def transforms.PageQueryDef, results map[string]*transforms.QueryResult) (*PaginationPlan, error) {
+func buildQueryExpansionPlan(site *transforms.Site, page *transforms.Page, tmpl *template.Template, key string, def transforms.PageQueryDef, results map[string]*transforms.QueryResult) (*QueryExpansionPlan, error) {
 	if strings.TrimSpace(def.Template) == "" {
-		return nil, fmt.Errorf("paginated page query %q requires template", key)
+		return nil, fmt.Errorf("expanding page query %q requires template", key)
 	}
-	if def.PageSize <= 0 {
+	if def.Paginate && def.PageSize <= 0 {
 		return nil, fmt.Errorf("paginated page query %q requires page_size > 0", key)
 	}
 	if tmpl == nil || tmpl.Lookup(def.Template) == nil {
-		return nil, fmt.Errorf("paginated page query %q template %q not found", key, def.Template)
+		return nil, fmt.Errorf("expanding page query %q template %q not found", key, def.Template)
 	}
 
 	baseResult := results[key]
@@ -485,41 +299,13 @@ func buildPaginationPlan(site *transforms.Site, page *transforms.Page, tmpl *tem
 		baseResult = &transforms.QueryResult{}
 	}
 	if !queryResultHasPages(baseResult) {
-		return nil, fmt.Errorf("paginated page query %q requires the result to include the _page column", key)
+		return nil, fmt.Errorf("expanding page query %q requires the result to include the _page column", key)
 	}
 
-	totalItems := len(baseResult.Rows)
-	totalPages := totalItems / def.PageSize
-	if totalItems%def.PageSize != 0 {
-		totalPages++
+	if strings.TrimSpace(def.GroupBy) == "" {
+		return buildUngroupedExpansionPlan(site, page, key, def, results, baseResult), nil
 	}
-	if totalPages == 0 {
-		totalPages = 1
-	}
-
-	page.Template = def.Template
-	page.Pagination = buildPaginationState(page.URLPath, key, 1, def.PageSize, totalItems, totalPages)
-	page.Queries = cloneQueryResults(results)
-	page.Queries[key] = sliceQueryResult(baseResult, 0, def.PageSize)
-
-	variants := make([]*transforms.Page, 0, max(0, totalPages-1))
-	for pageNum := 2; pageNum <= totalPages; pageNum++ {
-		start := (pageNum - 1) * def.PageSize
-		end := min(start+def.PageSize, totalItems)
-
-		variant := clonePage(page)
-		variant.URLPath = paginatedURLPath(page.URLPath, pageNum)
-		variant.OutputPath = pathutil.OutputPathForURLPath(variant.URLPath)
-		variant.Canon = mustCanonicalPageURL(site, variant.URLPath)
-		variant.Template = def.Template
-		variant.Aliases = nil
-		variant.Pagination = buildPaginationState(page.URLPath, key, pageNum, def.PageSize, totalItems, totalPages)
-		variant.Queries = cloneQueryResults(results)
-		variant.Queries[key] = sliceQueryResult(baseResult, start, end)
-		variants = append(variants, variant)
-	}
-
-	return &PaginationPlan{Key: key, Def: def, Variants: variants}, nil
+	return buildGroupedExpansionPlan(site, page, key, def, results, baseResult)
 }
 
 func pageQueryArgs(page *transforms.Page) map[string]any {
@@ -540,7 +326,7 @@ func pageQueryArgs(page *transforms.Page) map[string]any {
 		"page_weight":       page.Weight,
 		"page_featured":     page.Featured,
 		"page_draft":        page.Draft,
-		"page_date":         page.Date,
+		"page_created":      page.Created,
 		"page_updated":      page.Updated,
 		"page_pub_date":     page.PubDate,
 	}
@@ -605,10 +391,12 @@ func clonePage(page *transforms.Page) *transforms.Page {
 		return nil
 	}
 	out := *page
+	out.QueryPage = &out
 	out.Aliases = slices.Clone(page.Aliases)
 	out.Tags = slices.Clone(page.Tags)
 	out.Queries = cloneQueryResults(page.Queries)
 	out.Pagination = clonePagination(page.Pagination)
+	out.Group = cloneGroup(page.Group)
 	return &out
 }
 
@@ -620,7 +408,15 @@ func clonePagination(in *transforms.PaginationState) *transforms.PaginationState
 	return &out
 }
 
-func buildPaginationState(baseURLPath, key string, pageNumber, pageSize, totalItems, totalPages int) *transforms.PaginationState {
+func cloneGroup(in *transforms.QueryGroupState) *transforms.QueryGroupState {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
+}
+
+func buildPaginationState(baseURLPath, key, pageFormat string, redirectPageOne bool, pageNumber, pageSize, totalItems, totalPages int) *transforms.PaginationState {
 	state := &transforms.PaginationState{
 		QueryKey:   key,
 		PageNumber: pageNumber,
@@ -631,22 +427,257 @@ func buildPaginationState(baseURLPath, key string, pageNumber, pageSize, totalIt
 	if pageNumber > 1 {
 		state.HasPrev = true
 		state.PrevPageNumber = pageNumber - 1
-		state.PrevURL = pathutil.EnsureLeadingSlash(paginatedURLPath(baseURLPath, pageNumber-1))
+		state.PrevURL = pathutil.EnsureLeadingSlash(paginatedURLPath(baseURLPath, pageFormat, redirectPageOne, pageNumber-1))
 	}
 	if pageNumber < totalPages {
 		state.HasNext = true
 		state.NextPageNumber = pageNumber + 1
-		state.NextURL = pathutil.EnsureLeadingSlash(paginatedURLPath(baseURLPath, pageNumber+1))
+		state.NextURL = pathutil.EnsureLeadingSlash(paginatedURLPath(baseURLPath, pageFormat, redirectPageOne, pageNumber+1))
 	}
 	return state
 }
 
-func paginatedURLPath(baseURLPath string, pageNumber int) string {
+func paginatedURLPath(baseURLPath, pageFormat string, redirectPageOne bool, pageNumber int) string {
 	baseURLPath = strings.Trim(baseURLPath, "/")
-	if pageNumber <= 1 {
+	if pageNumber <= 1 && !redirectPageOne {
 		return baseURLPath
 	}
-	return path.Join(baseURLPath, "page", strconv.Itoa(pageNumber))
+	formatted, err := formatPathSegment(defaultPageFormat(pageFormat), pageNumber)
+	if err != nil {
+		return path.Join(baseURLPath, "page", strconv.Itoa(pageNumber))
+	}
+	return joinURLPath(baseURLPath, formatted)
+}
+
+func queryNeedsExpansion(def transforms.PageQueryDef) bool {
+	return def.Paginate || strings.TrimSpace(def.GroupBy) != ""
+}
+
+func buildUngroupedExpansionPlan(site *transforms.Site, page *transforms.Page, key string, def transforms.PageQueryDef, results map[string]*transforms.QueryResult, baseResult *transforms.QueryResult) *QueryExpansionPlan {
+	totalItems := len(baseResult.Rows)
+	totalPages := pageCount(totalItems, def)
+	pageFormat := defaultPageFormat(def.PageFormat)
+	baseURLPath := strings.Trim(page.URLPath, "/")
+
+	if def.RedirectPageOne {
+		alias := baseURLPath
+		page.URLPath = paginatedURLPath(baseURLPath, pageFormat, true, 1)
+		page.OutputPath = pathutil.OutputPathForURLPath(page.URLPath)
+		page.Canon = mustCanonicalPageURL(site, page.URLPath)
+		page.Aliases = appendPageAlias(page.Aliases, alias, page.URLPath)
+	}
+
+	page.Template = def.Template
+	page.Pagination = buildPaginationState(baseURLPath, key, pageFormat, def.RedirectPageOne, 1, effectivePageSize(def, totalItems), totalItems, totalPages)
+	page.Group = nil
+	page.Queries = cloneQueryResults(results)
+	page.Queries[key] = sliceQueryResult(baseResult, 0, effectivePageSize(def, totalItems))
+
+	variants := make([]*transforms.Page, 0, max(0, totalPages-1))
+	for pageNum := 2; pageNum <= totalPages; pageNum++ {
+		start := (pageNum - 1) * effectivePageSize(def, totalItems)
+		end := min(start+effectivePageSize(def, totalItems), totalItems)
+
+		variant := clonePage(page)
+		variant.URLPath = paginatedURLPath(baseURLPath, pageFormat, def.RedirectPageOne, pageNum)
+		variant.OutputPath = pathutil.OutputPathForURLPath(variant.URLPath)
+		variant.Canon = mustCanonicalPageURL(site, variant.URLPath)
+		variant.Template = def.Template
+		variant.Aliases = nil
+		variant.Pagination = buildPaginationState(baseURLPath, key, pageFormat, def.RedirectPageOne, pageNum, effectivePageSize(def, totalItems), totalItems, totalPages)
+		variant.Queries = cloneQueryResults(results)
+		variant.Queries[key] = sliceQueryResult(baseResult, start, end)
+		variants = append(variants, variant)
+	}
+
+	return &QueryExpansionPlan{Key: key, Def: def, Variants: variants}
+}
+
+func buildGroupedExpansionPlan(site *transforms.Site, page *transforms.Page, key string, def transforms.PageQueryDef, results map[string]*transforms.QueryResult, baseResult *transforms.QueryResult) (*QueryExpansionPlan, error) {
+	grouped, err := groupQueryResult(baseResult, def.GroupBy)
+	if err != nil {
+		return nil, fmt.Errorf("page query %q: %w", key, err)
+	}
+
+	pageFormat := defaultPageFormat(def.PageFormat)
+	groupFormat := defaultGroupFormat(def.GroupFormat)
+	baseURLPath := strings.Trim(page.URLPath, "/")
+	variants := make([]*transforms.Page, 0)
+
+	for _, group := range grouped {
+		groupSegment, err := formatPathSegment(groupFormat, group.Value)
+		if err != nil {
+			return nil, fmt.Errorf("page query %q group %q: %w", key, def.GroupBy, err)
+		}
+		groupBaseURLPath := joinURLPath(baseURLPath, groupSegment)
+		totalItems := len(group.Result.Rows)
+		totalPages := pageCount(totalItems, def)
+		pageSize := effectivePageSize(def, totalItems)
+
+		for pageNum := 1; pageNum <= totalPages; pageNum++ {
+			start := (pageNum - 1) * pageSize
+			end := min(start+pageSize, totalItems)
+
+			variant := clonePage(page)
+			variant.Template = def.Template
+			variant.Aliases = nil
+			variant.Group = &transforms.QueryGroupState{
+				QueryKey: key,
+				Column:   def.GroupBy,
+				Value:    group.Value,
+				URLPath:  groupBaseURLPath,
+			}
+			variant.Pagination = buildPaginationState(groupBaseURLPath, key, pageFormat, def.RedirectPageOne, pageNum, pageSize, totalItems, totalPages)
+			variant.Queries = cloneQueryResults(results)
+			variant.Queries[key] = sliceQueryResult(group.Result, start, end)
+			variant.URLPath = paginatedURLPath(groupBaseURLPath, pageFormat, def.RedirectPageOne, pageNum)
+			if pageNum == 1 && def.RedirectPageOne {
+				variant.Aliases = appendPageAlias(variant.Aliases, groupBaseURLPath, variant.URLPath)
+			}
+			variant.OutputPath = pathutil.OutputPathForURLPath(variant.URLPath)
+			variant.Canon = mustCanonicalPageURL(site, variant.URLPath)
+			variants = append(variants, variant)
+		}
+	}
+
+	return &QueryExpansionPlan{Key: key, Def: def, Variants: variants}, nil
+}
+
+type groupedQueryResult struct {
+	Value  any
+	Result *transforms.QueryResult
+}
+
+func groupQueryResult(result *transforms.QueryResult, column string) ([]groupedQueryResult, error) {
+	if result == nil {
+		return nil, nil
+	}
+
+	type groupState struct {
+		value any
+		rows  []map[string]any
+		pages []*transforms.Page
+	}
+
+	order := make([]string, 0)
+	groups := make(map[string]*groupState)
+	for i, row := range result.Rows {
+		value, ok := lookupRowColumn(row, column)
+		if !ok {
+			return nil, fmt.Errorf("group_by column %q not found in query result", column)
+		}
+		key := fmt.Sprintf("%T:%v", value, value)
+		state := groups[key]
+		if state == nil {
+			state = &groupState{value: value}
+			groups[key] = state
+			order = append(order, key)
+		}
+		state.rows = append(state.rows, maps.Clone(row))
+		if i < len(result.Pages) {
+			state.pages = append(state.pages, result.Pages[i])
+		}
+	}
+
+	out := make([]groupedQueryResult, 0, len(order))
+	for _, key := range order {
+		state := groups[key]
+		out = append(out, groupedQueryResult{
+			Value: state.value,
+			Result: &transforms.QueryResult{
+				Rows:  state.rows,
+				Pages: state.pages,
+			},
+		})
+	}
+	return out, nil
+}
+
+func lookupRowColumn(row map[string]any, column string) (any, bool) {
+	for key, value := range row {
+		if strings.EqualFold(strings.TrimSpace(key), strings.TrimSpace(column)) {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+func defaultPageFormat(format string) string {
+	format = strings.TrimSpace(format)
+	if format == "" {
+		return "page/%d"
+	}
+	return format
+}
+
+func defaultGroupFormat(format string) string {
+	format = strings.TrimSpace(format)
+	if format == "" {
+		return "%v"
+	}
+	return format
+}
+
+func pageCount(totalItems int, def transforms.PageQueryDef) int {
+	pageSize := effectivePageSize(def, totalItems)
+	totalPages := totalItems / pageSize
+	if totalItems%pageSize != 0 {
+		totalPages++
+	}
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	return totalPages
+}
+
+func effectivePageSize(def transforms.PageQueryDef, totalItems int) int {
+	if def.Paginate && def.PageSize > 0 {
+		return def.PageSize
+	}
+	if totalItems > 0 {
+		return totalItems
+	}
+	return 1
+}
+
+func formatPathSegment(format string, value any) (string, error) {
+	formatted := fmt.Sprintf(format, value)
+	if strings.Contains(formatted, "%!") {
+		return "", fmt.Errorf("invalid path format %q for value %T", format, value)
+	}
+	cleaned, err := pathutil.CleanURLPath(formatted)
+	if err != nil {
+		return "", err
+	}
+	if cleaned == "" {
+		return "", fmt.Errorf("formatted path is empty")
+	}
+	return cleaned, nil
+}
+
+func joinURLPath(base, segment string) string {
+	base = strings.Trim(base, "/")
+	segment = strings.Trim(segment, "/")
+	switch {
+	case base == "":
+		return segment
+	case segment == "":
+		return base
+	default:
+		return path.Join(base, segment)
+	}
+}
+
+func appendPageAlias(aliases []string, alias, urlPath string) []string {
+	alias = strings.Trim(alias, "/")
+	urlPath = strings.Trim(urlPath, "/")
+	if alias == "" || alias == urlPath {
+		return aliases
+	}
+	if slices.Contains(aliases, alias) {
+		return aliases
+	}
+	return append(aliases, alias)
 }
 
 func mustCanonicalPageURL(site *transforms.Site, urlPath string) string {
@@ -685,15 +716,4 @@ func queryResultHasPages(result *transforms.QueryResult) bool {
 		return false
 	}
 	return result.Pages != nil
-}
-
-func clonePageQueryDefMap(in map[string]transforms.PageQueryDef) map[string]transforms.PageQueryDef {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make(map[string]transforms.PageQueryDef, len(in))
-	for key, value := range in {
-		out[key] = value
-	}
-	return out
 }

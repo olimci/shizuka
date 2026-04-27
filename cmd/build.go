@@ -10,6 +10,8 @@ import (
 	"github.com/olimci/coffee"
 	"github.com/olimci/shizuka/pkg/build"
 	"github.com/olimci/shizuka/pkg/config"
+	"github.com/olimci/shizuka/pkg/options"
+	"github.com/olimci/shizuka/pkg/profile"
 	"github.com/urfave/cli/v3"
 )
 
@@ -33,6 +35,10 @@ var buildCmd = &cli.Command{
 			Aliases: []string{"w"},
 			Value:   0,
 			Usage:   "Number of workers to use for building",
+		},
+		&cli.StringFlag{
+			Name:  "profile",
+			Usage: "Write profiler output JSON to the given path",
 		},
 	},
 	Action: buildAction,
@@ -59,6 +65,10 @@ var xBuildCmd = &cli.Command{
 			Value:   0,
 			Usage:   "Number of workers to use for building",
 		},
+		&cli.StringFlag{
+			Name:  "profile",
+			Usage: "Write profiler output JSON to the given path",
+		},
 	},
 	Action: xBuildAction,
 }
@@ -74,23 +84,21 @@ func buildAction(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 
-		opts := config.DefaultOptions()
-		opts.Context = ctx
-		opts.ConfigPath = configPath
-
-		if cmd.Bool("dev") {
-			opts.Dev = true
-			opts.PageErrTemplates = map[error]*template.Template{
+		opts := options.Filter(
+			options.WithContext(ctx),
+			options.WithConfigPath(configPath),
+			options.If(options.WithProfile(profile.NewState()), cmd.String("profile") != ""),
+			options.If(options.WithProfileOutputPath(cmd.String("profile")), cmd.String("profile") != ""),
+			options.If(options.WithDev(true), cmd.Bool("dev")),
+			options.If(options.WithSkipOutputCleanup(true), cmd.Bool("dev")),
+			options.If(options.WithPageErrTemplates(map[error]*template.Template{
 				build.ErrNoTemplate:       templateFallback.Get(),
 				build.ErrTemplateNotFound: templateFallback.Get(),
 				nil:                       templateError.Get(),
-			}
-			opts.ErrTemplate = templateBuildError.Get()
-		}
-
-		if n := cmd.Int("workers"); n > 0 {
-			opts.MaxWorkers = n
-		}
+			}), cmd.Bool("dev")),
+			options.If(options.WithErrTemplate(templateBuildError.Get()), cmd.Bool("dev")),
+			options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.Int("workers") > 0),
+		)
 
 		status, err := c.Status("building...")
 		if err != nil {
@@ -98,7 +106,7 @@ func buildAction(ctx context.Context, cmd *cli.Command) error {
 		}
 
 		start := time.Now()
-		buildErr := build.Build(opts)
+		buildErr := build.Build(opts...)
 		elapsed := time.Since(start).Truncate(time.Millisecond)
 
 		if buildErr != nil {
@@ -130,27 +138,25 @@ func xBuildAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	opts := config.DefaultOptions()
-	opts.Context = ctx
-	opts.ConfigPath = configPath
-
-	if cmd.Bool("dev") {
-		opts.Dev = true
-		opts.PageErrTemplates = map[error]*template.Template{
+	opts := options.Filter(
+		options.WithContext(ctx),
+		options.WithConfigPath(configPath),
+		options.If(options.WithProfile(profile.NewState()), cmd.String("profile") != ""),
+		options.If(options.WithProfileOutputPath(cmd.String("profile")), cmd.String("profile") != ""),
+		options.If(options.WithDev(true), cmd.Bool("dev")),
+		options.If(options.WithSkipOutputCleanup(true), cmd.Bool("dev")),
+		options.If(options.WithPageErrTemplates(map[error]*template.Template{
 			build.ErrNoTemplate:       templateFallback.Get(),
 			build.ErrTemplateNotFound: templateFallback.Get(),
 			nil:                       templateError.Get(),
-		}
-		opts.ErrTemplate = templateBuildError.Get()
-	}
-
-	if n := cmd.Int("workers"); n > 0 {
-		opts.MaxWorkers = n
-	}
+		}), cmd.Bool("dev")),
+		options.If(options.WithErrTemplate(templateBuildError.Get()), cmd.Bool("dev")),
+		options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.Int("workers") > 0),
+	)
 
 	fmt.Println("building...")
 
-	buildErr := build.Build(opts)
+	buildErr := build.Build(opts...)
 	if buildErr != nil {
 		fmt.Println("build failed")
 		for _, line := range formatBuildError(buildErr) {

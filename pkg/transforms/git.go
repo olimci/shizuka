@@ -12,6 +12,13 @@ type PageGitMeta struct {
 	AuthorName string
 }
 
+type PageFileMeta struct {
+	Available bool
+	Created   time.Time
+	Updated   time.Time
+	Size      int64
+}
+
 // SiteGitMeta stores repository metadata for the current build.
 type SiteGitMeta struct {
 	Available  bool

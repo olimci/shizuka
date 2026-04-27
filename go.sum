@@ -58,6 +58,10 @@ github.com/olimci/structql v0.0.0-20260414214555-2daface1a8fc h1:8mDwpOYZS7Mljd5
 github.com/olimci/structql v0.0.0-20260414214555-2daface1a8fc/go.mod h1:4tas+xOn8dj0vgoqkbvN5xoeK6UNBrtxydGEobK7jDs=
 github.com/olimci/structql v0.0.0-20260414223902-ea63710c64df h1:igGvR6dTaDJ11wGgUIl5Kxh9XV4XSDl/R5qPR5sVWoU=
 github.com/olimci/structql v0.0.0-20260414223902-ea63710c64df/go.mod h1:4tas+xOn8dj0vgoqkbvN5xoeK6UNBrtxydGEobK7jDs=
+github.com/olimci/structql v0.0.0-20260415031533-bb1d41162934 h1:AhHdyQoWhwcwcEVv85NkqFeo+18aIJccqPKCscBLGos=
+github.com/olimci/structql v0.0.0-20260415031533-bb1d41162934/go.mod h1:4tas+xOn8dj0vgoqkbvN5xoeK6UNBrtxydGEobK7jDs=
+github.com/olimci/structql v0.0.0-20260418001028-ca2b891caa4e h1:I/QdjK75W6shxC5sY3ZRt8nt6OHiDpahMqTDgqlz+Zc=
+github.com/olimci/structql v0.0.0-20260418001028-ca2b891caa4e/go.mod h1:4tas+xOn8dj0vgoqkbvN5xoeK6UNBrtxydGEobK7jDs=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=

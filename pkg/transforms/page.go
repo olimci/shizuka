@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,9 +23,12 @@ var (
 )
 
 type Page struct {
+	QueryPage *Page `structql:"_page" toml:"-" yaml:"-" json:"-"`
+
 	Parent   *Page
 	Children []*Page
 	Git      PageGitMeta
+	File     PageFileMeta
 
 	Source PageSource
 
@@ -50,7 +54,7 @@ type Page struct {
 	RSS     RSSMeta
 	Sitemap SitemapMeta
 
-	Date    time.Time
+	Created time.Time
 	Updated time.Time
 	PubDate time.Time
 
@@ -64,12 +68,14 @@ type Page struct {
 	Links []PageLink
 
 	Pagination *PaginationState
+	Group      *QueryGroupState
 
 	Featured bool
 	Draft    bool
 }
 
 type PageLink struct {
+	Source    *Page
 	RawTarget string
 	Fragment  string
 	Label     string
@@ -105,6 +111,8 @@ const (
 type PageSource struct {
 	Format         PageSourceFormat
 	MetadataKind   string
+	HasCreated     bool
+	HasUpdated     bool
 	RawDocument    string
 	RawBody        string
 	Preprocessed   string
@@ -114,6 +122,7 @@ type PageSource struct {
 }
 
 type PageAsset struct {
+	Owner      *Page
 	Key        string
 	Source     string
 	Target     string
@@ -142,7 +151,7 @@ type dataPagePayload struct {
 	Description string                  `toml:"description" yaml:"description" json:"description"`
 	Section     string                  `toml:"section" yaml:"section" json:"section"`
 	Tags        []string                `toml:"tags" yaml:"tags" json:"tags"`
-	Date        time.Time               `toml:"date" yaml:"date" json:"date"`
+	Created     time.Time               `toml:"created" yaml:"created" json:"created"`
 	Updated     time.Time               `toml:"updated" yaml:"updated" json:"updated"`
 	RSS         RSSMeta                 `toml:"rss" yaml:"rss" json:"rss"`
 	Sitemap     SitemapMeta             `toml:"sitemap" yaml:"sitemap" json:"sitemap"`
@@ -254,7 +263,10 @@ func BuildPage(sourceRoot, source string) (*Page, error) {
 		return nil, fmt.Errorf("%w %q", ErrUnsupportedContentType, ext)
 	}
 
-	return &Page{
+	sourceMeta.HasCreated = !meta.Created.IsZero()
+	sourceMeta.HasUpdated = !meta.Updated.IsZero()
+
+	page := &Page{
 		Source:      sourceMeta,
 		SourcePath:  source,
 		URLPath:     meta.URLPath,
@@ -267,9 +279,9 @@ func BuildPage(sourceRoot, source string) (*Page, error) {
 		Description: meta.Description,
 		Section:     meta.Section,
 		Tags:        meta.Tags,
-		Date:        meta.Date,
+		Created:     meta.Created,
 		Updated:     meta.Updated,
-		PubDate:     firstNonzero(meta.Updated, meta.Date, time.Now()),
+		PubDate:     firstNonzero(meta.Updated, meta.Created, time.Now()),
 		Params:      meta.Params,
 		Queries:     nil,
 		Headers:     meta.Headers,
@@ -279,7 +291,9 @@ func BuildPage(sourceRoot, source string) (*Page, error) {
 		Sitemap:     meta.Sitemap,
 		Featured:    meta.Featured,
 		Draft:       meta.Draft,
-	}, nil
+	}
+	page.QueryPage = page
+	return page, nil
 }
 
 func parseMarkdownPage(doc []byte) (*FrontmatterDoc, string, error) {
@@ -345,27 +359,16 @@ func (p dataPagePayload) meta() Frontmatter {
 		Description: p.Description,
 		Section:     p.Section,
 		Tags:        slices.Clone(p.Tags),
-		Date:        p.Date,
+		Created:     p.Created,
 		Updated:     p.Updated,
 		RSS:         p.RSS,
 		Sitemap:     p.Sitemap,
 		Params:      p.Params,
-		Queries:     clonePageQueryDefs(p.Queries),
+		Queries:     maps.Clone(p.Queries),
 		Headers:     p.Headers,
 		Template:    p.Template,
 		Featured:    p.Featured,
 		Draft:       p.Draft,
 		Weight:      p.Weight,
 	}
-}
-
-func clonePageQueryDefs(in map[string]PageQueryDef) map[string]PageQueryDef {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make(map[string]PageQueryDef, len(in))
-	for key, value := range in {
-		out[key] = value
-	}
-	return out
 }

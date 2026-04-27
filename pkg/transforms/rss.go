@@ -1,44 +1,34 @@
 package transforms
 
 import (
-	"html/template"
+	"encoding/xml"
 	"slices"
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/utils/lazy"
 	"github.com/olimci/shizuka/pkg/utils/set"
 )
 
-var RSSTemplate = lazy.New(func() *template.Template {
-	return template.Must(template.New("rss").Parse(
-		`<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-<channel>
-<title>{{ .Title }}</title>
-<link>{{ .Link }}</link>
-<description>{{ .Description }}</description>
-<lastBuildDate>{{ .BuildDate }}</lastBuildDate>
-{{- range .Items }}
-<item>
-<title>{{ .Title }}</title>
-<link>{{ .Link }}</link>
-<guid>{{ .GUID }}</guid>
-<description>{{ .Description }}</description>
-<pubDate>{{ .PubDate }}</pubDate>
-</item>
-{{- end }}
-</channel>
-</rss>
-`))
-})
+type rssDocument struct {
+	XMLName xml.Name   `xml:"rss"`
+	Version string     `xml:"version,attr"`
+	Channel rssChannel `xml:"channel"`
+}
+
+type rssChannel struct {
+	Title         string    `xml:"title"`
+	Link          string    `xml:"link"`
+	Description   string    `xml:"description"`
+	LastBuildDate string    `xml:"lastBuildDate"`
+	Items         []RSSItem `xml:"item"`
+}
 
 type RSSItem struct {
-	Title       string
-	Link        string
-	Description string
-	GUID        string
-	PubDate     string
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	GUID        string `xml:"guid"`
+	PubDate     string `xml:"pubDate"`
 	sortDate    time.Time
 }
 
@@ -64,7 +54,7 @@ func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigRSS) RSSTemplateData 
 			continue
 		}
 
-		pubDate := firstNonzero(page.Date, page.Updated, time.Now())
+		pubDate := firstNonzero(page.PubDate, page.Updated, page.Created, time.Now())
 
 		link := page.Canon
 		if link == "" {
@@ -82,7 +72,7 @@ func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigRSS) RSSTemplateData 
 	}
 
 	slices.SortFunc(items, func(a, b RSSItem) int {
-		return a.sortDate.Compare(b.sortDate)
+		return b.sortDate.Compare(a.sortDate)
 	})
 
 	return RSSTemplateData{
@@ -92,4 +82,23 @@ func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigRSS) RSSTemplateData 
 		BuildDate:   site.Meta.BuildTime.Format(time.RFC1123Z),
 		Items:       items,
 	}
+}
+
+func RenderRSS(data RSSTemplateData) (string, error) {
+	doc := rssDocument{
+		Version: "2.0",
+		Channel: rssChannel{
+			Title:         data.Title,
+			Link:          data.Link,
+			Description:   data.Description,
+			LastBuildDate: data.BuildDate,
+			Items:         data.Items,
+		},
+	}
+
+	out, err := xml.Marshal(doc)
+	if err != nil {
+		return "", err
+	}
+	return xml.Header + string(out), nil
 }

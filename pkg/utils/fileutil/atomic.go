@@ -9,45 +9,16 @@ import (
 	"slices"
 )
 
-// AtomicWrite writes a file atomically.
-func AtomicWrite(path string, gen func(w io.Writer) error) error {
-	dir, base := filepath.Split(path)
-
-	tmp, err := os.CreateTemp(dir, "."+base+".tmp-*")
-	if err != nil {
-		return err
-	}
-	defer func(tmp *os.File) {
-		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
-	}(tmp)
-
-	if err := gen(tmp); err != nil {
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		return err
-	}
-	if df, err := os.Open(dir); err == nil {
-		_ = df.Sync()
-		_ = df.Close()
-	}
-
-	return nil
+type AtomicOptions struct {
+	Sync bool
 }
 
-// AtomicEdit edits a file atomically.
-func AtomicEdit(path string, gen func(w io.Writer) error) error {
+func AtomicWriteWithOptions(path string, gen func(w io.Writer) error, opts AtomicOptions) (bool, error) {
 	dir, base := filepath.Split(path)
+
 	tmp, err := os.CreateTemp(dir, "."+base+".tmp-*")
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func(tmp *os.File) {
 		_ = tmp.Close()
@@ -55,30 +26,69 @@ func AtomicEdit(path string, gen func(w io.Writer) error) error {
 	}(tmp)
 
 	if err := gen(tmp); err != nil {
-		return err
+		return false, err
 	}
-	if err := tmp.Sync(); err != nil {
-		return err
+	if opts.Sync {
+		if err := tmp.Sync(); err != nil {
+			return false, err
+		}
 	}
 	if err := tmp.Close(); err != nil {
-		return err
+		return false, err
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return false, err
+	}
+	if opts.Sync {
+		if df, err := os.Open(dir); err == nil {
+			_ = df.Sync()
+			_ = df.Close()
+		}
+	}
+
+	return true, nil
+}
+
+func AtomicEditWithOptions(path string, gen func(w io.Writer) error, opts AtomicOptions) (bool, error) {
+	dir, base := filepath.Split(path)
+	tmp, err := os.CreateTemp(dir, "."+base+".tmp-*")
+	if err != nil {
+		return false, err
+	}
+	defer func(tmp *os.File) {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+	}(tmp)
+
+	if err := gen(tmp); err != nil {
+		return false, err
+	}
+	if opts.Sync {
+		if err := tmp.Sync(); err != nil {
+			return false, err
+		}
+	}
+	if err := tmp.Close(); err != nil {
+		return false, err
 	}
 
 	if eq, err := cmpFiles(tmp.Name(), path); err != nil {
-		return err
+		return false, err
 	} else if eq {
-		return nil
+		return false, nil
 	}
 
 	if err := os.Rename(tmp.Name(), path); err != nil {
-		return err
+		return false, err
 	}
-	if df, err := os.Open(dir); err == nil {
-		_ = df.Sync()
-		_ = df.Close()
+	if opts.Sync {
+		if df, err := os.Open(dir); err == nil {
+			_ = df.Sync()
+			_ = df.Close()
+		}
 	}
 
-	return nil
+	return true, nil
 }
 
 // cmpFiles compares two files
