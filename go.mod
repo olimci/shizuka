@@ -11,6 +11,7 @@ require (
 	github.com/tdewolff/minify/v2 v2.24.12
 	github.com/urfave/cli/v3 v3.8.0
 	github.com/yuin/goldmark v1.8.2
+	golang.org/x/sync v0.20.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

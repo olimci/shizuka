@@ -2,8 +2,10 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
@@ -12,6 +14,7 @@ import (
 	"github.com/olimci/shizuka/pkg/profile"
 	"github.com/olimci/shizuka/pkg/registry"
 	"github.com/olimci/shizuka/pkg/utils/set"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -144,86 +147,112 @@ func build(steps []Step, cfg *config.Config, options *options.Options, sourceRoo
 		}
 	}
 
-	type result struct {
-		id  string
-		err error
+	readyCh := make(chan string, len(steps))
+
+	state := struct {
+		mu      sync.Mutex
+		active  int
+		queued  int
+		remain  int
+		stuck   error
+		closed  bool
+		closeCh func()
+	}{
+		queued: len(ready),
+		remain: len(steps),
+	}
+	state.closeCh = func() {
+		if state.closed {
+			return
+		}
+		close(readyCh)
+		state.closed = true
 	}
 
-	results := make(chan result)
-	active := 0
-	done := 0
-
-	startStep := func(id string) {
-		active++
-
-		step := dag.m[id]
-		go func() {
-			sc := StepContext{
-				Manifest:     man,
-				Registry:     reg,
-				Cache:        cacheReg,
-				SourceRoot:   sourceRoot,
-				ConfigPath:   configPath,
-				ChangedPaths: normalizeChangedPaths(options.ChangedPaths),
-				errors:       buildErrors,
-			}
-
-			stepSpan := profileState.StartSpan("step", step.ID, nil)
-			err := step.Fn(ctx, &sc)
-			stepSpan.End(nil)
-
-			if err != nil {
-				results <- result{
-					id:  step.ID,
-					err: fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err),
-				}
-				return
-			}
-
-			results <- result{id: step.ID}
-		}()
+	for _, id := range ready {
+		readyCh <- id
 	}
 
-	for done < len(steps) {
-		for active < maxWorkers && len(ready) > 0 {
-			id := ready[0]
-			ready = ready[1:]
-			startStep(id)
-		}
+	g, gctx := errgroup.WithContext(ctx)
+	workerCount := min(maxWorkers, len(steps))
+	if workerCount == 0 {
+		workerCount = 1
+	}
 
-		if active == 0 {
-			var stuck []string
-			for id, d := range dag.deg {
-				if d != 0 {
-					stuck = append(stuck, id)
+	for range workerCount {
+		g.Go(func() error {
+			for {
+				select {
+				case <-gctx.Done():
+					return nil
+				case id, ok := <-readyCh:
+					if !ok {
+						return nil
+					}
+
+					state.mu.Lock()
+					state.active++
+					state.queued--
+					state.mu.Unlock()
+
+					step := dag.m[id]
+					sc := StepContext{
+						Manifest:     man,
+						Registry:     reg,
+						Cache:        cacheReg,
+						SourceRoot:   sourceRoot,
+						ConfigPath:   configPath,
+						ChangedPaths: normalizeChangedPaths(options.ChangedPaths),
+						errors:       buildErrors,
+					}
+
+					stepSpan := profileState.StartSpan("step", step.ID, nil)
+					err := step.Fn(gctx, &sc)
+					stepSpan.End(nil)
+					if err != nil {
+						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+							return nil
+						}
+						return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
+					}
+
+					state.mu.Lock()
+					state.active--
+					state.remain--
+					for _, dep := range dag.adj[id] {
+						dag.deg[dep]--
+						if dag.deg[dep] == 0 {
+							readyCh <- dep
+							state.queued++
+						}
+					}
+
+					switch {
+					case state.remain == 0:
+						state.closeCh()
+					case state.active == 0 && state.queued == 0:
+						state.stuck = fmt.Errorf("%w: %v", ErrCircularDependency, stuckStepIDs(dag.deg))
+						state.closeCh()
+					}
+					state.mu.Unlock()
 				}
 			}
-			cancel()
-			_ = man.Complete(false)
-			return fmt.Errorf("%w: %v", ErrCircularDependency, stuck)
-		}
+		})
+	}
 
-		select {
-		case <-ctx.Done():
-			_ = man.Complete(false)
-			return ctx.Err()
-
-		case res := <-results:
-			active--
-			if res.err != nil {
-				cancel()
-				_ = man.Complete(false)
-				return res.err
-			}
-
-			done++
-			for _, dep := range dag.adj[res.id] {
-				dag.deg[dep]--
-				if dag.deg[dep] == 0 {
-					ready = append(ready, dep)
-				}
-			}
-		}
+	runErr := g.Wait()
+	if runErr == nil && options.Context.Err() != nil {
+		runErr = options.Context.Err()
+	}
+	if runErr == nil {
+		state.mu.Lock()
+		runErr = state.stuck
+		state.mu.Unlock()
+	}
+	if runErr != nil {
+		cancel()
+		_ = man.Complete(false)
+		return runErr
 	}
 
 	manifestErr := man.Complete(!buildErrors.HasErrors())
@@ -251,6 +280,16 @@ func build(steps []Step, cfg *config.Config, options *options.Options, sourceRoo
 	}
 
 	return nil
+}
+
+func stuckStepIDs(deg map[string]int) []string {
+	var stuck []string
+	for id, d := range deg {
+		if d != 0 {
+			stuck = append(stuck, id)
+		}
+	}
+	return stuck
 }
 
 // newDAG constructs a DAG from a slice of steps.
