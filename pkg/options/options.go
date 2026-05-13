@@ -6,7 +6,6 @@ import (
 	"maps"
 	"runtime"
 
-	"github.com/olimci/shizuka/pkg/profile"
 	"github.com/olimci/shizuka/pkg/registry"
 )
 
@@ -78,18 +77,6 @@ func WithSkipOutputCleanup(skip bool) Option {
 	}
 }
 
-func WithProfile(state *profile.State) Option {
-	return func(o *Options) {
-		o.ProfileState = state
-	}
-}
-
-func WithProfileOutputPath(path string) Option {
-	return func(o *Options) {
-		o.ProfileOutputPath = path
-	}
-}
-
 func WithCacheRegistry(cache *registry.Registry) Option {
 	return func(o *Options) {
 		o.CacheRegistry = cache
@@ -138,10 +125,8 @@ type Options struct {
 	SyncWrites        bool
 	SkipOutputCleanup bool
 
-	ProfileState      *profile.State
-	ProfileOutputPath string
-	CacheRegistry     *registry.Registry
-	ChangedPaths      []string
+	CacheRegistry *registry.Registry
+	ChangedPaths  []string
 
 	PageErrTemplates map[error]*template.Template
 	ErrTemplate      *template.Template

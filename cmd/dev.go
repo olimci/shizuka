@@ -16,7 +16,6 @@ import (
 	"github.com/olimci/shizuka/pkg/build"
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/options"
-	"github.com/olimci/shizuka/pkg/profile"
 	"github.com/olimci/shizuka/pkg/registry"
 	"github.com/olimci/shizuka/pkg/scaffold"
 	"github.com/olimci/shizuka/pkg/version"
@@ -49,10 +48,6 @@ var devCmd = &cli.Command{
 			Name:  "undev",
 			Usage: "Run dev server with production-like build options",
 		},
-		&cli.StringFlag{
-			Name:  "profile",
-			Usage: "Write profiler output JSON to the given path after each build",
-		},
 	},
 	Action: devAction,
 }
@@ -82,10 +77,6 @@ var xDevCmd = &cli.Command{
 		&cli.BoolFlag{
 			Name:  "undev",
 			Usage: "Run dev server with production-like build options",
-		},
-		&cli.StringFlag{
-			Name:  "profile",
-			Usage: "Write profiler output JSON to the given path after each build",
 		},
 	},
 	Action: xDevAction,
@@ -129,8 +120,6 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 				options.WithSiteURL(siteURL),
 				options.WithCacheRegistry(cacheRegistry),
 				options.If(options.WithChangedPaths(changedPaths), changedPaths != nil),
-				options.If(options.WithProfile(profile.NewState()), cmd.String("profile") != ""),
-				options.If(options.WithProfileOutputPath(cmd.String("profile")), cmd.String("profile") != ""),
 				options.If(options.WithDev(true), !cmd.Bool("undev")),
 				options.If(options.WithSkipOutputCleanup(true), !cmd.Bool("undev")),
 				options.If(options.WithPageErrTemplates(map[error]*template.Template{
@@ -406,8 +395,6 @@ func xDevAction(ctx context.Context, cmd *cli.Command) error {
 			options.If(options.WithSiteURL(siteURL), true),
 			options.WithCacheRegistry(cacheRegistry),
 			options.If(options.WithChangedPaths(changedPaths), changedPaths != nil),
-			options.If(options.WithProfile(profile.NewState()), cmd.String("profile") != ""),
-			options.If(options.WithProfileOutputPath(cmd.String("profile")), cmd.String("profile") != ""),
 			options.If(options.WithDev(true), !cmd.Bool("undev")),
 			options.If(options.WithSkipOutputCleanup(true), !cmd.Bool("undev")),
 			options.If(options.WithPageErrTemplates(map[error]*template.Template{

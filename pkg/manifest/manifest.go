@@ -10,11 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/options"
-	"github.com/olimci/shizuka/pkg/profile"
 	"github.com/olimci/shizuka/pkg/utils/errutil"
 	"github.com/olimci/shizuka/pkg/utils/fileutil"
 )
@@ -41,8 +39,6 @@ type runtimeState struct {
 	options *options.Options
 	report  func(Claim, error)
 
-	profileState *profile.State
-
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -52,7 +48,6 @@ type runtimeState struct {
 	mu       sync.Mutex
 	firstErr error
 	closed   bool
-	queueLen int
 
 	claims      map[string]*claimState
 	conflicts   map[string][]Claim
@@ -65,12 +60,11 @@ type claimState struct {
 }
 
 type queuedArtefact struct {
-	target   string
-	state    *claimState
-	enqueued time.Time
+	target string
+	state  *claimState
 }
 
-func (m *Manifest) Begin(ctx context.Context, config *config.Config, options *options.Options, report func(Claim, error), out string, profileState *profile.State) error {
+func (m *Manifest) Begin(ctx context.Context, config *config.Config, options *options.Options, report func(Claim, error), out string) error {
 	m.artefactsMu.Lock()
 	defer m.artefactsMu.Unlock()
 
@@ -100,25 +94,24 @@ func (m *Manifest) Begin(ctx context.Context, config *config.Config, options *op
 	}
 
 	rt := &runtimeState{
-		out:          out,
-		options:      options,
-		report:       report,
-		profileState: profileState,
-		ctx:          runCtx,
-		cancel:       cancel,
-		writeCh:      make(chan queuedArtefact, max(4, workers*2)),
-		claims:       make(map[string]*claimState),
-		conflicts:    make(map[string][]Claim),
-		createdDirs:  make(map[string]struct{}),
+		out:         out,
+		options:     options,
+		report:      report,
+		ctx:         runCtx,
+		cancel:      cancel,
+		writeCh:     make(chan queuedArtefact, max(4, workers*2)),
+		claims:      make(map[string]*claimState),
+		conflicts:   make(map[string][]Claim),
+		createdDirs: make(map[string]struct{}),
 	}
 	m.runtime = rt
 
 	for i := 0; i < workers; i++ {
 		rt.wg.Add(1)
-		go func(id int) {
+		go func() {
 			defer rt.wg.Done()
-			rt.writerLoop(id)
-		}(i + 1)
+			rt.writerLoop()
+		}()
 	}
 
 	for _, artefact := range m.artefacts {
@@ -149,41 +142,30 @@ func (m *Manifest) emitLocked(a Artefact) {
 		return
 	}
 
-	end := rt.startSpan("register claim", "manifest-coordinator", map[string]any{
-		"owner":  a.Claim.Owner,
-		"target": a.Claim.Target,
-	})
-	defer end(nil)
-
 	target, err := normalizeTarget(a.Claim.Target)
 	if err != nil {
 		rt.recordError(a.Claim, err)
-		end(map[string]any{"result": "invalid"})
 		return
 	}
 	a.Claim.Target = target
 
 	if conflictErr := rt.registerClaim(a.Claim); conflictErr != nil {
 		rt.recordError(NewInternalClaim("manifest", target), conflictErr)
-		end(map[string]any{"result": "conflict"})
 		return
 	}
 
 	state := &claimState{artefact: a}
 	rt.mu.Lock()
 	rt.claims[target] = state
-	rt.queueLen++
 	rt.mu.Unlock()
 
 	select {
 	case <-rt.ctx.Done():
 		rt.recordRuntimeError(rt.ctx.Err())
 	case rt.writeCh <- queuedArtefact{
-		target:   target,
-		state:    state,
-		enqueued: time.Now(),
+		target: target,
+		state:  state,
 	}:
-		end(map[string]any{"result": "queued"})
 	}
 }
 
@@ -213,8 +195,7 @@ func (m *Manifest) Complete(success bool) error {
 	return nil
 }
 
-func (rt *runtimeState) writerLoop(workerID int) {
-	track := fmt.Sprintf("manifest-writer-%d", workerID)
+func (rt *runtimeState) writerLoop() {
 	for {
 		select {
 		case <-rt.ctx.Done():
@@ -224,23 +205,12 @@ func (rt *runtimeState) writerLoop(workerID int) {
 				return
 			}
 
-			rt.mu.Lock()
-			rt.queueLen--
-			rt.mu.Unlock()
-
-			waitEnd := rt.startSpan("queue wait", track, map[string]any{
-				"target": item.target,
-			})
-			waitEnd(map[string]any{
-				"queued_for_us": time.Since(item.enqueued).Microseconds(),
-			})
-
-			rt.writeOne(workerID, item, track)
+			rt.writeOne(item)
 		}
 	}
 }
 
-func (rt *runtimeState) writeOne(workerID int, item queuedArtefact, track string) {
+func (rt *runtimeState) writeOne(item queuedArtefact) {
 	parent := filepath.Dir(filepath.Join(rt.out, item.target))
 	if err := rt.ensureDir(parent); err != nil {
 		rt.recordError(item.state.artefact.Claim, err)
@@ -255,22 +225,13 @@ func (rt *runtimeState) writeOne(workerID int, item queuedArtefact, track string
 		return
 	}
 
-	end := rt.startSpan("write artefact", track, map[string]any{
-		"target": item.target,
-		"owner":  item.state.artefact.Claim.Owner,
-		"worker": workerID,
-	})
-
-	var (
-		changed bool
-		err     error
-	)
+	var err error
 	if exists {
-		changed, err = fileutil.AtomicEditWithOptions(full, item.state.artefact.Builder, fileutil.AtomicOptions{
+		_, err = fileutil.AtomicEditWithOptions(full, item.state.artefact.Builder, fileutil.AtomicOptions{
 			Sync: rt.options.SyncWrites,
 		})
 	} else {
-		changed, err = fileutil.AtomicWriteWithOptions(full, item.state.artefact.Builder, fileutil.AtomicOptions{
+		_, err = fileutil.AtomicWriteWithOptions(full, item.state.artefact.Builder, fileutil.AtomicOptions{
 			Sync: rt.options.SyncWrites,
 		})
 	}
@@ -278,22 +239,14 @@ func (rt *runtimeState) writeOne(workerID int, item queuedArtefact, track string
 		var discardErr *errutil.DiscardError
 		if errors.As(err, &discardErr) {
 			item.state.discard = true
-			end(map[string]any{"result": "discard"})
 			if removeErr := os.Remove(full); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
 				rt.recordError(item.state.artefact.Claim, removeErr)
 			}
 			return
 		}
-		end(map[string]any{"result": "error"})
 		rt.recordError(item.state.artefact.Claim, err)
 		return
 	}
-
-	result := "skipped"
-	if changed {
-		result = "written"
-	}
-	end(map[string]any{"result": result})
 }
 
 func (rt *runtimeState) cleanup() error {
@@ -301,9 +254,7 @@ func (rt *runtimeState) cleanup() error {
 		return nil
 	}
 
-	endWalk := rt.startSpan("walk destination", "manifest-coordinator", nil)
 	gotFiles, gotDirs, err := fileutil.Walk(rt.out)
-	endWalk(nil)
 	if err != nil {
 		return fmt.Errorf("output %q: %w", displayPath(rt.out, "."), err)
 	}
@@ -315,12 +266,7 @@ func (rt *runtimeState) cleanup() error {
 		if _, ok := wantFiles[rel]; ok {
 			continue
 		}
-		end := rt.startSpan("cleanup stale file", "manifest-coordinator", map[string]any{
-			"path": rel,
-			"kind": "file",
-		})
 		err := os.Remove(filepath.Join(rt.out, rel))
-		end(nil)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("output %q: %w", displayPath(rt.out, rel), err)
 		}
@@ -330,12 +276,7 @@ func (rt *runtimeState) cleanup() error {
 		if wantDirs.Has(rel) {
 			continue
 		}
-		end := rt.startSpan("cleanup stale dir", "manifest-coordinator", map[string]any{
-			"path": rel,
-			"kind": "dir",
-		})
 		err := os.RemoveAll(filepath.Join(rt.out, rel))
-		end(nil)
 		if err != nil {
 			return fmt.Errorf("output %q: %w", displayPath(rt.out, rel), err)
 		}
@@ -380,9 +321,7 @@ func (rt *runtimeState) ensureDir(full string) error {
 		return err
 	}
 
-	end := rt.startSpan("mkdir", "manifest-coordinator", map[string]any{"path": full})
 	err := os.MkdirAll(full, 0o755)
-	end(nil)
 	if err != nil {
 		return err
 	}
@@ -467,29 +406,6 @@ func (rt *runtimeState) closeQueue() {
 	}
 	close(rt.writeCh)
 	rt.closed = true
-}
-
-func (rt *runtimeState) startSpan(name, category string, args map[string]any) func(map[string]any) {
-	if rt == nil || rt.profileState == nil {
-		return func(map[string]any) {}
-	}
-
-	span := rt.profileState.StartSpan(name, category, stringifyArgs(args))
-	return func(extra map[string]any) {
-		span.End(stringifyArgs(extra))
-	}
-}
-
-func stringifyArgs(args map[string]any) map[string]string {
-	if len(args) == 0 {
-		return nil
-	}
-
-	out := make(map[string]string, len(args))
-	for k, v := range args {
-		out[k] = fmt.Sprint(v)
-	}
-	return out
 }
 
 func normalizeTarget(dest string) (string, error) {

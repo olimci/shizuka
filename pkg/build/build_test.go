@@ -40,7 +40,7 @@ func TestBuildWaitsForRunningStepsBeforeClosingManifest(t *testing.T) {
 	}
 
 	go func() {
-		done <- build(steps, cfg, opts, cfg.Root, "shizuka.toml", nil)
+		done <- build(steps, cfg, opts, cfg.Root, "shizuka.toml")
 	}()
 
 	select {

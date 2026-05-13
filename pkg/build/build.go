@@ -11,7 +11,6 @@ import (
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/options"
-	"github.com/olimci/shizuka/pkg/profile"
 	"github.com/olimci/shizuka/pkg/registry"
 	"github.com/olimci/shizuka/pkg/utils/set"
 	"golang.org/x/sync/errgroup"
@@ -41,25 +40,6 @@ type dag struct {
 
 func Build(opt ...options.Option) (err error) {
 	opts := options.DefaultOptions().Apply(opt...)
-
-	profileState := opts.ProfileState
-	if profileState == nil && opts.ProfileOutputPath != "" {
-		profileState = profile.NewState()
-	}
-
-	defer func() {
-		report := profileState.Finalise()
-		if opts.ProfileOutputPath == "" {
-			return
-		}
-		if writeErr := profile.WriteJSON(opts.ProfileOutputPath, report); writeErr != nil && err == nil {
-			err = writeErr
-		}
-	}()
-
-	profileState.Begin()
-
-	initSpan := profileState.StartSpan("init", "root", nil)
 
 	configPath, err := config.ResolvePath(filepath.Clean(opts.ConfigPath))
 	if err != nil {
@@ -94,12 +74,10 @@ func Build(opt ...options.Option) (err error) {
 		steps = append(steps, StepSitemap(cfg))
 	}
 
-	initSpan.End(nil)
-
-	return build(steps, cfg, opts, cfg.Root, configPath, profileState)
+	return build(steps, cfg, opts, cfg.Root, configPath)
 }
 
-func build(steps []Step, cfg *config.Config, options *options.Options, sourceRoot, configPath string, profileState *profile.State) error {
+func build(steps []Step, cfg *config.Config, options *options.Options, sourceRoot, configPath string) error {
 	startTime := time.Now()
 
 	man := manifest.New()
@@ -118,7 +96,7 @@ func build(steps []Step, cfg *config.Config, options *options.Options, sourceRoo
 	defer cancel()
 
 	buildErrors := &errorState{}
-	if err := man.Begin(ctx, cfg, options, buildErrors.Add, "", profileState); err != nil {
+	if err := man.Begin(ctx, cfg, options, buildErrors.Add, ""); err != nil {
 		return err
 	}
 
@@ -206,9 +184,7 @@ func build(steps []Step, cfg *config.Config, options *options.Options, sourceRoo
 						errors:       buildErrors,
 					}
 
-					stepSpan := profileState.StartSpan("step", step.ID, nil)
 					err := step.Fn(gctx, &sc)
-					stepSpan.End(nil)
 					if err != nil {
 						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 							return nil
@@ -267,7 +243,7 @@ func build(steps []Step, cfg *config.Config, options *options.Options, sourceRoo
 		failure := &Failure{Errors: buildErrors.Slice()}
 		if options.Dev && options.ErrTemplate != nil {
 			errMan := manifest.New()
-			if err := errMan.Begin(options.Context, cfg, options, nil, "", profileState); err == nil {
+			if err := errMan.Begin(options.Context, cfg, options, nil, ""); err == nil {
 				errMan.Emit(manifest.TemplateArtefact(
 					manifest.Claim{Owner: "build", Target: "index.html", Canon: "/"},
 					options.ErrTemplate,

@@ -11,7 +11,6 @@ import (
 	"github.com/olimci/shizuka/pkg/build"
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/options"
-	"github.com/olimci/shizuka/pkg/profile"
 	"github.com/urfave/cli/v3"
 )
 
@@ -35,10 +34,6 @@ var buildCmd = &cli.Command{
 			Aliases: []string{"w"},
 			Value:   0,
 			Usage:   "Number of workers to use for building",
-		},
-		&cli.StringFlag{
-			Name:  "profile",
-			Usage: "Write profiler output JSON to the given path",
 		},
 	},
 	Action: buildAction,
@@ -65,10 +60,6 @@ var xBuildCmd = &cli.Command{
 			Value:   0,
 			Usage:   "Number of workers to use for building",
 		},
-		&cli.StringFlag{
-			Name:  "profile",
-			Usage: "Write profiler output JSON to the given path",
-		},
 	},
 	Action: xBuildAction,
 }
@@ -87,8 +78,6 @@ func buildAction(ctx context.Context, cmd *cli.Command) error {
 		opts := options.Filter(
 			options.WithContext(ctx),
 			options.WithConfigPath(configPath),
-			options.If(options.WithProfile(profile.NewState()), cmd.String("profile") != ""),
-			options.If(options.WithProfileOutputPath(cmd.String("profile")), cmd.String("profile") != ""),
 			options.If(options.WithDev(true), cmd.Bool("dev")),
 			options.If(options.WithSkipOutputCleanup(true), cmd.Bool("dev")),
 			options.If(options.WithPageErrTemplates(map[error]*template.Template{
@@ -141,8 +130,6 @@ func xBuildAction(ctx context.Context, cmd *cli.Command) error {
 	opts := options.Filter(
 		options.WithContext(ctx),
 		options.WithConfigPath(configPath),
-		options.If(options.WithProfile(profile.NewState()), cmd.String("profile") != ""),
-		options.If(options.WithProfileOutputPath(cmd.String("profile")), cmd.String("profile") != ""),
 		options.If(options.WithDev(true), cmd.Bool("dev")),
 		options.If(options.WithSkipOutputCleanup(true), cmd.Bool("dev")),
 		options.If(options.WithPageErrTemplates(map[error]*template.Template{

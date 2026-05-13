@@ -27,7 +27,7 @@ func TestBuildSkipsOutputCleanupWhenRequested(t *testing.T) {
 	opts := options.DefaultOptions()
 	opts.SkipOutputCleanup = true
 
-	if err := man.Begin(context.Background(), config.DefaultConfig(), opts, nil, out, nil); err != nil {
+	if err := man.Begin(context.Background(), config.DefaultConfig(), opts, nil, out); err != nil {
 		t.Fatalf("Begin failed: %v", err)
 	}
 	if err := man.Complete(true); err != nil {
@@ -55,7 +55,7 @@ func TestBuildCleansOutputWhenEnabled(t *testing.T) {
 
 	opts := options.DefaultOptions()
 
-	if err := man.Begin(context.Background(), config.DefaultConfig(), opts, nil, out, nil); err != nil {
+	if err := man.Begin(context.Background(), config.DefaultConfig(), opts, nil, out); err != nil {
 		t.Fatalf("Begin failed: %v", err)
 	}
 	if err := man.Complete(true); err != nil {
@@ -74,7 +74,7 @@ func TestBeginWritesArtefactsEagerly(t *testing.T) {
 
 	opts := options.DefaultOptions()
 
-	if err := man.Begin(context.Background(), config.DefaultConfig(), opts, nil, out, nil); err != nil {
+	if err := man.Begin(context.Background(), config.DefaultConfig(), opts, nil, out); err != nil {
 		t.Fatalf("Begin failed: %v", err)
 	}
 
@@ -111,7 +111,7 @@ func TestBeginReportsDuplicateClaims(t *testing.T) {
 
 	opts := options.DefaultOptions()
 
-	if err := man.Begin(context.Background(), config.DefaultConfig(), opts, nil, out, nil); err != nil {
+	if err := man.Begin(context.Background(), config.DefaultConfig(), opts, nil, out); err != nil {
 		t.Fatalf("Begin failed: %v", err)
 	}
 
