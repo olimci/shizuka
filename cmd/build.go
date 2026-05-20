@@ -35,6 +35,11 @@ var buildCmd = &cli.Command{
 			Value:   0,
 			Usage:   "Number of workers to use for building",
 		},
+		&cli.IntFlag{
+			Name:  "artifact-workers",
+			Value: -1,
+			Usage: "Number of artifact write workers (-1 auto, 0 after steps complete)",
+		},
 	},
 	Action: buildAction,
 }
@@ -59,6 +64,11 @@ var xBuildCmd = &cli.Command{
 			Aliases: []string{"w"},
 			Value:   0,
 			Usage:   "Number of workers to use for building",
+		},
+		&cli.IntFlag{
+			Name:  "artifact-workers",
+			Value: -1,
+			Usage: "Number of artifact write workers (-1 auto, 0 after steps complete)",
 		},
 	},
 	Action: xBuildAction,
@@ -87,6 +97,7 @@ func buildAction(ctx context.Context, cmd *cli.Command) error {
 			}), cmd.Bool("dev")),
 			options.If(options.WithErrTemplate(templateBuildError.Get()), cmd.Bool("dev")),
 			options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.Int("workers") > 0),
+			options.If(options.WithArtefactWorkers(cmd.Int("artifact-workers")), cmd.IsSet("artifact-workers")),
 		)
 
 		status, err := c.Status("building...")
@@ -139,6 +150,7 @@ func xBuildAction(ctx context.Context, cmd *cli.Command) error {
 		}), cmd.Bool("dev")),
 		options.If(options.WithErrTemplate(templateBuildError.Get()), cmd.Bool("dev")),
 		options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.Int("workers") > 0),
+		options.If(options.WithArtefactWorkers(cmd.Int("artifact-workers")), cmd.IsSet("artifact-workers")),
 	)
 
 	fmt.Println("building...")

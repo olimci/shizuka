@@ -5,7 +5,7 @@ My static site generator. I made this because I found other static site generato
 ## Installation
 
 ```sh
-go install github.com/olimci/shizuka
+go install github.com/olimci/shizuka@latest
 ```
 
 ## Usage
@@ -33,5 +33,5 @@ shizuka build
 Deploying is super easy. If you are using cloudflare pages or similar, just select "Custom Framework" and set the build command to:
 
 ```sh
-go run github.com/olimci/shizuka x build
+go run github.com/olimci/shizuka@latest x build
 ```

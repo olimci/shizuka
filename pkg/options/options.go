@@ -59,6 +59,12 @@ func WithMaxWorkers(workers int) Option {
 	}
 }
 
+func WithArtefactWorkers(workers int) Option {
+	return func(o *Options) {
+		o.ArtefactWorkers = workers
+	}
+}
+
 func WithDev(dev bool) Option {
 	return func(o *Options) {
 		o.Dev = dev
@@ -106,6 +112,7 @@ func DefaultOptions() *Options {
 		Context:           context.Background(),
 		ConfigPath:        "shizuka.toml",
 		MaxWorkers:        runtime.NumCPU(),
+		ArtefactWorkers:   -1,
 		SyncWrites:        false,
 		SkipOutputCleanup: false,
 		Dev:               false,
@@ -119,8 +126,9 @@ type Options struct {
 	OutputPath string
 	SiteURL    string
 
-	MaxWorkers int
-	Dev        bool
+	MaxWorkers      int
+	ArtefactWorkers int
+	Dev             bool
 
 	SyncWrites        bool
 	SkipOutputCleanup bool

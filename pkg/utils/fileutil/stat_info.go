@@ -11,6 +11,10 @@ type Stat struct {
 	Size    int64
 }
 
+func (s Stat) Equal(other Stat) bool {
+	return s.Created.Equal(other.Created) && s.Updated.Equal(other.Updated) && s.Size == other.Size
+}
+
 func Info(path string) (Stat, error) {
 	info, err := os.Stat(path)
 	if err != nil {

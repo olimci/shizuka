@@ -60,3 +60,38 @@ func TestBuildWaitsForRunningStepsBeforeClosingManifest(t *testing.T) {
 		t.Fatal("build() did not finish")
 	}
 }
+
+func TestBuildFailsOnDuplicateOutputClaims(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	cfg.Root = t.TempDir()
+
+	opts := options.DefaultOptions()
+	opts.Context = context.Background()
+	opts.OutputPath = t.TempDir()
+	opts.MaxWorkers = 2
+	opts.ArtefactWorkers = 0
+
+	steps := []Step{
+		StepFunc("one", func(_ context.Context, sc *StepContext) error {
+			sc.Manifest.Emit(manifest.TextArtefact(
+				manifest.Claim{Owner: "one", Target: "index.html"},
+				"one",
+			))
+			return nil
+		}),
+		StepFunc("two", func(_ context.Context, sc *StepContext) error {
+			sc.Manifest.Emit(manifest.TextArtefact(
+				manifest.Claim{Owner: "two", Target: "index.html"},
+				"two",
+			))
+			return nil
+		}),
+	}
+
+	err := build(steps, cfg, opts, cfg.Root, "shizuka.toml")
+	if !errors.Is(err, manifest.ErrConflicts) {
+		t.Fatalf("build() error = %v, want ErrConflicts", err)
+	}
+}

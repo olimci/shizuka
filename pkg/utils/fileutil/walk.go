@@ -3,6 +3,7 @@ package fileutil
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/olimci/shizuka/pkg/utils/set"
 )
@@ -22,12 +23,7 @@ func Walk(root string) (files *set.Set[string], dirs *set.Set[string], err error
 			return err
 		}
 
-		rel, err := filepath.Rel(abs, path)
-		if err != nil {
-			return err
-		}
-
-		rel = filepath.ToSlash(rel)
+		rel := walkRel(abs, path)
 
 		if d.IsDir() {
 			dirs.Add(rel)
@@ -55,15 +51,8 @@ func WalkFiles(root string) (files *set.Set[string], err error) {
 			return err
 		}
 
-		rel, err := filepath.Rel(abs, path)
-		if err != nil {
-			return err
-		}
-
-		rel = filepath.ToSlash(rel)
-
 		if !d.IsDir() {
-			files.Add(rel)
+			files.Add(walkRel(abs, path))
 		}
 
 		return nil
@@ -86,15 +75,8 @@ func WalkDirs(root string) (dirs *set.Set[string], err error) {
 			return err
 		}
 
-		rel, err := filepath.Rel(abs, path)
-		if err != nil {
-			return err
-		}
-
-		rel = filepath.ToSlash(rel)
-
 		if d.IsDir() {
-			dirs.Add(rel)
+			dirs.Add(walkRel(abs, path))
 		}
 
 		return nil
@@ -118,17 +100,12 @@ func WalkInfo(root string) (files map[string]os.FileInfo, dirs map[string]os.Fil
 			return err
 		}
 
-		rel, err := filepath.Rel(abs, path)
-		if err != nil {
-			return err
-		}
-
 		info, err := d.Info()
 		if err != nil {
 			return err
 		}
 
-		rel = filepath.ToSlash(rel)
+		rel := walkRel(abs, path)
 
 		if d.IsDir() {
 			dirs[rel] = info
@@ -140,4 +117,11 @@ func WalkInfo(root string) (files map[string]os.FileInfo, dirs map[string]os.Fil
 	})
 
 	return files, dirs, err
+}
+
+func walkRel(root, p string) string {
+	if p == root {
+		return "."
+	}
+	return filepath.ToSlash(strings.TrimPrefix(strings.TrimPrefix(p, root), string(filepath.Separator)))
 }

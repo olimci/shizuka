@@ -44,6 +44,11 @@ var devCmd = &cli.Command{
 			Value:   0,
 			Usage:   "Number of workers to use for building",
 		},
+		&cli.IntFlag{
+			Name:  "artifact-workers",
+			Value: -1,
+			Usage: "Number of artifact write workers (-1 auto, 0 after steps complete)",
+		},
 		&cli.BoolFlag{
 			Name:  "undev",
 			Usage: "Run dev server with production-like build options",
@@ -73,6 +78,11 @@ var xDevCmd = &cli.Command{
 			Aliases: []string{"w"},
 			Value:   0,
 			Usage:   "Number of workers to use for building",
+		},
+		&cli.IntFlag{
+			Name:  "artifact-workers",
+			Value: -1,
+			Usage: "Number of artifact write workers (-1 auto, 0 after steps complete)",
 		},
 		&cli.BoolFlag{
 			Name:  "undev",
@@ -129,6 +139,7 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 				}), !cmd.Bool("undev")),
 				options.If(options.WithErrTemplate(templateBuildError.Get()), !cmd.Bool("undev")),
 				options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.Int("workers") > 0),
+				options.If(options.WithArtefactWorkers(cmd.Int("artifact-workers")), cmd.IsSet("artifact-workers")),
 			)
 		}
 
@@ -404,6 +415,7 @@ func xDevAction(ctx context.Context, cmd *cli.Command) error {
 			}), !cmd.Bool("undev")),
 			options.If(options.WithErrTemplate(templateBuildError.Get()), !cmd.Bool("undev")),
 			options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.Int("workers") > 0),
+			options.If(options.WithArtefactWorkers(cmd.Int("artifact-workers")), cmd.IsSet("artifact-workers")),
 		)
 	}
 

@@ -52,7 +52,7 @@ var initCmd = &cli.Command{
 }
 
 var xInitCmd = &cli.Command{
-	Name:      "xinit",
+	Name:      "init",
 	Usage:     "scaffold a new shizuka site",
 	ArgsUsage: "[source]",
 	Flags: []cli.Flag{

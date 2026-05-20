@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -110,3 +111,11 @@ var (
 	cleanFSPath = pathutil.CleanContentPath
 	cleanFSGlob = pathutil.CleanContentGlob
 )
+
+func joinSlashRel(root, rel string) string {
+	root = filepath.ToSlash(filepath.Clean(root))
+	if root == "." || root == "" {
+		return rel
+	}
+	return path.Join(root, rel)
+}

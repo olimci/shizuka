@@ -8,6 +8,7 @@ import (
 	"maps"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -48,15 +49,15 @@ func StepStatic(cfg *config.Config) Step {
 		if err != nil {
 			return err
 		}
+		staticRootRel, err := filepath.Rel(sc.SourceRoot, staticRoot)
+		if err != nil {
+			return err
+		}
 
 		next := make(map[string]staticFileCacheEntry, files.Len())
 		for _, rel := range files.Values() {
 			abs := filepath.Join(staticRoot, filepath.FromSlash(rel))
-			source, err := filepath.Rel(sc.SourceRoot, abs)
-			if err != nil {
-				return err
-			}
-			source = filepath.ToSlash(source)
+			source := joinSlashRel(staticRootRel, rel)
 
 			fingerprint, err := statFingerprint(abs)
 			if err != nil {
@@ -260,8 +261,23 @@ func StepRedirects(cfg *config.Config) Step {
 			return nil
 		}
 
-		redirects := make([]config.Redirect, 0, len(redirectsCfg.Entries))
-		redirects = append(redirects, redirectsCfg.Entries...)
+		type redirectEntry struct {
+			config.Redirect
+			source int
+		}
+
+		const (
+			redirectSourceGenerated = iota
+			redirectSourceConfig
+		)
+
+		redirects := make([]redirectEntry, 0, len(redirectsCfg.Entries))
+		for _, redirect := range redirectsCfg.Entries {
+			redirects = append(redirects, redirectEntry{
+				Redirect: redirect,
+				source:   redirectSourceConfig,
+			})
+		}
 
 		for _, page := range pages {
 			if page == nil || page.HasError() {
@@ -271,19 +287,25 @@ func StepRedirects(cfg *config.Config) Step {
 			if page.Section == "posts" {
 				shortSlug := pathutil.ShortSlugForRedirect(page.Slug)
 				if shortSlug != "" {
-					redirects = append(redirects, config.Redirect{
-						From:   path.Join(redirectsCfg.Shorten, shortSlug),
-						To:     pathutil.EnsureLeadingSlash(page.URLPath),
-						Status: 0,
+					redirects = append(redirects, redirectEntry{
+						Redirect: config.Redirect{
+							From:   path.Join(redirectsCfg.Shorten, shortSlug),
+							To:     pathutil.EnsureLeadingSlash(page.URLPath),
+							Status: 0,
+						},
+						source: redirectSourceGenerated,
 					})
 				}
 			}
 
 			for _, alias := range page.Aliases {
-				redirects = append(redirects, config.Redirect{
-					From:   pathutil.EnsureLeadingSlash(alias),
-					To:     pathutil.EnsureLeadingSlash(page.URLPath),
-					Status: 301,
+				redirects = append(redirects, redirectEntry{
+					Redirect: config.Redirect{
+						From:   pathutil.EnsureLeadingSlash(alias),
+						To:     pathutil.EnsureLeadingSlash(page.URLPath),
+						Status: 301,
+					},
+					source: redirectSourceGenerated,
 				})
 			}
 		}
@@ -293,7 +315,25 @@ func StepRedirects(cfg *config.Config) Step {
 		}
 
 		seen := make(map[string]string, len(redirects))
-		deduped := make([]config.Redirect, 0, len(redirects))
+		redirectRank := func(redirect redirectEntry) int {
+			if strings.Contains(redirect.From, "*") {
+				return 2
+			}
+			if redirect.source == redirectSourceGenerated {
+				return 0
+			}
+			return 1
+		}
+		slices.SortStableFunc(redirects, func(a, b redirectEntry) int {
+			aRank := redirectRank(a)
+			bRank := redirectRank(b)
+			if aRank != bRank {
+				return aRank - bRank
+			}
+			return 0
+		})
+
+		deduped := make([]redirectEntry, 0, len(redirects))
 		for _, redirect := range redirects {
 			if prev, ok := seen[redirect.From]; ok {
 				sc.Error(fmt.Errorf("duplicate redirect %q (%s, %s)", redirect.From, prev, redirect.To), manifest.NewInternalClaim("redirects", redirectsCfg.Output))

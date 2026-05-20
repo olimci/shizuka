@@ -16,29 +16,10 @@ const (
 	gitTTL = time.Minute
 )
 
-// TODO: this is a copy of fileutil/Stat, use that instead
-type fileFingerprint struct {
-	Created time.Time
-	Updated time.Time
-	Size    int64
-}
+type fileFingerprint = fileutil.Stat
 
 func statFingerprint(path string) (fileFingerprint, error) {
-	info, err := fileutil.Info(path)
-	if err != nil {
-		return fileFingerprint{}, err
-	}
-
-	return fileFingerprint{
-		Created: info.Created,
-		Updated: info.Updated,
-		Size:    info.Size,
-	}, nil
-}
-
-// TODO: remove. Should be directly comparable since struct of comparable fields,
-func (fp fileFingerprint) Equal(other fileFingerprint) bool {
-	return fp.Created.Equal(other.Created) && fp.Updated.Equal(other.Updated) && fp.Size == other.Size
+	return fileutil.Info(path)
 }
 
 type staticFileCacheEntry struct {

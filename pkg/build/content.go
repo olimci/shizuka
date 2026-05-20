@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"mime"
 	"os"
 	"path"
@@ -59,13 +60,10 @@ func attachBundleAsset(sc *StepContext, page *transforms.Page, key, source strin
 	}
 	owned[source] = page.SourcePath
 
-	data, err := os.ReadFile(filepath.Join(sc.SourceRoot, filepath.FromSlash(source)))
+	hash, size, err := hashAsset(filepath.Join(sc.SourceRoot, filepath.FromSlash(source)))
 	if err != nil {
 		return err
 	}
-
-	sum := sha256.Sum256(data)
-	hash := hex.EncodeToString(sum[:12])
 
 	target := path.Join(page.URLPath, key)
 	if mode == "fingerprinted" {
@@ -79,7 +77,7 @@ func attachBundleAsset(sc *StepContext, page *transforms.Page, key, source strin
 		Target:     target,
 		URL:        pathutil.EnsureLeadingSlash(target),
 		Hash:       hash,
-		Size:       int64(len(data)),
+		Size:       size,
 		MediaType:  pageAssetMediaType(source),
 		Standalone: mode == "fingerprinted",
 	}
@@ -282,13 +280,10 @@ func buildPageAsset(sc *StepContext, page *transforms.Page, key, source, mode, o
 		return nil, fmt.Errorf("invalid bundle asset key %q", key)
 	}
 
-	data, err := os.ReadFile(filepath.Join(sc.SourceRoot, filepath.FromSlash(source)))
+	hash, size, err := hashAsset(filepath.Join(sc.SourceRoot, filepath.FromSlash(source)))
 	if err != nil {
 		return nil, err
 	}
-
-	sum := sha256.Sum256(data)
-	hash := hex.EncodeToString(sum[:12])
 
 	target := path.Join(page.URLPath, key)
 	if mode == "fingerprinted" {
@@ -302,10 +297,25 @@ func buildPageAsset(sc *StepContext, page *transforms.Page, key, source, mode, o
 		Target:     target,
 		URL:        pathutil.EnsureLeadingSlash(target),
 		Hash:       hash,
-		Size:       int64(len(data)),
+		Size:       size,
 		MediaType:  pageAssetMediaType(source),
 		Standalone: mode == "fingerprinted",
 	}, nil
+}
+
+func hashAsset(filePath string) (string, int64, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", 0, err
+	}
+	defer file.Close()
+
+	h := sha256.New()
+	size, err := io.Copy(h, file)
+	if err != nil {
+		return "", 0, err
+	}
+	return hex.EncodeToString(h.Sum(nil)[:12]), size, nil
 }
 
 func emitPageAsset(sc *StepContext, page *transforms.Page, asset *transforms.PageAsset, owned, emitted map[string]string) error {

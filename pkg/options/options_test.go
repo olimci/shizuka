@@ -42,6 +42,9 @@ func TestApplyUsesDefaultsAndCopiesMutableInputs(t *testing.T) {
 	if opts.MaxWorkers <= 0 {
 		t.Fatalf("opts.MaxWorkers = %d, want > 0", opts.MaxWorkers)
 	}
+	if opts.ArtefactWorkers != -1 {
+		t.Fatalf("opts.ArtefactWorkers = %d, want -1", opts.ArtefactWorkers)
+	}
 	if len(opts.ChangedPaths) != 1 || opts.ChangedPaths[0] != "content/index.md" {
 		t.Fatalf("opts.ChangedPaths = %#v, want copied input", opts.ChangedPaths)
 	}
@@ -54,6 +57,7 @@ func TestDefaultOptionsAndApplyToExisting(t *testing.T) {
 	opts := DefaultOptions().Apply(
 		WithOutputPath("dist-custom"),
 		WithSiteURL("https://example.com"),
+		WithArtefactWorkers(0),
 		WithSkipOutputCleanup(true),
 	)
 
@@ -65,6 +69,9 @@ func TestDefaultOptionsAndApplyToExisting(t *testing.T) {
 	}
 	if opts.SiteURL != "https://example.com" {
 		t.Fatalf("opts.SiteURL = %q, want https://example.com", opts.SiteURL)
+	}
+	if opts.ArtefactWorkers != 0 {
+		t.Fatalf("opts.ArtefactWorkers = %d, want 0", opts.ArtefactWorkers)
 	}
 	if !opts.SkipOutputCleanup {
 		t.Fatal("opts.SkipOutputCleanup = false, want true")

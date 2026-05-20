@@ -42,12 +42,16 @@ type runtimeState struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	writeCh chan queuedArtefact
-	wg      sync.WaitGroup
+	wg sync.WaitGroup
 
-	mu       sync.Mutex
-	firstErr error
-	closed   bool
+	mu      sync.Mutex
+	cond    *sync.Cond
+	pending []queuedArtefact
+	next    int
+
+	firstErr       error
+	closed         bool
+	startedWorkers int
 
 	claims      map[string]*claimState
 	conflicts   map[string][]Claim
@@ -92,6 +96,10 @@ func (m *Manifest) Begin(ctx context.Context, config *config.Config, options *op
 	if workers <= 0 {
 		workers = 1
 	}
+	artefactWorkers := options.ArtefactWorkers
+	if artefactWorkers < 0 {
+		artefactWorkers = defaultArtefactWorkers(workers)
+	}
 
 	rt := &runtimeState{
 		out:         out,
@@ -99,19 +107,15 @@ func (m *Manifest) Begin(ctx context.Context, config *config.Config, options *op
 		report:      report,
 		ctx:         runCtx,
 		cancel:      cancel,
-		writeCh:     make(chan queuedArtefact, max(4, workers*2)),
 		claims:      make(map[string]*claimState),
 		conflicts:   make(map[string][]Claim),
 		createdDirs: make(map[string]struct{}),
 	}
+	rt.cond = sync.NewCond(&rt.mu)
 	m.runtime = rt
 
-	for i := 0; i < workers; i++ {
-		rt.wg.Add(1)
-		go func() {
-			defer rt.wg.Done()
-			rt.writerLoop()
-		}()
+	if artefactWorkers > 0 {
+		rt.startWorkers(artefactWorkers)
 	}
 
 	for _, artefact := range m.artefacts {
@@ -149,24 +153,25 @@ func (m *Manifest) emitLocked(a Artefact) {
 	}
 	a.Claim.Target = target
 
-	if conflictErr := rt.registerClaim(a.Claim); conflictErr != nil {
+	state := &claimState{artefact: a}
+	rt.mu.Lock()
+	if conflictErr := rt.registerClaimLocked(a.Claim); conflictErr != nil {
+		rt.mu.Unlock()
 		rt.recordError(NewInternalClaim("manifest", target), conflictErr)
 		return
 	}
-
-	state := &claimState{artefact: a}
-	rt.mu.Lock()
+	if err := rt.ctx.Err(); err != nil {
+		rt.mu.Unlock()
+		rt.recordRuntimeError(err)
+		return
+	}
 	rt.claims[target] = state
-	rt.mu.Unlock()
-
-	select {
-	case <-rt.ctx.Done():
-		rt.recordRuntimeError(rt.ctx.Err())
-	case rt.writeCh <- queuedArtefact{
+	rt.pending = append(rt.pending, queuedArtefact{
 		target: target,
 		state:  state,
-	}:
-	}
+	})
+	rt.cond.Signal()
+	rt.mu.Unlock()
 }
 
 func (m *Manifest) Complete(success bool) error {
@@ -178,7 +183,12 @@ func (m *Manifest) Complete(success bool) error {
 		return nil
 	}
 
+	drainWorkers := rt.options.MaxWorkers
+	if drainWorkers <= 0 {
+		drainWorkers = 1
+	}
 	rt.closeQueue()
+	rt.startWorkers(drainWorkers)
 	rt.wg.Wait()
 
 	if err := rt.firstRuntimeError(); err != nil {
@@ -195,19 +205,64 @@ func (m *Manifest) Complete(success bool) error {
 	return nil
 }
 
+func defaultArtefactWorkers(stepWorkers int) int {
+	if stepWorkers <= 4 {
+		return 1
+	}
+	return min(2, max(1, stepWorkers/4))
+}
+
+func (rt *runtimeState) startWorkers(workers int) {
+	if workers <= 0 {
+		return
+	}
+	rt.mu.Lock()
+	rt.startedWorkers += workers
+	rt.mu.Unlock()
+
+	for i := 0; i < workers; i++ {
+		rt.wg.Add(1)
+		go func() {
+			defer rt.wg.Done()
+			rt.writerLoop()
+		}()
+	}
+}
+
 func (rt *runtimeState) writerLoop() {
 	for {
-		select {
-		case <-rt.ctx.Done():
+		item, ok := rt.nextArtefact()
+		if !ok {
 			return
-		case item, ok := <-rt.writeCh:
-			if !ok {
-				return
-			}
-
-			rt.writeOne(item)
 		}
+
+		rt.writeOne(item)
 	}
+}
+
+func (rt *runtimeState) nextArtefact() (queuedArtefact, bool) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+
+	for rt.next >= len(rt.pending) && !rt.closed && rt.ctx.Err() == nil {
+		rt.cond.Wait()
+	}
+	if rt.ctx.Err() != nil {
+		return queuedArtefact{}, false
+	}
+	if rt.next >= len(rt.pending) {
+		return queuedArtefact{}, false
+	}
+
+	item := rt.pending[rt.next]
+	rt.pending[rt.next] = queuedArtefact{}
+	rt.next++
+	if rt.next > 1024 && rt.next*2 >= len(rt.pending) {
+		copy(rt.pending, rt.pending[rt.next:])
+		rt.pending = rt.pending[:len(rt.pending)-rt.next]
+		rt.next = 0
+	}
+	return item, true
 }
 
 func (rt *runtimeState) writeOne(item queuedArtefact) {
@@ -332,10 +387,7 @@ func (rt *runtimeState) ensureDir(full string) error {
 	return nil
 }
 
-func (rt *runtimeState) registerClaim(claim Claim) error {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-
+func (rt *runtimeState) registerClaimLocked(claim Claim) error {
 	target := claim.Target
 	if _, exists := rt.claims[target]; !exists {
 		return nil
@@ -355,7 +407,6 @@ func (rt *runtimeState) registerClaim(claim Claim) error {
 		if rt.firstErr == nil {
 			rt.firstErr = err
 		}
-		rt.cancel()
 	}
 	return err
 }
@@ -375,7 +426,14 @@ func (rt *runtimeState) recordRuntimeError(err error) {
 		return
 	}
 	rt.setFirstErr(err)
+	rt.cancelRuntime()
+}
+
+func (rt *runtimeState) cancelRuntime() {
 	rt.cancel()
+	rt.mu.Lock()
+	rt.cond.Broadcast()
+	rt.mu.Unlock()
 }
 
 func (rt *runtimeState) setFirstErr(err error) {
@@ -404,8 +462,8 @@ func (rt *runtimeState) closeQueue() {
 	if rt.closed {
 		return
 	}
-	close(rt.writeCh)
 	rt.closed = true
+	rt.cond.Broadcast()
 }
 
 func normalizeTarget(dest string) (string, error) {

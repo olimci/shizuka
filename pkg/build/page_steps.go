@@ -190,6 +190,10 @@ func StepContent(cfg *config.Config, opts *options.Options) []Step {
 		if err != nil {
 			return err
 		}
+		contentRootRel, err := filepath.Rel(sc.SourceRoot, contentRoot)
+		if err != nil {
+			return err
+		}
 
 		cache := registry.GetAs(sc.Cache, PageIndexCacheK)
 		if cache == nil {
@@ -202,12 +206,7 @@ func StepContent(cfg *config.Config, opts *options.Options) []Step {
 
 		buildIndexedPage := func(rel string) (*transforms.Page, fileFingerprint, error) {
 			absSource := filepath.Join(contentRoot, filepath.FromSlash(rel))
-			source, err := filepath.Rel(sc.SourceRoot, absSource)
-			if err != nil {
-				source = filepath.ToSlash(absSource)
-			} else {
-				source = filepath.ToSlash(source)
-			}
+			source := joinSlashRel(contentRootRel, rel)
 
 			fingerprint, err := statFingerprint(absSource)
 			if err != nil {
