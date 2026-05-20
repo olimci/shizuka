@@ -107,6 +107,7 @@ output = "_headers"
 [redirects]
 output = "_redirects"
 shorten = "/s"
+disable_short_links = false
 
 [[redirects.entries]]
 from = "/old"
@@ -196,12 +197,15 @@ Writes a Netlify-style `_redirects` file.
 
 - `output`: output filename, default `_redirects`
 - `shorten`: base path for generated short redirects, default `"/s"`
+- `disable_short_links`: disable generated short redirects from post slugs, default `false`
 - `entries`: explicit redirects
 
 Generated redirects also include:
 
 - alias redirects from frontmatter `aliases`
 - short redirects for pages in section `"posts"` when `slug` is set
+
+Generated page redirects exclude drafts unless running in development mode.
 
 URL paths are site-relative and do not include a leading `/` (for example `posts/hello`).
 

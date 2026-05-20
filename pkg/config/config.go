@@ -90,9 +90,10 @@ type ConfigHeaders struct {
 }
 
 type ConfigRedirects struct {
-	Output  string     `toml:"output" yaml:"output" json:"output"`
-	Shorten string     `toml:"shorten" yaml:"shorten" json:"shorten"`
-	Entries []Redirect `toml:"entries" yaml:"entries" json:"entries"`
+	Output            string     `toml:"output" yaml:"output" json:"output"`
+	Shorten           string     `toml:"shorten" yaml:"shorten" json:"shorten"`
+	DisableShortLinks bool       `toml:"disable_short_links" yaml:"disable_short_links" json:"disable_short_links"`
+	Entries           []Redirect `toml:"entries" yaml:"entries" json:"entries"`
 }
 
 type ConfigRSS struct {

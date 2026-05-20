@@ -216,9 +216,18 @@ func StepHeaders(cfg *config.Config) Step {
 			return nil
 		}
 
-		headers := headersCfg.Values
+		buildCtx := registry.GetAs(sc.Registry, BuildCtxK)
+		isDev := buildCtx != nil && buildCtx.Dev
+
+		headers := make(map[string]map[string]string, len(headersCfg.Values))
+		for path, kvs := range headersCfg.Values {
+			headers[path] = maps.Clone(kvs)
+		}
 		for _, page := range pages {
 			if page == nil || page.HasError() {
+				continue
+			}
+			if page.Draft && !isDev {
 				continue
 			}
 
@@ -271,6 +280,9 @@ func StepRedirects(cfg *config.Config) Step {
 			redirectSourceConfig
 		)
 
+		buildCtx := registry.GetAs(sc.Registry, BuildCtxK)
+		isDev := buildCtx != nil && buildCtx.Dev
+
 		redirects := make([]redirectEntry, 0, len(redirectsCfg.Entries))
 		for _, redirect := range redirectsCfg.Entries {
 			redirects = append(redirects, redirectEntry{
@@ -283,8 +295,11 @@ func StepRedirects(cfg *config.Config) Step {
 			if page == nil || page.HasError() {
 				continue
 			}
+			if page.Draft && !isDev {
+				continue
+			}
 
-			if page.Section == "posts" {
+			if page.Section == "posts" && !redirectsCfg.DisableShortLinks {
 				shortSlug := pathutil.ShortSlugForRedirect(page.Slug)
 				if shortSlug != "" {
 					redirects = append(redirects, redirectEntry{
