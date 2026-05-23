@@ -2,107 +2,90 @@ package build
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/git"
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/registry"
 	"github.com/olimci/shizuka/pkg/transforms"
 	"github.com/olimci/shizuka/pkg/utils/fileutil"
+	"github.com/olimci/shizuka/pkg/utils/gitutil"
 	"github.com/olimci/shizuka/pkg/utils/pathutil"
 )
 
 func StepStatic(cfg *config.Config) Step {
 	return StepFunc("static", func(_ context.Context, sc *StepContext) error {
-		staticRoot, err := cfg.StaticSourcePath()
+		staticRoot := cfg.StaticSourcePath()
+		info, err := fs.Stat(sc.Source.FS(), staticRoot)
 		if err != nil {
-			return err
-		}
-
-		m := NewMinifier(cfg.Build.Minify)
-		cache := registry.GetAs(sc.Cache, StaticCacheK)
-		if cache == nil {
-			cache = &staticStepCache{Files: make(map[string]staticFileCacheEntry)}
-			registry.SetAs(sc.Cache, StaticCacheK, cache)
-		}
-		if cache.Files == nil {
-			cache.Files = make(map[string]staticFileCacheEntry)
-		}
-
-		if sc.ChangedPaths != nil && !sc.MayHaveChangesUnder(staticRoot) {
-			for _, entry := range cache.Files {
-				sc.Manifest.Emit(manifest.StaticArtefact(sc.SourceRoot, entry.Claim).Post(m))
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
 			}
-			return nil
+			return fmt.Errorf("static source %q: %w", staticRoot, err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("static source %q is not a directory", staticRoot)
 		}
 
-		files, err := fileutil.WalkFiles(staticRoot)
-		if err != nil {
-			return err
-		}
-		staticRootRel, err := filepath.Rel(sc.SourceRoot, staticRoot)
-		if err != nil {
-			return err
-		}
-
-		next := make(map[string]staticFileCacheEntry, files.Len())
-		for _, rel := range files.Values() {
-			abs := filepath.Join(staticRoot, filepath.FromSlash(rel))
-			source := joinSlashRel(staticRootRel, rel)
-
-			fingerprint, err := statFingerprint(abs)
+		m := NewMinifier(cfg.Build.Minifier)
+		err = fs.WalkDir(sc.Source.FS(), staticRoot, func(filePath string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
-
-			entry, ok := cache.Files[rel]
-			if !ok || !entry.Fingerprint.Equal(fingerprint) {
-				entry = staticFileCacheEntry{
-					Fingerprint: fingerprint,
-					Claim: manifest.Claim{
-						Owner:  "static",
-						Source: source,
-						Target: rel,
-						Canon:  rel,
-					},
-				}
+			if d.IsDir() {
+				return nil
 			}
-
-			next[rel] = entry
-			sc.Manifest.Emit(manifest.StaticArtefact(sc.SourceRoot, entry.Claim).Post(m))
+			rel, err := pathutil.RelPathWithin(staticRoot, filePath)
+			if err != nil {
+				return err
+			}
+			source := pathutil.JoinSlashRel(staticRoot, rel)
+			claim := manifest.Claim{
+				Owner:  "static",
+				Source: source,
+				Target: rel,
+				Canon:  rel,
+			}
+			return sc.Manifest.Emit(manifest.StaticArtefact(sc.Source.FS(), claim).Post(m))
+		})
+		if err != nil {
+			return fmt.Errorf("static source %q: %w", staticRoot, err)
 		}
-
-		cache.Files = next
 		return nil
 	})
 }
 
-func StepGit(cfg *config.Config) Step {
-	return StepFunc("git", func(ctx context.Context, sc *StepContext) error {
-		pages := registry.GetAs(sc.Registry, PagesK)
+func StepGit(cfg *config.Config) StepPatch {
+	return StepPatchFunc(StepFunc("git", func(ctx context.Context, sc *StepContext) error {
+		pages := registry.Get(sc.Registry, PagesK)
 		gitCfg := cfg.Content.Git
 		if gitCfg == nil {
 			return nil
 		}
 
-		root, err := filepath.Abs(sc.SourceRoot)
+		root, err := filepath.Abs(sc.Source.Name())
 		if err != nil {
 			return err
 		}
 
-		cache := registry.GetAs(sc.Cache, GitCacheK)
-		if cache == nil {
-			cache = &gitStepCache{Files: make(map[string]gitFileCacheEntry)}
-			registry.SetAs(sc.Cache, GitCacheK, cache)
+		cache := (*gitStepCache)(nil)
+		if sc.Cache != nil {
+			cache = registry.Get(sc.Cache, GitCacheK)
+			if cache == nil {
+				cache = &gitStepCache{}
+				registry.Set(sc.Cache, GitCacheK, cache)
+			}
+		} else {
+			cache = &gitStepCache{}
 		}
 		if cache.Files == nil {
 			cache.Files = make(map[string]gitFileCacheEntry)
@@ -110,9 +93,9 @@ func StepGit(cfg *config.Config) Step {
 
 		repo := cache.Repo
 		if repo == nil && !cache.Unavailable {
-			repo, err = git.Open(ctx, root)
+			repo, err = gitutil.Open(ctx, root)
 			if err != nil || repo == nil {
-				if errors.Is(err, git.ErrUnavailable) {
+				if errors.Is(err, gitutil.ErrUnavailable) {
 					cache.Unavailable = true
 					return nil
 				}
@@ -127,23 +110,23 @@ func StepGit(cfg *config.Config) Step {
 		now := time.Now()
 		info := cache.Site
 		if info == nil || now.After(cache.SiteExpires) {
-			info, err = repo.SiteInfo(ctx)
+			info, err = repo.Repo(ctx)
 			if err != nil {
 				return err
 			}
 			cache.Site = info
 			cache.SiteExpires = now.Add(gitTTL)
 		}
-		registry.SetAs(sc.Registry, SiteGitK, info)
+		registry.Set(sc.Registry, SiteGitK, info)
 
 		activeFiles := make(map[string]struct{}, len(pages))
 		for _, page := range pages {
-			if page == nil || page.HasError() {
+			if page.Error != nil {
 				continue
 			}
 
 			abs := filepath.Join(root, filepath.FromSlash(page.SourcePath))
-			relPath, err := filepath.Rel(info.RepoRoot, abs)
+			relPath, err := filepath.Rel(root, abs)
 			if err != nil {
 				continue
 			}
@@ -153,7 +136,7 @@ func StepGit(cfg *config.Config) Step {
 			}
 			activeFiles[relPath] = struct{}{}
 
-			fingerprint, err := statFingerprint(abs)
+			fingerprint, err := fileutil.Info(abs)
 			if err != nil {
 				return err
 			}
@@ -162,7 +145,7 @@ func StepGit(cfg *config.Config) Step {
 			if entry, ok := cache.Files[relPath]; ok && entry.Fingerprint.Equal(fingerprint) && now.Before(entry.ExpiresAt) && entry.Info != nil {
 				pageInfo = entry.Info
 			} else {
-				pageInfo, err = repo.FileInfo(ctx, relPath, true)
+				pageInfo, err = repo.File(ctx, relPath, true)
 				if err != nil {
 					return err
 				}
@@ -184,7 +167,7 @@ func StepGit(cfg *config.Config) Step {
 		}
 
 		return nil
-	}, "pages:index")
+	}, "pages:index").Registry(registry.W(PagesK), registry.W(SiteGitK)).Cache(registry.W(GitCacheK))).AddDependency("pages:resolve", "git")
 }
 
 func applyGitMetadata(page *transforms.Page, info *transforms.PageGitMeta, backfill bool) {
@@ -194,10 +177,10 @@ func applyGitMetadata(page *transforms.Page, info *transforms.PageGitMeta, backf
 
 	page.Git = *info
 	if backfill {
-		if !page.Source.HasCreated && !info.Created.IsZero() {
+		if page.Created.IsZero() && !info.Created.IsZero() {
 			page.Created = info.Created
 		}
-		if !page.Source.HasUpdated && !info.Updated.IsZero() {
+		if page.Updated.IsZero() && !info.Updated.IsZero() {
 			page.Updated = info.Updated
 		}
 	}
@@ -208,45 +191,18 @@ func applyGitMetadata(page *transforms.Page, info *transforms.PageGitMeta, backf
 	}
 }
 
-func StepHeaders(cfg *config.Config) Step {
-	return StepFunc("headers", func(_ context.Context, sc *StepContext) error {
-		pages := registry.GetAs(sc.Registry, PagesK)
-		headersCfg := cfg.Headers
-		if headersCfg == nil {
-			return nil
-		}
-
-		buildCtx := registry.GetAs(sc.Registry, BuildCtxK)
-		isDev := buildCtx != nil && buildCtx.Dev
-
-		headers := make(map[string]map[string]string, len(headersCfg.Values))
-		for path, kvs := range headersCfg.Values {
+func StepHeaders(cfg *config.Config) StepPatch {
+	return StepPatchFunc(StepFunc("headers", func(_ context.Context, sc *StepContext) error {
+		headers := make(map[string]map[string]string, len(cfg.Artefacts.Headers.Values))
+		for path, kvs := range cfg.Artefacts.Headers.Values {
 			headers[path] = maps.Clone(kvs)
 		}
-		for _, page := range pages {
-			if page == nil || page.HasError() {
-				continue
-			}
-			if page.Draft && !isDev {
-				continue
-			}
-
-			if len(page.Headers) == 0 {
-				continue
-			}
-			pagePath := page.URLPath
-			if _, ok := headers[pagePath]; !ok {
-				headers[pagePath] = make(map[string]string, len(page.Headers))
-			}
-			maps.Copy(headers[pagePath], page.Headers)
-		}
-
 		if len(headers) == 0 {
 			return nil
 		}
 
-		sc.Manifest.Emit(manifest.Artefact{
-			Claim: manifest.NewInternalClaim("headers", headersCfg.Output),
+		return sc.Manifest.Emit(manifest.Artefact{
+			Claim: manifest.NewInternalClaim("headers", cfg.Artefacts.Headers.Path),
 			Builder: func(w io.Writer) error {
 				for pagePath, kvs := range headers {
 					fmt.Fprintf(w, "%s\n", pagePath)
@@ -258,88 +214,23 @@ func StepHeaders(cfg *config.Config) Step {
 				return nil
 			},
 		})
-		return nil
-	}, "pages:index")
+	}))
 }
 
-func StepRedirects(cfg *config.Config) Step {
-	return StepFunc("redirects", func(_ context.Context, sc *StepContext) error {
-		pages := registry.GetAs(sc.Registry, PagesK)
-		redirectsCfg := cfg.Redirects
-		if redirectsCfg == nil {
-			return nil
-		}
-
-		type redirectEntry struct {
-			config.Redirect
-			source int
-		}
-
-		const (
-			redirectSourceGenerated = iota
-			redirectSourceConfig
-		)
-
-		buildCtx := registry.GetAs(sc.Registry, BuildCtxK)
-		isDev := buildCtx != nil && buildCtx.Dev
-
-		redirects := make([]redirectEntry, 0, len(redirectsCfg.Entries))
-		for _, redirect := range redirectsCfg.Entries {
-			redirects = append(redirects, redirectEntry{
-				Redirect: redirect,
-				source:   redirectSourceConfig,
-			})
-		}
-
-		for _, page := range pages {
-			if page == nil || page.HasError() {
-				continue
-			}
-			if page.Draft && !isDev {
-				continue
-			}
-
-			if page.Section == "posts" && !redirectsCfg.DisableShortLinks {
-				shortSlug := pathutil.ShortSlugForRedirect(page.Slug)
-				if shortSlug != "" {
-					redirects = append(redirects, redirectEntry{
-						Redirect: config.Redirect{
-							From:   path.Join(redirectsCfg.Shorten, shortSlug),
-							To:     pathutil.EnsureLeadingSlash(page.URLPath),
-							Status: 0,
-						},
-						source: redirectSourceGenerated,
-					})
-				}
-			}
-
-			for _, alias := range page.Aliases {
-				redirects = append(redirects, redirectEntry{
-					Redirect: config.Redirect{
-						From:   pathutil.EnsureLeadingSlash(alias),
-						To:     pathutil.EnsureLeadingSlash(page.URLPath),
-						Status: 301,
-					},
-					source: redirectSourceGenerated,
-				})
-			}
-		}
-
+func StepRedirects(cfg *config.Config) StepPatch {
+	return StepPatchFunc(StepFunc("redirects", func(_ context.Context, sc *StepContext) error {
+		redirects := slices.Clone(cfg.Artefacts.Redirects.Entries)
 		if len(redirects) == 0 {
 			return nil
 		}
 
-		seen := make(map[string]string, len(redirects))
-		redirectRank := func(redirect redirectEntry) int {
+		redirectRank := func(redirect config.Redirect) int {
 			if strings.Contains(redirect.From, "*") {
 				return 2
 			}
-			if redirect.source == redirectSourceGenerated {
-				return 0
-			}
 			return 1
 		}
-		slices.SortStableFunc(redirects, func(a, b redirectEntry) int {
+		slices.SortStableFunc(redirects, func(a, b config.Redirect) int {
 			aRank := redirectRank(a)
 			bRank := redirectRank(b)
 			if aRank != bRank {
@@ -348,19 +239,8 @@ func StepRedirects(cfg *config.Config) Step {
 			return 0
 		})
 
-		deduped := make([]redirectEntry, 0, len(redirects))
-		for _, redirect := range redirects {
-			if prev, ok := seen[redirect.From]; ok {
-				sc.Error(fmt.Errorf("duplicate redirect %q (%s, %s)", redirect.From, prev, redirect.To), manifest.NewInternalClaim("redirects", redirectsCfg.Output))
-				continue
-			}
-			seen[redirect.From] = redirect.To
-			deduped = append(deduped, redirect)
-		}
-		redirects = deduped
-
-		sc.Manifest.Emit(manifest.Artefact{
-			Claim: manifest.NewInternalClaim("redirects", redirectsCfg.Output),
+		return sc.Manifest.Emit(manifest.Artefact{
+			Claim: manifest.NewInternalClaim("redirects", cfg.Artefacts.Redirects.Path),
 			Builder: func(w io.Writer) error {
 				for _, redirect := range redirects {
 					fmt.Fprintf(w, "%s %s", redirect.From, redirect.To)
@@ -372,46 +252,105 @@ func StepRedirects(cfg *config.Config) Step {
 				return nil
 			},
 		})
-		return nil
-	}, "pages:index")
+	}))
 }
 
-func StepRSS(cfg *config.Config) Step {
-	return StepFunc("rss", func(_ context.Context, sc *StepContext) error {
-		site := registry.GetAs(sc.Registry, SiteK)
-		pages := registry.GetAs(sc.Registry, PagesK)
-		if cfg.RSS == nil {
-			return nil
-		}
+func StepRSS(cfg *config.Config) StepPatch {
+	return StepPatchFunc(StepFunc("rss", func(_ context.Context, sc *StepContext) error {
+		site := registry.Get(sc.Registry, SiteK)
+		pages := registry.Get(sc.Registry, PagesK)
 
-		doc, err := transforms.RenderRSS(transforms.BuildRSS(pages, site, cfg.RSS))
+		doc, err := transforms.RenderRSS(transforms.BuildRSS(pages, site, cfg.Artefacts.RSS))
 		if err != nil {
 			return err
 		}
-		sc.Manifest.Emit(manifest.TextArtefact(
-			manifest.NewInternalClaim("rss", cfg.RSS.Output),
+		return sc.Manifest.Emit(manifest.TextArtefact(
+			manifest.NewInternalClaim("rss", cfg.Artefacts.RSS.Path),
 			doc,
 		))
-		return nil
-	}, "pages:resolve")
+	}, "pages:resolve").Registry(registry.R(SiteK), registry.R(PagesK)))
 }
 
-func StepSitemap(cfg *config.Config) Step {
-	return StepFunc("sitemap", func(_ context.Context, sc *StepContext) error {
-		site := registry.GetAs(sc.Registry, SiteK)
-		pages := registry.GetAs(sc.Registry, PagesK)
-		if cfg.Sitemap == nil {
-			return nil
-		}
+func StepSitemap(cfg *config.Config) StepPatch {
+	return StepPatchFunc(StepFunc("sitemap", func(_ context.Context, sc *StepContext) error {
+		site := registry.Get(sc.Registry, SiteK)
+		pages := registry.Get(sc.Registry, PagesK)
 
-		doc, err := transforms.RenderSitemap(transforms.BuildSitemap(pages, site, cfg.Sitemap))
+		doc, err := transforms.RenderSitemap(transforms.BuildSitemap(pages, site, cfg.Artefacts.Sitemap))
 		if err != nil {
 			return err
 		}
-		sc.Manifest.Emit(manifest.TextArtefact(
-			manifest.NewInternalClaim("sitemap", cfg.Sitemap.Output),
+		return sc.Manifest.Emit(manifest.TextArtefact(
+			manifest.NewInternalClaim("sitemap", cfg.Artefacts.Sitemap.Path),
 			doc,
 		))
-		return nil
-	}, "pages:resolve")
+	}, "pages:resolve").Registry(registry.R(SiteK), registry.R(PagesK)))
+}
+
+func StepRobots(cfg *config.Config) StepPatch {
+	return StepPatchFunc(StepFunc("robots", func(_ context.Context, sc *StepContext) error {
+		site := registry.Get(sc.Registry, SiteK)
+		pages := registry.Get(sc.Registry, PagesK)
+
+		doc := transforms.RenderRobots(transforms.BuildRobots(pages, site, cfg.Artefacts.Robots, cfg.Artefacts.Sitemap))
+		return sc.Manifest.Emit(manifest.TextArtefact(
+			manifest.NewInternalClaim("robots", cfg.Artefacts.Robots.Path),
+			doc,
+		))
+	}, "pages:resolve").Registry(registry.R(SiteK), registry.R(PagesK)))
+}
+
+func StepNotFound(cfg *config.Config) StepPatch {
+	return StepPatchFunc(StepFunc("not_found", func(_ context.Context, sc *StepContext) error {
+		site := registry.Get(sc.Registry, SiteK)
+		tmpl := registry.Get(sc.Registry, TemplatesK)
+
+		claim := manifest.NewInternalClaim("not_found", cfg.Artefacts.NotFound.Path)
+		templateName := cfg.Artefacts.NotFound.Template
+		if templateName == "" {
+			templateName = "404"
+		}
+
+		if pageTemplate := tmpl.Lookup(templateName); pageTemplate != nil {
+			return sc.Pool.Go(func(_ context.Context) error {
+				return emitRenderedTemplate(sc, claim, tmpl, templateName, transforms.PageTemplate{
+					Site: site.Tmpl(),
+				}, NewMinifier(cfg.Build.Minifier))
+			})
+		}
+		if cfg.Artefacts.NotFound.Template != "" {
+			return fmt.Errorf("not_found template %q not found", cfg.Artefacts.NotFound.Template)
+		}
+
+		return sc.Manifest.Emit(manifest.TextArtefact(claim, "404 Not Found\n"))
+	}, "pages:templates").Registry(registry.R(SiteK), registry.R(TemplatesK)))
+}
+
+func StepMeta(cfg *config.Config) StepPatch {
+	return StepPatchFunc(StepFunc("meta", func(_ context.Context, sc *StepContext) error {
+		site := registry.Get(sc.Registry, SiteK)
+		data := struct {
+			Site   *transforms.Site `json:"site"`
+			Config *config.Config   `json:"config"`
+		}{
+			Site:   site,
+			Config: cfg,
+		}
+
+		return sc.Pool.Go(func(_ context.Context) error {
+			claim := manifest.NewInternalClaim("meta", cfg.Artefacts.Meta.Path)
+			if cfg.Artefacts.Meta.JSON {
+				jsonClaim := manifest.NewInternalClaim("meta", "_shizuka.json")
+				body, err := json.MarshalIndent(data, "", "  ")
+				if err != nil {
+					sc.Error(err, jsonClaim)
+					return nil
+				}
+				if err := sc.Manifest.Emit(manifest.TextArtefact(jsonClaim, string(body)+"\n")); err != nil {
+					return err
+				}
+			}
+			return emitDebugTemplate(sc, claim, data, NewMinifier(cfg.Build.Minifier))
+		})
+	}, "pages:resolve").Registry(registry.R(SiteK)))
 }

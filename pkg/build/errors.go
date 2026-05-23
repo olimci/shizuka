@@ -3,7 +3,6 @@ package build
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/olimci/shizuka/pkg/manifest"
@@ -14,13 +13,13 @@ type BuildError struct {
 	Err   error
 }
 
-func WrapError(claim manifest.Claim, err error) *BuildError {
+func wrapError(claim manifest.Claim, err error) *BuildError {
 	if err == nil {
 		return nil
 	}
 
 	if buildErr, ok := errors.AsType[*BuildError](err); ok {
-		if isZeroClaim(buildErr.Claim) && !isZeroClaim(claim) {
+		if buildErr.Claim == (manifest.Claim{}) && claim != (manifest.Claim{}) {
 			out := *buildErr
 			out.Claim = claim
 			return &out
@@ -58,21 +57,21 @@ func (e *BuildError) Source() string {
 	if e == nil {
 		return ""
 	}
-	return strings.TrimSpace(e.Claim.Source)
+	return e.Claim.Source
 }
 
 func (e *BuildError) Target() string {
 	if e == nil {
 		return ""
 	}
-	return strings.TrimSpace(e.Claim.Target)
+	return e.Claim.Target
 }
 
 func (e *BuildError) Owner() string {
 	if e == nil {
 		return ""
 	}
-	return strings.TrimSpace(e.Claim.Owner)
+	return e.Claim.Owner
 }
 
 func (e *BuildError) Location() string {
@@ -98,7 +97,7 @@ type errorState struct {
 }
 
 func (s *errorState) Add(claim manifest.Claim, err error) {
-	buildErr := WrapError(claim, err)
+	buildErr := wrapError(claim, err)
 	if buildErr == nil {
 		return
 	}
@@ -148,19 +147,8 @@ func (f *Failure) Unwrap() error {
 	return f.Errors[0]
 }
 
-func (f *Failure) Count() int {
-	if f == nil {
-		return 0
-	}
-	return len(f.Errors)
-}
-
-func (f *Failure) HasErrors() bool {
-	return f != nil && len(f.Errors) > 0
-}
-
 func (f *Failure) Summary() string {
-	switch n := f.Count(); n {
+	switch n := len(f.Errors); n {
 	case 0:
 		return "no errors"
 	case 1:
@@ -168,18 +156,4 @@ func (f *Failure) Summary() string {
 	default:
 		return fmt.Sprintf("%d errors", n)
 	}
-}
-
-func AsFailure(err error) (*Failure, bool) {
-	if failure, ok := errors.AsType[*Failure](err); ok {
-		return failure, true
-	}
-	return nil, false
-}
-
-func isZeroClaim(claim manifest.Claim) bool {
-	return strings.TrimSpace(claim.Owner) == "" &&
-		strings.TrimSpace(claim.Source) == "" &&
-		strings.TrimSpace(claim.Target) == "" &&
-		strings.TrimSpace(claim.Canon) == ""
 }

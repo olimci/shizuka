@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
-	"github.com/olimci/shizuka/pkg/utils/set"
 )
 
 type rssDocument struct {
@@ -41,7 +40,10 @@ type RSSTemplateData struct {
 }
 
 func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigRSS) RSSTemplateData {
-	sectionFilter := set.FromSlice(cfg.Sections)
+	sectionFilter := make(map[string]struct{}, len(cfg.Sections))
+	for _, section := range cfg.Sections {
+		sectionFilter[section] = struct{}{}
+	}
 	items := make([]RSSItem, 0, len(pages))
 	for _, page := range pages {
 		if !cfg.IncludeDrafts && page.Draft {
@@ -50,7 +52,7 @@ func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigRSS) RSSTemplateData 
 		if !page.RSS.Include {
 			continue
 		}
-		if !sectionFilter.Has(page.Section) {
+		if _, ok := sectionFilter[page.Section]; !ok {
 			continue
 		}
 
@@ -58,7 +60,7 @@ func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigRSS) RSSTemplateData 
 
 		link := page.Canon
 		if link == "" {
-			link = page.URLPath
+			link = page.Path
 		}
 
 		items = append(items, RSSItem{
@@ -79,7 +81,7 @@ func BuildRSS(pages []*Page, site *Site, cfg *config.ConfigRSS) RSSTemplateData 
 		Title:       site.Title,
 		Link:        site.URL,
 		Description: site.Description,
-		BuildDate:   site.Meta.BuildTime.Format(time.RFC1123Z),
+		BuildDate:   site.BuildTime.Format(time.RFC1123Z),
 		Items:       items,
 	}
 }

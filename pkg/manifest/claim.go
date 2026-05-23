@@ -3,14 +3,19 @@ package manifest
 import (
 	"fmt"
 	"path"
+	"strings"
 )
 
-func NewPageClaim(source, url string) Claim {
-	target := path.Join(url, "index.html")
+func NewPageClaim(source, routePath string) Claim {
+	targetPath := strings.Trim(routePath, "/")
+	target := "index.html"
+	if targetPath != "" {
+		target = path.Join(targetPath, "index.html")
+	}
 	return Claim{
 		Source: source,
 		Target: target,
-		Canon:  url,
+		Canon:  routePath,
 	}
 }
 
@@ -34,6 +39,19 @@ type Claim struct {
 func (c Claim) Own(name string) Claim {
 	c.Owner = name
 	return c
+}
+
+func (c Claim) DisplayOwner() string {
+	if c.Owner != "" {
+		return c.Owner
+	}
+	if c.Source != "" {
+		return c.Source
+	}
+	if c.Target != "" {
+		return c.Target
+	}
+	return "<unknown>"
 }
 
 func (c Claim) String() string {

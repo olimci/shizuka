@@ -4,234 +4,179 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
-	"sync"
+	"os"
 	"time"
 
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/manifest"
 	"github.com/olimci/shizuka/pkg/options"
 	"github.com/olimci/shizuka/pkg/registry"
-	"github.com/olimci/shizuka/pkg/utils/set"
-	"golang.org/x/sync/errgroup"
+	"github.com/olimci/shizuka/pkg/utils/dag"
+	"github.com/olimci/shizuka/pkg/utils/pool"
 )
 
 var (
-	ErrDuplicateStep        = fmt.Errorf("duplicate step")
-	ErrSelfDependency       = fmt.Errorf("self dependency")
-	ErrUnresolvedDependency = fmt.Errorf("unresolved dependency")
-	ErrCircularDependency   = fmt.Errorf("circular dependency")
-	ErrTaskError            = fmt.Errorf("task error")
-	ErrBuildFailed          = fmt.Errorf("build failed")
+	ErrTaskError   = fmt.Errorf("task error")
+	ErrBuildFailed = fmt.Errorf("build failed")
 )
 
 type BuildCtx struct {
 	StartTime time.Time
-
-	ConfigPath string
-	Dev        bool
-}
-
-type dag struct {
-	m   map[string]Step
-	adj map[string][]string
-	deg map[string]int
+	Dev       bool
 }
 
 func Build(opt ...options.Option) (err error) {
 	opts := options.DefaultOptions().Apply(opt...)
+	logger := buildLogger(opts.Logger)
 
-	configPath, err := config.ResolvePath(filepath.Clean(opts.ConfigPath))
+	cfg, err := config.Load(opts.ConfigPath)
 	if err != nil {
 		return err
 	}
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		return err
-	}
+	logger.Debug("config loaded", "path", opts.ConfigPath, "root", cfg.Root)
 
 	if opts.SiteURL != "" {
 		cfg.Site.URL = opts.SiteURL
-		if err := cfg.Validate(); err != nil {
-			return err
-		}
 	}
 
-	steps := make([]Step, 0)
-	steps = append(steps, StepStatic(cfg))
-	steps = append(steps, StepContent(cfg, opts)...)
-
-	if cfg.Headers != nil {
-		steps = append(steps, StepHeaders(cfg))
-	}
-	if cfg.Redirects != nil {
-		steps = append(steps, StepRedirects(cfg))
-	}
-	if cfg.RSS != nil {
-		steps = append(steps, StepRSS(cfg))
-	}
-	if cfg.Sitemap != nil {
-		steps = append(steps, StepSitemap(cfg))
+	graph := dag.New[Step]()
+	staticStep := StepStatic(cfg)
+	_ = graph.Add(staticStep.ID, staticStep.Deps, staticStep)
+	for _, step := range StepContent(cfg, opts) {
+		_ = graph.Add(step.ID, step.Deps, step)
 	}
 
-	return build(steps, cfg, opts, cfg.Root, configPath)
+	if cfg.Content.Git != nil {
+		applyStepPatch(graph, StepGit(cfg))
+	}
+	if cfg.Artefacts.Headers != nil {
+		applyStepPatch(graph, StepHeaders(cfg))
+	}
+	if cfg.Artefacts.Redirects != nil {
+		applyStepPatch(graph, StepRedirects(cfg))
+	}
+	if cfg.Artefacts.RSS != nil {
+		applyStepPatch(graph, StepRSS(cfg))
+	}
+	if cfg.Artefacts.Sitemap != nil {
+		applyStepPatch(graph, StepSitemap(cfg))
+	}
+	if cfg.Artefacts.Robots != nil {
+		applyStepPatch(graph, StepRobots(cfg))
+	}
+	if cfg.Artefacts.NotFound != nil {
+		applyStepPatch(graph, StepNotFound(cfg))
+	}
+	if cfg.Artefacts.Meta != nil {
+		applyStepPatch(graph, StepMeta(cfg))
+	}
+	logger.Debug("build graph assembled")
+
+	return build(graph, cfg, opts)
 }
 
-func build(steps []Step, cfg *config.Config, options *options.Options, sourceRoot, configPath string) error {
+func applyStepPatch(graph *dag.Graph[Step], patch StepPatch) {
+	for _, step := range patch.Steps {
+		_ = graph.Add(step.ID, step.Deps, step)
+	}
+	for _, dep := range patch.dependencies {
+		_ = graph.AddDeps(dep.id, []string{dep.dep})
+	}
+}
+
+func build(graph *dag.Graph[Step], cfg *config.Config, options *options.Options) error {
 	startTime := time.Now()
+	logger := buildLogger(options.Logger)
+	logger.Debug("build started", "source_root", cfg.Root, "config", options.ConfigPath)
+
+	source, err := os.OpenRoot(cfg.Root)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
 
 	man := manifest.New()
 	reg := registry.New()
 	cacheReg := options.CacheRegistry
-	if cacheReg == nil {
-		cacheReg = registry.New()
+
+	if cacheReg != nil {
+		registry.Set(cacheReg, ChangedPathsK, options.ChangedPaths)
+		defer registry.Delete(cacheReg, ChangedPathsK)
 	}
-	registry.SetAs(reg, BuildCtxK, &BuildCtx{
-		StartTime:  startTime,
-		ConfigPath: configPath,
-		Dev:        options.Dev,
+
+	registry.Set(reg, BuildCtxK, &BuildCtx{
+		StartTime: startTime,
+		Dev:       options.Dev,
 	})
 
 	ctx, cancel := context.WithCancel(options.Context)
 	defer cancel()
 
-	buildErrors := &errorState{}
-	if err := man.Begin(ctx, cfg, options, buildErrors.Add, ""); err != nil {
+	var buildErrors = new(errorState)
+	if err := man.Start(ctx, cfg, options, buildErrors.Add, ""); err != nil {
 		return err
 	}
 
-	dag, err := newDAG(steps)
-	if err != nil {
-		_ = man.Complete(false)
-		return err
-	}
+	logger.Debug("manifest started")
+	pool := pool.New(ctx, options.MaxWorkers)
+	logger.Debug("worker pool started")
 
-	var ready []string
-	for id, d := range dag.deg {
-		if d == 0 {
-			ready = append(ready, id)
+	runErr := graph.Run(ctx, options.MaxWorkers, func(ctx context.Context, step Step) error {
+		stepStart := time.Now()
+		stepLogger := logger.With("step", step.ID)
+		stepLogger.Debug("step started")
+
+		regGuard, stepRegistry := reg.Lock(step.RegistryLocks...)
+		defer regGuard.Close()
+
+		var stepCache *registry.Scoped
+		if cacheReg != nil {
+			cacheGuard, scopedCache := cacheReg.Lock(step.CacheLocks...)
+			defer cacheGuard.Close()
+			stepCache = scopedCache
 		}
-	}
-	if len(ready) == 0 {
-		_ = man.Complete(false)
-		return ErrCircularDependency
-	}
 
-	maxWorkers := options.MaxWorkers
-	if maxWorkers <= 0 {
-		maxWorkers = len(steps)
-		if maxWorkers == 0 {
-			maxWorkers = 1
+		sc := StepContext{
+			Manifest: man,
+			Pool:     pool,
+			Registry: stepRegistry,
+			Cache:    stepCache,
+			Logger:   stepLogger,
+			Source:   source,
+			errors:   buildErrors,
 		}
-	}
 
-	readyCh := make(chan string, len(steps))
-
-	state := struct {
-		mu      sync.Mutex
-		active  int
-		queued  int
-		remain  int
-		stuck   error
-		closed  bool
-		closeCh func()
-	}{
-		queued: len(ready),
-		remain: len(steps),
-	}
-	state.closeCh = func() {
-		if state.closed {
-			return
-		}
-		close(readyCh)
-		state.closed = true
-	}
-
-	for _, id := range ready {
-		readyCh <- id
-	}
-
-	g, gctx := errgroup.WithContext(ctx)
-	workerCount := min(maxWorkers, len(steps))
-	if workerCount == 0 {
-		workerCount = 1
-	}
-
-	for range workerCount {
-		g.Go(func() error {
-			for {
-				select {
-				case <-gctx.Done():
-					return nil
-				case id, ok := <-readyCh:
-					if !ok {
-						return nil
-					}
-
-					state.mu.Lock()
-					state.active++
-					state.queued--
-					state.mu.Unlock()
-
-					step := dag.m[id]
-					sc := StepContext{
-						Manifest:     man,
-						Registry:     reg,
-						Cache:        cacheReg,
-						SourceRoot:   sourceRoot,
-						ConfigPath:   configPath,
-						ChangedPaths: normalizeChangedPaths(options.ChangedPaths),
-						errors:       buildErrors,
-					}
-
-					err := step.Fn(gctx, &sc)
-					if err != nil {
-						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-							return nil
-						}
-						return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
-					}
-
-					state.mu.Lock()
-					state.active--
-					state.remain--
-					for _, dep := range dag.adj[id] {
-						dag.deg[dep]--
-						if dag.deg[dep] == 0 {
-							readyCh <- dep
-							state.queued++
-						}
-					}
-
-					switch {
-					case state.remain == 0:
-						state.closeCh()
-					case state.active == 0 && state.queued == 0:
-						state.stuck = fmt.Errorf("%w: %v", ErrCircularDependency, stuckStepIDs(dag.deg))
-						state.closeCh()
-					}
-					state.mu.Unlock()
-				}
+		err := step.Fn(ctx, &sc)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				stepLogger.Debug("step canceled", "duration", time.Since(stepStart).Truncate(time.Millisecond), "error", err)
+				return nil
 			}
-		})
-	}
-
-	runErr := g.Wait()
-	if runErr == nil && options.Context.Err() != nil {
-		runErr = options.Context.Err()
-	}
-	if runErr == nil {
-		state.mu.Lock()
-		runErr = state.stuck
-		state.mu.Unlock()
-	}
+			stepLogger.Debug("step failed", "duration", time.Since(stepStart).Truncate(time.Millisecond), "error", err)
+			return fmt.Errorf("%w (%s): %w", ErrTaskError, step.ID, err)
+		}
+		stepLogger.Debug("step complete", "duration", time.Since(stepStart).Truncate(time.Millisecond))
+		return nil
+	})
 	if runErr != nil {
 		cancel()
-		_ = man.Complete(false)
+		_ = pool.Wait()
+		_ = man.Finish(false)
+		logger.Debug("build failed", "duration", time.Since(startTime).Truncate(time.Millisecond), "error", runErr)
 		return runErr
 	}
 
-	manifestErr := man.Complete(!buildErrors.HasErrors())
+	workerErr := pool.Wait()
+	if workerErr != nil {
+		cancel()
+		_ = man.Finish(false)
+		logger.Debug("build failed", "duration", time.Since(startTime).Truncate(time.Millisecond), "error", workerErr)
+		return workerErr
+	}
+
+	manifestSuccess := !buildErrors.HasErrors() || options.Dev
+	manifestErr := man.Finish(manifestSuccess)
+	logger.Debug("manifest complete", "success", manifestSuccess)
 	if manifestErr != nil {
 		if buildErrors.HasErrors() {
 			return &Failure{Errors: buildErrors.Slice()}
@@ -241,67 +186,10 @@ func build(steps []Step, cfg *config.Config, options *options.Options, sourceRoo
 
 	if buildErrors.HasErrors() {
 		failure := &Failure{Errors: buildErrors.Slice()}
-		if options.Dev && options.ErrTemplate != nil {
-			errMan := manifest.New()
-			if err := errMan.Begin(options.Context, cfg, options, nil, ""); err == nil {
-				errMan.Emit(manifest.TemplateArtefact(
-					manifest.Claim{Owner: "build", Target: "index.html", Canon: "/"},
-					options.ErrTemplate,
-					failure,
-				))
-				_ = errMan.Complete(true)
-			}
-		}
+		logger.Debug("build failed", "duration", time.Since(startTime).Truncate(time.Millisecond), "errors", len(failure.Errors))
 		return failure
 	}
 
+	logger.Debug("build complete", "duration", time.Since(startTime).Truncate(time.Millisecond))
 	return nil
-}
-
-func stuckStepIDs(deg map[string]int) []string {
-	var stuck []string
-	for id, d := range deg {
-		if d != 0 {
-			stuck = append(stuck, id)
-		}
-	}
-	return stuck
-}
-
-// newDAG constructs a DAG from a slice of steps.
-func newDAG(steps []Step) (*dag, error) {
-	d := &dag{
-		m:   make(map[string]Step),
-		adj: make(map[string][]string),
-		deg: make(map[string]int),
-	}
-
-	for _, step := range steps {
-		if _, ex := d.m[step.ID]; ex {
-			return nil, fmt.Errorf("%w: %s", ErrDuplicateStep, step.ID)
-		}
-		d.m[step.ID] = step
-		d.deg[step.ID] = 0
-	}
-
-	for _, step := range steps {
-		seen := set.New[string]()
-		for _, dep := range step.Deps {
-			if step.ID == dep {
-				return nil, fmt.Errorf("%w: %s", ErrSelfDependency, step.ID)
-			}
-			if _, ex := d.m[dep]; !ex {
-				return nil, fmt.Errorf("%w: %s", ErrUnresolvedDependency, dep)
-			}
-			if seen.Has(dep) {
-				continue
-			}
-
-			seen.Add(dep)
-			d.deg[step.ID]++
-			d.adj[dep] = append(d.adj[dep], step.ID)
-		}
-	}
-
-	return d, nil
 }

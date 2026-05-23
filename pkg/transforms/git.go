@@ -22,8 +22,6 @@ type PageFileMeta struct {
 // SiteGitMeta stores repository metadata for the current build.
 type SiteGitMeta struct {
 	Available  bool
-	RepoRoot   string
-	GitDir     string
 	Branch     string
 	CommitHash string
 	ShortHash  string

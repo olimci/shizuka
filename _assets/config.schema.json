@@ -1,0 +1,563 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/olimci/shizuka/refs/heads/main/_assets/config.schema.json",
+  "title": "Shizuka config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^v?(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "site": {
+      "$ref": "#/$defs/site"
+    },
+    "paths": {
+      "$ref": "#/$defs/paths"
+    },
+    "build": {
+      "$ref": "#/$defs/build"
+    },
+    "content": {
+      "$ref": "#/$defs/content"
+    },
+    "artefacts": {
+      "$ref": "#/$defs/artefacts"
+    }
+  },
+  "$defs": {
+    "site": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "params": {
+          "type": "object"
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "data": {
+          "type": "string"
+        },
+        "static": {
+          "type": "string"
+        },
+        "templates": {
+          "type": "string"
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minifier": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/minifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "minifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "whitelist": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "blacklist": {
+          "$ref": "#/$defs/stringArray"
+        }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaults": {
+          "$ref": "#/$defs/contentDefaults"
+        },
+        "markdown": {
+          "$ref": "#/$defs/markdown"
+        },
+        "git": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/git"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "contentDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "section": {
+          "type": "string"
+        },
+        "global": {
+          "$ref": "#/$defs/frontmatterDefaults"
+        },
+        "sections": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/frontmatterDefaults"
+          }
+        }
+      }
+    },
+    "frontmatterDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "tags": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "created": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "rss": {
+          "$ref": "#/$defs/rssMeta"
+        },
+        "sitemap": {
+          "$ref": "#/$defs/sitemapMeta"
+        },
+        "robots": {
+          "$ref": "#/$defs/robotsMeta"
+        },
+        "template": {
+          "type": "string"
+        },
+        "featured": {
+          "type": "boolean"
+        },
+        "draft": {
+          "type": "boolean"
+        },
+        "weight": {
+          "type": "integer"
+        }
+      }
+    },
+    "rssMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "guid": {
+          "type": "string"
+        }
+      }
+    },
+    "sitemapMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "boolean"
+        },
+        "changefreq": {
+          "type": "string",
+          "enum": [
+            "always",
+            "hourly",
+            "daily",
+            "weekly",
+            "monthly",
+            "yearly",
+            "never",
+            ""
+          ]
+        },
+        "priority": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "robotsMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "disallow": {
+          "type": "boolean"
+        }
+      }
+    },
+    "markdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "goldmark": {
+          "$ref": "#/$defs/goldmark"
+        }
+      }
+    },
+    "goldmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "extensions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "gfm",
+              "table",
+              "tables",
+              "strikethrough",
+              "tasklist",
+              "task-list",
+              "deflist",
+              "definition-list",
+              "footnote",
+              "footnotes",
+              "linkify",
+              "typographer",
+              "smartypants"
+            ]
+          }
+        },
+        "parser": {
+          "$ref": "#/$defs/goldmarkParser"
+        },
+        "renderer": {
+          "$ref": "#/$defs/goldmarkRenderer"
+        }
+      }
+    },
+    "goldmarkParser": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auto_heading_id": {
+          "type": "boolean"
+        },
+        "attribute": {
+          "type": "boolean"
+        }
+      }
+    },
+    "goldmarkRenderer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hardbreaks": {
+          "type": "boolean"
+        },
+        "XHTML": {
+          "type": "boolean"
+        }
+      }
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backfill": {
+          "type": "boolean"
+        }
+      }
+    },
+    "artefacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "headers": {
+          "$ref": "#/$defs/optionalHeaders"
+        },
+        "redirects": {
+          "$ref": "#/$defs/optionalRedirects"
+        },
+        "rss": {
+          "$ref": "#/$defs/optionalRSS"
+        },
+        "sitemap": {
+          "$ref": "#/$defs/optionalSitemap"
+        },
+        "robots": {
+          "$ref": "#/$defs/optionalRobots"
+        },
+        "not_found": {
+          "$ref": "#/$defs/optionalNotFound"
+        },
+        "meta": {
+          "$ref": "#/$defs/optionalMeta"
+        }
+      }
+    },
+    "optionalHeaders": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/headers"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "optionalRedirects": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/redirects"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "redirects": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/redirect"
+          }
+        }
+      }
+    },
+    "redirect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        }
+      }
+    },
+    "optionalRSS": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/rss"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rss": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sections": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "include_drafts": {
+          "type": "boolean"
+        }
+      }
+    },
+    "optionalSitemap": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/sitemap"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sitemap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "include_drafts": {
+          "type": "boolean"
+        }
+      }
+    },
+    "optionalRobots": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/robots"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "robots": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "include_sitemap": {
+          "type": "boolean"
+        },
+        "include_drafts": {
+          "type": "boolean"
+        },
+        "sitemaps": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/robotsGroup"
+          }
+        }
+      }
+    },
+    "robotsGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "user_agents": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "allow": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "disallow": {
+          "$ref": "#/$defs/stringArray"
+        }
+      }
+    },
+    "optionalNotFound": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/notFound"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "notFound": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "template": {
+          "type": "string"
+        }
+      }
+    },
+    "optionalMeta": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/meta"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "json": {
+          "type": "boolean"
+        }
+      }
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

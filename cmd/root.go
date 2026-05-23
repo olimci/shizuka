@@ -2,58 +2,55 @@ package cmd
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
+	"github.com/olimci/shizuka/cmd/internal/logging"
 	"github.com/olimci/shizuka/pkg/version"
 	"github.com/urfave/cli/v3"
 )
 
-const (
-	DefaultConfigPath = "shizuka.toml"
-	DefaultPort       = 6767
-)
+const banner = "░█▀▀░█░█░▀█▀░▀▀█░█░█░█░█░█▀█\n░▀▀█░█▀█░░█░░▄▀░░█░█░█▀▄░█▀█\n░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀▀░▀░▀░▀░▀"
 
-const repoLink = "github.com/olimci/shizuka"
+// defaults
+const (
+	defaultConfig = "shizuka.jsonc"
+	defaultOutput = "dist"
+	defaultPort   = 6767
+)
 
 func Execute(ctx context.Context, args []string) error {
 	app := &cli.Command{
 		Name:  "shizuka",
-		Usage: "A static site generator",
+		Usage: "The BEST static site generator",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "debug",
+				Usage: "Enable debug mode",
+			},
+			&cli.StringFlag{
+				Name:      "format",
+				Value:     "auto",
+				Usage:     "Output format: auto, plain, pretty, or json",
+				Validator: logging.ValidateFormat,
+			},
+			&cli.IntFlag{
+				Name:    "workers",
+				Aliases: []string{"w"},
+				Usage:   "Maximum number of concurrent workers",
+				Validator: func(workers int) error {
+					if workers <= 0 {
+						return errors.New("workers must be greater than zero")
+					}
+					return nil
+				},
+			},
+		},
 		Commands: []*cli.Command{
-			versionCmd,
-			initCmd,
 			buildCmd,
 			devCmd,
-
-			// noninteractive subcommand group
-			xCmd,
 		},
-	}
-
-	if len(args) <= 1 {
-		fmt.Println(version.Banner(repoLink) + "\n")
-		args = append(args, "help")
+		Version: version.Current().String(),
 	}
 
 	return app.Run(ctx, args)
-}
-
-var xVersionCmd = &cli.Command{
-	Name:  "version",
-	Usage: "Print the version of shizuka",
-	Action: func(ctx context.Context, c *cli.Command) error {
-		fmt.Printf("shizuka version %s\n", Version)
-		return nil
-	},
-}
-
-var xCmd = &cli.Command{
-	Name:  "x",
-	Usage: "Non-interactive commands",
-	Commands: []*cli.Command{
-		xVersionCmd,
-		xInitCmd,
-		xBuildCmd,
-		xDevCmd,
-	},
 }
