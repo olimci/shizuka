@@ -1,20 +1,17 @@
 package manifest
 
 import (
-	"html/template"
 	"io"
-	"os"
-	"path/filepath"
-
-	"github.com/olimci/shizuka/pkg/utils/errutil"
+	"io/fs"
 )
 
-// ArtefactBuilder is a function that builds an artefact
-type ArtefactBuilder = func(w io.Writer) error
+// ArtefactBuilder writes an artefact's bytes.
+type ArtefactBuilder func(w io.Writer) error
 
+// PostProcessor wraps an artefact builder, usually for output transforms.
 type PostProcessor func(claim Claim, next ArtefactBuilder) ArtefactBuilder
 
-// Artefact represents a build artefact
+// Artefact represents one generated output file.
 type Artefact struct {
 	Claim   Claim
 	Builder ArtefactBuilder
@@ -24,18 +21,16 @@ func (a Artefact) Post(pp PostProcessor) Artefact {
 	if pp == nil {
 		return a
 	}
-
-	return Artefact{
-		Claim:   a.Claim,
-		Builder: pp(a.Claim, a.Builder),
-	}
+	a.Builder = pp(a.Claim, a.Builder)
+	return a
 }
 
-func StaticArtefact(sourceRoot string, claim Claim) Artefact {
+func StaticArtefact(sourceFS fs.FS, claim Claim) Artefact {
+	source := claim.Source
 	return Artefact{
 		Claim: claim,
 		Builder: func(w io.Writer) error {
-			file, err := os.Open(filepath.Join(sourceRoot, filepath.FromSlash(claim.Source)))
+			file, err := sourceFS.Open(source)
 			if err != nil {
 				return err
 			}
@@ -43,36 +38,6 @@ func StaticArtefact(sourceRoot string, claim Claim) Artefact {
 
 			_, err = io.Copy(w, file)
 			return err
-		},
-	}
-}
-
-func TemplateArtefact(claim Claim, tmpl *template.Template, data any) Artefact {
-	return Artefact{
-		Claim: claim,
-		Builder: func(w io.Writer) error {
-			if err := tmpl.Execute(w, data); err != nil {
-				if errutil.IsDiscard(err) {
-					return errutil.WrapDiscard(err)
-				}
-				return err
-			}
-			return nil
-		},
-	}
-}
-
-func NamedTemplateArtefact(claim Claim, name string, tmpl *template.Template, data any) Artefact {
-	return Artefact{
-		Claim: claim,
-		Builder: func(w io.Writer) error {
-			if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
-				if errutil.IsDiscard(err) {
-					return errutil.WrapDiscard(err)
-				}
-				return err
-			}
-			return nil
 		},
 	}
 }

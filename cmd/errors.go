@@ -1,33 +1,36 @@
 package cmd
 
-import "errors"
+const defaultFailureExitCode = 1
 
-type silentError struct {
-	err error
+type HandledError struct {
+	Code int
+	Err  error
 }
 
-func (e *silentError) Error() string {
-	if e == nil || e.err == nil {
-		return ""
-	}
-	return e.err.Error()
+func handled(err error) error {
+	return handledWithCode(defaultFailureExitCode, err)
 }
 
-func (e *silentError) Unwrap() error {
-	if e == nil {
-		return nil
-	}
-	return e.err
-}
-
-func quietError(err error) error {
+func handledWithCode(code int, err error) error {
 	if err == nil {
 		return nil
 	}
-	return &silentError{err: err}
+	if code == 0 {
+		code = defaultFailureExitCode
+	}
+	return &HandledError{Code: code, Err: err}
 }
 
-func IsSilentError(err error) bool {
-	var target *silentError
-	return errors.As(err, &target)
+func (e *HandledError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
+}
+
+func (e *HandledError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
 }

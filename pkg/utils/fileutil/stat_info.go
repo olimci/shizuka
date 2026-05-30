@@ -26,7 +26,6 @@ func Info(path string) (Stat, error) {
 		Size:    info.Size(),
 	}
 
-	// TODO: can we make this work on more platforms?
 	if created, ok := createdAt(info); ok {
 		meta.Created = created
 	} else {

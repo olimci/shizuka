@@ -1,6 +1,8 @@
 package fileutil
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -10,55 +12,20 @@ import (
 )
 
 type AtomicOptions struct {
-	Sync bool
+	Sync            bool
+	CompareExisting bool
 }
 
-func AtomicWriteWithOptions(path string, gen func(w io.Writer) error, opts AtomicOptions) (bool, error) {
+func AtomicWrite(root *os.Root, path string, gen func(w io.Writer) error, opts AtomicOptions) (bool, error) {
 	dir, base := filepath.Split(path)
-
-	tmp, err := os.CreateTemp(dir, "."+base+".tmp-*")
+	tmpRel, tmp, err := temp(root, dir, "."+base+".tmp-")
 	if err != nil {
 		return false, err
 	}
-	defer func(tmp *os.File) {
+	defer func() {
 		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
-	}(tmp)
-
-	if err := gen(tmp); err != nil {
-		return false, err
-	}
-	if opts.Sync {
-		if err := tmp.Sync(); err != nil {
-			return false, err
-		}
-	}
-	if err := tmp.Close(); err != nil {
-		return false, err
-	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		return false, err
-	}
-	if opts.Sync {
-		if df, err := os.Open(dir); err == nil {
-			_ = df.Sync()
-			_ = df.Close()
-		}
-	}
-
-	return true, nil
-}
-
-func AtomicEditWithOptions(path string, gen func(w io.Writer) error, opts AtomicOptions) (bool, error) {
-	dir, base := filepath.Split(path)
-	tmp, err := os.CreateTemp(dir, "."+base+".tmp-*")
-	if err != nil {
-		return false, err
-	}
-	defer func(tmp *os.File) {
-		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
-	}(tmp)
+		_ = root.Remove(tmpRel)
+	}()
 
 	if err := gen(tmp); err != nil {
 		return false, err
@@ -72,35 +39,58 @@ func AtomicEditWithOptions(path string, gen func(w io.Writer) error, opts Atomic
 		return false, err
 	}
 
-	if eq, err := cmpFiles(tmp.Name(), path); err != nil {
-		return false, err
-	} else if eq {
-		return false, nil
+	if opts.CompareExisting {
+		if eq, err := cmp(root, tmpRel, path); err != nil {
+			return false, err
+		} else if eq {
+			return false, nil
+		}
 	}
 
-	if err := os.Rename(tmp.Name(), path); err != nil {
+	if err := root.Rename(tmpRel, path); err != nil {
 		return false, err
 	}
 	if opts.Sync {
-		if df, err := os.Open(dir); err == nil {
+		syncDir := dir
+		if syncDir == "" {
+			syncDir = "."
+		}
+		if df, err := root.Open(syncDir); err == nil {
 			_ = df.Sync()
 			_ = df.Close()
 		}
 	}
-
 	return true, nil
 }
 
-// cmpFiles compares two files
-func cmpFiles(a, b string) (bool, error) {
-	aFi, err := os.Stat(a)
+func temp(root *os.Root, dir, prefix string) (string, *os.File, error) {
+	for range 100 {
+		var b [16]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return "", nil, err
+		}
+		name := filepath.Join(dir, prefix+hex.EncodeToString(b[:]))
+		file, err := root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			return name, file, nil
+		}
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		return "", nil, err
+	}
+	return "", nil, fmt.Errorf("create temporary file in %q: too many collisions", dir)
+}
+
+func cmp(root *os.Root, a, b string) (bool, error) {
+	aFi, err := root.Stat(a)
 	if err != nil {
 		return false, err
 	} else if aFi.IsDir() {
 		return false, fmt.Errorf("a is a directory")
 	}
 
-	bFi, err := os.Stat(b)
+	bFi, err := root.Stat(b)
 	if err != nil {
 		return false, err
 	} else if bFi.IsDir() {
@@ -111,25 +101,22 @@ func cmpFiles(a, b string) (bool, error) {
 		return false, nil
 	}
 
-	return cmpContent(a, b)
-}
-
-// cmpContent compares two files content
-func cmpContent(a, b string) (bool, error) {
-	aF, err := os.Open(a)
+	aF, err := root.Open(a)
 	if err != nil {
 		return false, err
 	}
-
 	defer aF.Close()
 
-	bF, err := os.Open(b)
+	bF, err := root.Open(b)
 	if err != nil {
 		return false, err
 	}
-
 	defer bF.Close()
 
+	return cmpReader(aF, bF)
+}
+
+func cmpReader(aF, bF io.Reader) (bool, error) {
 	const bufSize = 128 * 1024
 	aBuf := make([]byte, bufSize)
 	bBuf := make([]byte, bufSize)

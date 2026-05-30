@@ -2,169 +2,75 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"html/template"
-	"time"
+	"os"
 
-	"github.com/olimci/coffee"
+	"github.com/olimci/shizuka/cmd/internal/console"
 	"github.com/olimci/shizuka/pkg/build"
-	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/options"
 	"github.com/urfave/cli/v3"
 )
 
 var buildCmd = &cli.Command{
 	Name:  "build",
-	Usage: "Build the site (interactive)",
+	Usage: "Build site",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "config",
 			Aliases: []string{"c"},
-			Value:   DefaultConfigPath,
+			Value:   defaultConfig,
 			Usage:   "Config file path",
 		},
+		&cli.StringFlag{
+			Name:    "output",
+			Aliases: []string{"o"},
+			Value:   defaultOutput,
+			Usage:   "Output directory",
+		},
 		&cli.BoolFlag{
-			Name:    "dev",
-			Aliases: []string{"d"},
-			Usage:   "Run in development mode",
-		},
-		&cli.IntFlag{
-			Name:    "workers",
-			Aliases: []string{"w"},
-			Value:   0,
-			Usage:   "Number of workers to use for building",
-		},
-		&cli.IntFlag{
-			Name:  "artifact-workers",
-			Value: -1,
-			Usage: "Number of artifact write workers (-1 auto, 0 after steps complete)",
+			Name:  "dev",
+			Usage: "Build in dev mode",
 		},
 	},
 	Action: buildAction,
 }
 
-var xBuildCmd = &cli.Command{
-	Name:  "build",
-	Usage: "Build the site (non-interactive)",
-	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:    "config",
-			Aliases: []string{"c"},
-			Value:   DefaultConfigPath,
-			Usage:   "Config file path",
-		},
-		&cli.BoolFlag{
-			Name:    "dev",
-			Aliases: []string{"d"},
-			Usage:   "Run in development mode",
-		},
-		&cli.IntFlag{
-			Name:    "workers",
-			Aliases: []string{"w"},
-			Value:   0,
-			Usage:   "Number of workers to use for building",
-		},
-		&cli.IntFlag{
-			Name:  "artifact-workers",
-			Value: -1,
-			Usage: "Number of artifact write workers (-1 auto, 0 after steps complete)",
-		},
-	},
-	Action: xBuildAction,
-}
-
 func buildAction(ctx context.Context, cmd *cli.Command) error {
-	err := coffee.Do(func(ctx context.Context, c *coffee.Coffee) error {
-		defer func() {
-			_ = c.Clear()
-		}()
-
-		configPath, err := config.ResolvePath(cmd.String("config"))
-		if err != nil {
-			return err
-		}
-
-		opts := options.Filter(
-			options.WithContext(ctx),
-			options.WithConfigPath(configPath),
-			options.If(options.WithDev(true), cmd.Bool("dev")),
-			options.If(options.WithSkipOutputCleanup(true), cmd.Bool("dev")),
-			options.If(options.WithPageErrTemplates(map[error]*template.Template{
-				build.ErrNoTemplate:       templateFallback.Get(),
-				build.ErrTemplateNotFound: templateFallback.Get(),
-				nil:                       templateError.Get(),
-			}), cmd.Bool("dev")),
-			options.If(options.WithErrTemplate(templateBuildError.Get()), cmd.Bool("dev")),
-			options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.Int("workers") > 0),
-			options.If(options.WithArtefactWorkers(cmd.Int("artifact-workers")), cmd.IsSet("artifact-workers")),
-		)
-
-		status, err := c.Status("building...")
-		if err != nil {
-			return err
-		}
-
-		start := time.Now()
-		buildErr := build.Build(opts...)
-		elapsed := time.Since(start).Truncate(time.Millisecond)
-
-		if buildErr != nil {
-			_ = status.Error(fmt.Sprintf("build failed (%s)", elapsed))
-		} else {
-			_ = status.Success(fmt.Sprintf("built (%s)", elapsed))
-		}
-
-		if err := logBuildError(c, buildErr); err != nil {
-			return err
-		}
-
-		_ = status.Clear()
-
-		if buildErr != nil {
-			return quietError(buildErr)
-		}
-		return nil
-	}, coffee.WithContext(ctx))
-	if err != nil && errors.Is(err, coffee.ErrNonInteractive) {
-		return xBuildAction(ctx, cmd)
-	}
-	return err
-}
-
-func xBuildAction(ctx context.Context, cmd *cli.Command) error {
-	configPath, err := config.ResolvePath(cmd.String("config"))
+	con, err := console.Open(os.Stdin, os.Stdout, os.Stderr, console.Options{})
 	if err != nil {
-		return err
+		fmt.Fprintln(os.Stderr, "console setup failed:", err)
+		return handled(err)
+	}
+	defer con.Close()
+
+	logger, err := makeLogger(con, cmd)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "logger setup failed:", err)
+		return handled(err)
 	}
 
 	opts := options.Filter(
+		// always
 		options.WithContext(ctx),
-		options.WithConfigPath(configPath),
+		options.WithLogger(logger),
+
+		// regular
+		options.WithConfigPath(cmd.String("config")),
+		options.If(options.WithOutputPath(cmd.String("output")), cmd.IsSet("output")),
+		options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.IsSet("workers")),
+
+		// dev stuff
 		options.If(options.WithDev(true), cmd.Bool("dev")),
-		options.If(options.WithSkipOutputCleanup(true), cmd.Bool("dev")),
-		options.If(options.WithPageErrTemplates(map[error]*template.Template{
-			build.ErrNoTemplate:       templateFallback.Get(),
-			build.ErrTemplateNotFound: templateFallback.Get(),
-			nil:                       templateError.Get(),
-		}), cmd.Bool("dev")),
-		options.If(options.WithErrTemplate(templateBuildError.Get()), cmd.Bool("dev")),
-		options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.Int("workers") > 0),
-		options.If(options.WithArtefactWorkers(cmd.Int("artifact-workers")), cmd.IsSet("artifact-workers")),
 	)
 
-	fmt.Println("building...")
+	logger.Info("building")
 
-	buildErr := build.Build(opts...)
-	if buildErr != nil {
-		fmt.Println("build failed")
-		for _, line := range formatBuildError(buildErr) {
-			fmt.Println(line)
-		}
-		return quietError(buildErr)
+	if err := build.Build(opts...); err != nil {
+		logger.Error("build failed", "error", err)
+		return handled(err)
 	}
 
-	fmt.Println("built")
+	logger.Info("build complete")
 
 	return nil
 }

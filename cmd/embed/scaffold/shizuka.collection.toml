@@ -1,9 +1,0 @@
-[metadata]
-name = "Shizuka Templates"
-description = "Built-in starter templates for Shizuka"
-version = "1.0.0"
-shizuka_version = "0.1.0"
-
-[templates]
-items = ["default", "minimal", "blog"]
-default = "default"

@@ -8,482 +8,292 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/options"
-	"github.com/olimci/shizuka/pkg/utils/errutil"
 	"github.com/olimci/shizuka/pkg/utils/fileutil"
+	"github.com/olimci/shizuka/pkg/utils/pool"
 )
 
 var ErrConflicts = errors.New("conflicts")
+var ErrClosed = errors.New("manifest closed")
+var ErrStarted = errors.New("manifest already started")
 
-// New creates a new manifest
+// New creates a manifest for one build.
 func New() *Manifest {
-	return &Manifest{
-		artefacts: make([]Artefact, 0),
-	}
+	return &Manifest{}
 }
 
-// Manifest represents a manifest of build artefacts.
+// Manifest writes generated artefacts to a build output directory.
 type Manifest struct {
-	artefacts   []Artefact
-	artefactsMu sync.Mutex
-
-	runtime *runtimeState
-}
-
-type runtimeState struct {
-	out     string
-	options *options.Options
-	report  func(Claim, error)
+	mu sync.Mutex
 
 	ctx    context.Context
 	cancel context.CancelFunc
+	pool   *pool.Pool
 
-	wg sync.WaitGroup
+	out     string
+	outRoot *os.Root
+	options *options.Options
+	report  func(Claim, error)
 
-	mu      sync.Mutex
-	cond    *sync.Cond
-	pending []queuedArtefact
-	next    int
+	closed   bool
+	finished bool
+	started  bool
 
-	firstErr       error
-	closed         bool
-	startedWorkers int
-
-	claims      map[string]*claimState
-	conflicts   map[string][]Claim
-	createdDirs map[string]struct{}
+	claims  map[string][]Claim
+	outputs map[string]struct{}
 }
 
-type claimState struct {
-	artefact Artefact
-	discard  bool
-}
-
-type queuedArtefact struct {
-	target string
-	state  *claimState
-}
-
-func (m *Manifest) Begin(ctx context.Context, config *config.Config, options *options.Options, report func(Claim, error), out string) error {
-	m.artefactsMu.Lock()
-	defer m.artefactsMu.Unlock()
-
-	if m.runtime != nil {
-		return nil
+// Start opens the output tree and starts accepting artefacts.
+func (m *Manifest) Start(ctx context.Context, cfg *config.Config, opts *options.Options, report func(Claim, error), out string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if opts == nil {
+		opts = options.DefaultOptions()
 	}
 
-	if strings.TrimSpace(out) == "" {
-		resolvedOut, err := config.OutputPath()
-		if err != nil {
-			return err
-		}
-		out = resolvedOut
-		if options.OutputPath != "" {
-			out = options.OutputPath
-		}
+	switch {
+	case out != "":
+	case opts.OutputPath != "":
+		out = opts.OutputPath
+	case cfg == nil:
+		return errors.New("manifest output path requires config or explicit output path")
+	default:
+		out = cfg.OutputPath()
 	}
-
-	if err := fileutil.EnsureDir(out); err != nil {
+	if err := validateOutputPath(cfg, opts, out); err != nil {
 		return err
+	}
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		return fmt.Errorf("directory %q: %w", out, err)
+	}
+	if info, err := os.Stat(out); err != nil {
+		return fmt.Errorf("directory %q: %w", out, err)
+	} else if !info.IsDir() {
+		return fmt.Errorf("path %q is not a directory", out)
+	}
+	outRoot, err := os.OpenRoot(out)
+	if err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.started {
+		_ = outRoot.Close()
+		return ErrStarted
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
-	workers := options.MaxWorkers
-	if workers <= 0 {
-		workers = 1
-	}
-	artefactWorkers := options.ArtefactWorkers
-	if artefactWorkers < 0 {
-		artefactWorkers = defaultArtefactWorkers(workers)
-	}
 
-	rt := &runtimeState{
-		out:         out,
-		options:     options,
-		report:      report,
-		ctx:         runCtx,
-		cancel:      cancel,
-		claims:      make(map[string]*claimState),
-		conflicts:   make(map[string][]Claim),
-		createdDirs: make(map[string]struct{}),
-	}
-	rt.cond = sync.NewCond(&rt.mu)
-	m.runtime = rt
-
-	if artefactWorkers > 0 {
-		rt.startWorkers(artefactWorkers)
-	}
-
-	for _, artefact := range m.artefacts {
-		m.emitLocked(artefact)
-	}
-	m.artefacts = nil
-
+	m.ctx = runCtx
+	m.cancel = cancel
+	m.pool = pool.New(runCtx, opts.MaxWorkers)
+	m.out = out
+	m.outRoot = outRoot
+	m.options = opts
+	m.report = report
+	m.claims = make(map[string][]Claim)
+	m.outputs = make(map[string]struct{})
+	m.started = true
 	return nil
 }
 
-// Emit adds an artefact to the manifest
-func (m *Manifest) Emit(a Artefact) {
-	m.artefactsMu.Lock()
-	defer m.artefactsMu.Unlock()
-
-	if m.runtime == nil {
-		m.artefacts = append(m.artefacts, a)
-		return
+// Emit submits an artefact for manifest processing.
+func (m *Manifest) Emit(artefact Artefact) error {
+	m.mu.Lock()
+	if !m.started || m.closed {
+		m.mu.Unlock()
+		return ErrClosed
 	}
-
-	m.emitLocked(a)
-}
-
-func (m *Manifest) emitLocked(a Artefact) {
-	rt := m.runtime
-	if rt == nil {
-		m.artefacts = append(m.artefacts, a)
-		return
-	}
-
-	target, err := normalizeTarget(a.Claim.Target)
-	if err != nil {
-		rt.recordError(a.Claim, err)
-		return
-	}
-	a.Claim.Target = target
-
-	state := &claimState{artefact: a}
-	rt.mu.Lock()
-	if conflictErr := rt.registerClaimLocked(a.Claim); conflictErr != nil {
-		rt.mu.Unlock()
-		rt.recordError(NewInternalClaim("manifest", target), conflictErr)
-		return
-	}
-	if err := rt.ctx.Err(); err != nil {
-		rt.mu.Unlock()
-		rt.recordRuntimeError(err)
-		return
-	}
-	rt.claims[target] = state
-	rt.pending = append(rt.pending, queuedArtefact{
-		target: target,
-		state:  state,
-	})
-	rt.cond.Signal()
-	rt.mu.Unlock()
-}
-
-func (m *Manifest) Complete(success bool) error {
-	m.artefactsMu.Lock()
-	rt := m.runtime
-	m.artefactsMu.Unlock()
-
-	if rt == nil {
-		return nil
-	}
-
-	drainWorkers := rt.options.MaxWorkers
-	if drainWorkers <= 0 {
-		drainWorkers = 1
-	}
-	rt.closeQueue()
-	rt.startWorkers(drainWorkers)
-	rt.wg.Wait()
-
-	if err := rt.firstRuntimeError(); err != nil {
+	if err := m.ctx.Err(); err != nil {
+		m.mu.Unlock()
 		return err
 	}
-	if !success {
-		return nil
-	}
+	pool := m.pool
+	m.mu.Unlock()
 
-	if err := rt.cleanup(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func defaultArtefactWorkers(stepWorkers int) int {
-	if stepWorkers <= 4 {
-		return 1
-	}
-	return min(2, max(1, stepWorkers/4))
-}
-
-func (rt *runtimeState) startWorkers(workers int) {
-	if workers <= 0 {
-		return
-	}
-	rt.mu.Lock()
-	rt.startedWorkers += workers
-	rt.mu.Unlock()
-
-	for i := 0; i < workers; i++ {
-		rt.wg.Add(1)
-		go func() {
-			defer rt.wg.Done()
-			rt.writerLoop()
-		}()
-	}
-}
-
-func (rt *runtimeState) writerLoop() {
-	for {
-		item, ok := rt.nextArtefact()
-		if !ok {
-			return
+	return pool.Go(func(ctx context.Context) error {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-
-		rt.writeOne(item)
-	}
+		accepted, err := m.accept(artefact)
+		if err != nil {
+			return err
+		}
+		return m.write(accepted)
+	})
 }
 
-func (rt *runtimeState) nextArtefact() (queuedArtefact, bool) {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
+// Finish closes the manifest, waits for accepted artefacts to drain, and
+// reconciles the output tree.
+func (m *Manifest) Finish(success bool) error {
+	m.mu.Lock()
+	if !m.started {
+		m.mu.Unlock()
+		return nil
+	}
+	if m.finished {
+		m.mu.Unlock()
+		return nil
+	}
+	m.closed = true
+	m.finished = true
+	pool := m.pool
+	cancel := m.cancel
+	outRoot := m.outRoot
+	dev := m.options != nil && m.options.Dev
+	m.mu.Unlock()
 
-	for rt.next >= len(rt.pending) && !rt.closed && rt.ctx.Err() == nil {
-		rt.cond.Wait()
-	}
-	if rt.ctx.Err() != nil {
-		return queuedArtefact{}, false
-	}
-	if rt.next >= len(rt.pending) {
-		return queuedArtefact{}, false
-	}
-
-	item := rt.pending[rt.next]
-	rt.pending[rt.next] = queuedArtefact{}
-	rt.next++
-	if rt.next > 1024 && rt.next*2 >= len(rt.pending) {
-		copy(rt.pending, rt.pending[rt.next:])
-		rt.pending = rt.pending[:len(rt.pending)-rt.next]
-		rt.next = 0
-	}
-	return item, true
-}
-
-func (rt *runtimeState) writeOne(item queuedArtefact) {
-	parent := filepath.Dir(filepath.Join(rt.out, item.target))
-	if err := rt.ensureDir(parent); err != nil {
-		rt.recordError(item.state.artefact.Claim, err)
-		return
-	}
-
-	full := filepath.Join(rt.out, item.target)
-	_, statErr := os.Stat(full)
-	exists := statErr == nil
-	if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
-		rt.recordError(item.state.artefact.Claim, statErr)
-		return
-	}
+	runErr := pool.Wait()
 
 	var err error
-	if exists {
-		_, err = fileutil.AtomicEditWithOptions(full, item.state.artefact.Builder, fileutil.AtomicOptions{
-			Sync: rt.options.SyncWrites,
-		})
-	} else {
-		_, err = fileutil.AtomicWriteWithOptions(full, item.state.artefact.Builder, fileutil.AtomicOptions{
-			Sync: rt.options.SyncWrites,
-		})
-	}
-	if err != nil {
-		var discardErr *errutil.DiscardError
-		if errors.As(err, &discardErr) {
-			item.state.discard = true
-			if removeErr := os.Remove(full); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
-				rt.recordError(item.state.artefact.Claim, removeErr)
-			}
-			return
+	switch {
+	case !success && !dev:
+		err = m.cleanup(nil)
+	case !success:
+		err = nil
+	case runErr != nil && !dev:
+		if cleanupErr := m.cleanup(nil); cleanupErr != nil {
+			err = errors.Join(runErr, cleanupErr)
+		} else {
+			err = runErr
 		}
-		rt.recordError(item.state.artefact.Claim, err)
-		return
+	case runErr != nil:
+		err = runErr
+	default:
+		err = m.cleanup(m.outputSnapshot())
 	}
+
+	cancel()
+	_ = outRoot.Close()
+	return err
 }
 
-func (rt *runtimeState) cleanup() error {
-	if rt.options.SkipOutputCleanup {
+func (m *Manifest) accept(artefact Artefact) (Artefact, error) {
+	target, err := normalizeTarget(artefact.Claim.Target)
+	if err != nil {
+		return Artefact{}, m.recordError(artefact.Claim, err)
+	}
+	artefact.Claim.Target = target
+
+	m.mu.Lock()
+	if !m.started {
+		m.mu.Unlock()
+		return Artefact{}, ErrClosed
+	}
+	if err := m.ctx.Err(); err != nil {
+		m.mu.Unlock()
+		return Artefact{}, err
+	}
+
+	m.claims[target] = append(m.claims[target], artefact.Claim)
+	if len(m.claims[target]) > 1 {
+		err := conflictError(target, m.claims[target])
+		m.mu.Unlock()
+		return Artefact{}, m.recordError(NewInternalClaim("manifest", target), err)
+	}
+	m.outputs[target] = struct{}{}
+	m.mu.Unlock()
+
+	return artefact, nil
+}
+
+func (m *Manifest) write(artefact Artefact) error {
+	target := artefact.Claim.Target
+	dir := path.Dir(target)
+	if dir == "." {
+		dir = ""
+	}
+	if dir != "" {
+		if err := m.outRoot.MkdirAll(dir, 0o755); err != nil {
+			return m.recordError(artefact.Claim, err)
+		}
+	}
+	if err := ensureRootDir(m.outRoot, dir); err != nil {
+		return m.recordError(artefact.Claim, err)
+	}
+
+	exists, err := rootFileExists(m.outRoot, target)
+	if err != nil {
+		return m.recordError(artefact.Claim, err)
+	}
+
+	_, err = fileutil.AtomicWrite(m.outRoot, target, artefact.Builder, fileutil.AtomicOptions{
+		Sync:            m.options.SyncWrites,
+		CompareExisting: exists,
+	})
+	if err == nil {
 		return nil
 	}
 
-	gotFiles, gotDirs, err := fileutil.Walk(rt.out)
-	if err != nil {
-		return fmt.Errorf("output %q: %w", displayPath(rt.out, "."), err)
-	}
-
-	wantFiles := rt.activeTargets()
-	wantDirs := manifestDirs(wantFiles)
-
-	for _, rel := range gotFiles.Values() {
-		if _, ok := wantFiles[rel]; ok {
-			continue
-		}
-		err := os.Remove(filepath.Join(rt.out, rel))
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("output %q: %w", displayPath(rt.out, rel), err)
-		}
-	}
-
-	for _, rel := range gotDirs.Values() {
-		if wantDirs.Has(rel) {
-			continue
-		}
-		err := os.RemoveAll(filepath.Join(rt.out, rel))
-		if err != nil {
-			return fmt.Errorf("output %q: %w", displayPath(rt.out, rel), err)
-		}
-	}
-
-	return nil
+	return m.recordError(artefact.Claim, err)
 }
 
-func (rt *runtimeState) activeTargets() map[string]Artefact {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
+func (m *Manifest) outputSnapshot() map[string]struct{} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	out := make(map[string]Artefact, len(rt.claims))
-	for target, state := range rt.claims {
-		if state == nil || state.discard {
-			continue
-		}
-		out[target] = state.artefact
+	out := make(map[string]struct{}, len(m.outputs))
+	for target := range m.outputs {
+		out[target] = struct{}{}
 	}
 	return out
 }
 
-func (rt *runtimeState) ensureDir(full string) error {
-	full = filepath.Clean(full)
-	if full == "." || full == rt.out {
-		return nil
+func (m *Manifest) cleanup(wantFiles map[string]struct{}) error {
+	if wantFiles == nil {
+		wantFiles = map[string]struct{}{}
 	}
 
-	rt.mu.Lock()
-	if _, ok := rt.createdDirs[full]; ok {
-		rt.mu.Unlock()
+	var gotFiles []string
+	var gotDirs []string
+	err := fs.WalkDir(m.outRoot.FS(), ".", func(filePath string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			gotDirs = append(gotDirs, filePath)
+		} else {
+			gotFiles = append(gotFiles, filePath)
+		}
 		return nil
-	}
-	rt.mu.Unlock()
-
-	if info, err := os.Stat(full); err == nil && info.IsDir() {
-		rt.mu.Lock()
-		rt.createdDirs[full] = struct{}{}
-		rt.mu.Unlock()
-		return nil
-	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-
-	err := os.MkdirAll(full, 0o755)
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("output %q: %w", m.out, err)
 	}
 
-	rt.mu.Lock()
-	rt.createdDirs[full] = struct{}{}
-	rt.mu.Unlock()
+	wantDirs := manifestDirs(wantFiles)
+	for _, rel := range gotFiles {
+		if _, ok := wantFiles[rel]; ok {
+			continue
+		}
+		if err := m.outRoot.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("output %q: %w", filepath.Clean(filepath.Join(m.out, rel)), err)
+		}
+	}
+
+	for _, rel := range gotDirs {
+		if _, ok := wantDirs[rel]; ok {
+			continue
+		}
+		if err := m.outRoot.RemoveAll(rel); err != nil {
+			return fmt.Errorf("output %q: %w", filepath.Clean(filepath.Join(m.out, rel)), err)
+		}
+	}
 	return nil
 }
 
-func (rt *runtimeState) registerClaimLocked(claim Claim) error {
-	target := claim.Target
-	if _, exists := rt.claims[target]; !exists {
+func (m *Manifest) recordError(claim Claim, err error) error {
+	if err == nil {
 		return nil
 	}
-
-	rt.conflicts[target] = append(rt.conflicts[target], claim)
-
-	owners := make([]string, 0, 2+len(rt.conflicts[target]))
-	if existing := rt.claims[target]; existing != nil {
-		owners = append(owners, displayOwner(existing.artefact.Claim))
-	}
-	for _, other := range rt.conflicts[target] {
-		owners = append(owners, displayOwner(other))
-	}
-	err := fmt.Errorf("%w for %q: claimed by %s", ErrConflicts, target, strings.Join(owners, ", "))
-	if !rt.options.Dev {
-		if rt.firstErr == nil {
-			rt.firstErr = err
-		}
+	if m.report != nil {
+		m.report(claim, err)
 	}
 	return err
-}
-
-func (rt *runtimeState) recordError(claim Claim, err error) {
-	if err == nil {
-		return
-	}
-	if rt.report != nil {
-		rt.report(claim, err)
-	}
-	rt.recordRuntimeError(err)
-}
-
-func (rt *runtimeState) recordRuntimeError(err error) {
-	if err == nil {
-		return
-	}
-	rt.setFirstErr(err)
-	rt.cancelRuntime()
-}
-
-func (rt *runtimeState) cancelRuntime() {
-	rt.cancel()
-	rt.mu.Lock()
-	rt.cond.Broadcast()
-	rt.mu.Unlock()
-}
-
-func (rt *runtimeState) setFirstErr(err error) {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-
-	if rt.firstErr == nil {
-		rt.firstErr = err
-	}
-}
-
-func (rt *runtimeState) firstRuntimeError() error {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-
-	if rt.firstErr == nil || errors.Is(rt.firstErr, context.Canceled) {
-		return nil
-	}
-	return rt.firstErr
-}
-
-func (rt *runtimeState) closeQueue() {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-
-	if rt.closed {
-		return
-	}
-	rt.closed = true
-	rt.cond.Broadcast()
-}
-
-func normalizeTarget(dest string) (string, error) {
-	rel := path.Clean(filepath.ToSlash(dest))
-	if path.IsAbs(rel) || isRel(rel) {
-		return "", fmt.Errorf("output path %q escapes the build output root", dest)
-	}
-	return rel, nil
-}
-
-func displayOwner(claim Claim) string {
-	owner := strings.TrimSpace(claim.Owner)
-	if owner == "" {
-		owner = strings.TrimSpace(claim.Source)
-	}
-	if owner == "" {
-		owner = strings.TrimSpace(claim.Target)
-	}
-	if owner == "" {
-		owner = "<unknown>"
-	}
-	return owner
 }

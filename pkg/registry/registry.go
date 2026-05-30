@@ -1,46 +1,126 @@
 package registry
 
-import "sync"
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"sync"
+)
 
-// K is a typed key.
-type K[T any] string
+type cell struct {
+	value any
+	mu    sync.RWMutex
+}
 
 func New() *Registry {
 	return &Registry{
-		values: make(map[string]any),
+		values: make(map[string]*cell),
 	}
 }
 
 type Registry struct {
 	mu     sync.RWMutex
-	values map[string]any
+	values map[string]*cell
 }
 
-func (r *Registry) Set(k string, v any) {
+func (r *Registry) Lock(locks ...Lock) (*Guard, *Scoped) {
+	scope := make(map[string]*scopedCell)
+
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	for i, lock := range locks {
+		if _, ex := scope[lock.key]; ex {
+			panic(fmt.Sprintf("guard: duplicate key: %q", lock.key))
+		}
 
-	r.values[k] = v
-}
-
-func (r *Registry) Get(k string) (any, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	v, ok := r.values[k]
-	return v, ok
-}
-
-// GetAs retrieves a value from the registry as the specified type. UB for bad keys/types.
-func GetAs[T any](r *Registry, k K[T]) T {
-	if v, ok := r.Get(string(k)); ok {
-		if vt, ok := v.(T); ok {
-			return vt
+		c, ok := r.values[lock.key]
+		if !ok {
+			if !lock.write {
+				if lock.optional {
+					scope[lock.key] = &scopedCell{}
+					continue
+				}
+				r.mu.Unlock()
+				panic(fmt.Sprintf("unknown key: %q", lock.key))
+			}
+			c = &cell{}
+			r.values[lock.key] = c
+		}
+		locks[i].cell = c
+		scope[lock.key] = &scopedCell{
+			cell:  c,
+			write: lock.write,
 		}
 	}
-	return *new(T)
+	r.mu.Unlock()
+
+	slices.SortFunc(locks, func(a, b Lock) int {
+		return strings.Compare(a.key, b.key)
+	})
+
+	for _, lock := range locks {
+		if lock.cell == nil {
+			continue
+		}
+		if lock.write {
+			lock.cell.mu.Lock()
+		} else {
+			lock.cell.mu.RLock()
+		}
+	}
+
+	s := &Scoped{scope: scope}
+	return &Guard{locks: locks, s: s}, s
 }
 
-func SetAs[T any](r *Registry, k K[T], v T) {
-	r.Set(string(k), v)
+func (r *Registry) SetAny(k string, v any) bool {
+	r.mu.Lock()
+	c, ex := r.values[k]
+	if !ex {
+		r.values[k] = &cell{value: v}
+		r.mu.Unlock()
+		return true
+	}
+	r.mu.Unlock()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.value = v
+
+	return true
+}
+
+func (r *Registry) GetAny(k string) (any, bool) {
+	r.mu.RLock()
+	c, ex := r.values[k]
+	r.mu.RUnlock()
+
+	if !ex {
+		return nil, false
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	v := c.value
+
+	return v, ex
+}
+
+func (r *Registry) DeleteAny(k string) bool {
+	r.mu.Lock()
+	c, ex := r.values[k]
+	if ex {
+		delete(r.values, k)
+	}
+	r.mu.Unlock()
+
+	if !ex {
+		return false
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.value = nil
+	return true
 }

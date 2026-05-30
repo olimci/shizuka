@@ -1,0 +1,45 @@
+{{define "debug"}}
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>shizuka debug</title>
+        <style>
+            body {
+                background: #000;
+                color: #fff;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            }
+            table {
+                border-collapse: collapse;
+                margin-bottom: 1rem;
+            }
+            th,
+            td {
+                border: 1px solid #fff;
+                padding: 0.35rem 0.5rem;
+                text-align: left;
+                vertical-align: top;
+            }
+            table table {
+                margin: 0;
+            }
+            pre {
+                margin: 0 0 1rem;
+                white-space: pre-wrap;
+            }
+            .shizuka-debug-error {
+                color: #ff3333;
+            }
+            .shizuka-debug-marker {
+                color: #999;
+            }
+        </style>
+    </head>
+    <body>
+        <pre>{{ shizukaBanner }}</pre>
+        {{ debug . }}
+    </body>
+</html>
+{{end}}
