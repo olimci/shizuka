@@ -10,11 +10,19 @@ supplies the template.
 
 ## Where templates live
 
-By default, Shizuka loads templates via `paths.templates`:
+By default, `paths.templates` points at the template directory:
 
 ```text
-templates/*.tmpl
+templates/
+  html/
+    page.tmpl
+  md/
+    demo.tmpl
 ```
+
+HTML page layouts are loaded from `templates/html/**/*.tmpl`. Markdown
+component templates are loaded from `templates/md/**/*.tmpl` when markdown
+components are enabled.
 
 ## Template names
 
@@ -23,11 +31,10 @@ reference that name:
 
 | File | Definition |
 | --- | --- |
-| `templates/page.tmpl` | `{{ define "page" }}...{{ end }}` |
-| `templates/post.tmpl` | `{{ define "post" }}...{{ end }}` |
+| `templates/html/page.tmpl` | `{{ define "page" }}...{{ end }}` |
+| `templates/html/post.tmpl` | `{{ define "post" }}...{{ end }}` |
 
-Defined template names must be unique across all files matched by
-`paths.templates`.
+Defined template names must be unique across all HTML template files.
 
 ## Template input data
 
@@ -53,6 +60,7 @@ Each page is rendered with this root object:
 | `.Page.Git.Tracked`, `.Page.Git.Created`, `.Page.Git.Updated` | Git metadata. |
 | `.Page.Git.CommitHash`, `.Page.Git.ShortHash`, `.Page.Git.AuthorName` | Git commit metadata. |
 | `.Page.Body` | `template.HTML`. |
+| `.Page.Sections` | `[]template.HTML`, split on Markdown thematic breaks. Use a blank line before a separator after paragraph text. |
 | `.Page.Params` | Arbitrary map. |
 
 ## `.Site` fields
@@ -74,7 +82,7 @@ Each page is rendered with this root object:
 | `dict key value ...` | Build a `map[string]any`. |
 | `merge map ...` | Merge maps; later maps win. |
 | `raw value` | Convert a string to `template.HTML`. |
-| `markdown value` | Render Markdown text to `template.HTML` using configured Goldmark options. |
+| `markdown value` | Render Markdown text to `template.HTML` using configured markdown options. |
 | `debug value` | Render any value as escaped nested HTML tables for inspection. |
 | `debugShort value` | Like `debug`, but omits zero and empty values. |
 | `discard` | Abort the current template artefact without failing the build. |

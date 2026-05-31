@@ -33,14 +33,6 @@ func (c *Config) resolvePath(label, raw string) (string, error) {
 	return resolved, nil
 }
 
-func (c *Config) resolveGlob(label, raw string) (string, error) {
-	resolved, err := pathutil.CleanContentGlob(raw)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", label, err)
-	}
-	return resolved, nil
-}
-
 func (c *Config) root() string {
 	if c.Root == "" {
 		return "."

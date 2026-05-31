@@ -9,11 +9,6 @@ import (
 	"github.com/olimci/shizuka/pkg/frontmatter"
 	"github.com/olimci/shizuka/pkg/utils/urlutil"
 	"github.com/olimci/shizuka/pkg/version"
-	gm "github.com/yuin/goldmark"
-	gmext "github.com/yuin/goldmark/extension"
-	gmparse "github.com/yuin/goldmark/parser"
-	gmrenderer "github.com/yuin/goldmark/renderer"
-	gmhtml "github.com/yuin/goldmark/renderer/html"
 )
 
 const SchemaURL = "https://raw.githubusercontent.com/olimci/shizuka/refs/heads/main/_assets/config.schema.json"
@@ -98,7 +93,18 @@ type ConfigContentDefaults struct {
 }
 
 type ConfigContentMarkdown struct {
-	Goldmark ConfigGoldmark `json:"goldmark"`
+	Tables         bool                        `json:"tables"`
+	Strikethrough  bool                        `json:"strikethrough"`
+	TaskList       bool                        `json:"task_list"`
+	DefinitionList bool                        `json:"definition_list"`
+	Footnotes      bool                        `json:"footnotes"`
+	Linkify        bool                        `json:"linkify"`
+	Typographer    bool                        `json:"typographer"`
+	Parser         ConfigMarkdownParser        `json:"parser"`
+	Renderer       ConfigMarkdownRenderer      `json:"renderer"`
+	Wikilinks      bool                        `json:"wikilinks"`
+	Highlighting   *ConfigMarkdownHighlighting `json:"highlighting"`
+	Components     bool                        `json:"components"`
 }
 
 type ConfigContentGit struct {
@@ -167,42 +173,31 @@ type Redirect struct {
 	Status int    `json:"status"`
 }
 
-type ConfigGoldmark struct {
-	Extensions []string               `json:"extensions"`
-	Parser     ConfigGoldmarkParser   `json:"parser"`
-	Renderer   ConfigGoldmarkRenderer `json:"renderer"`
-}
-
-type ConfigGoldmarkParser struct {
+type ConfigMarkdownParser struct {
 	AutoHeadingID bool `json:"auto_heading_id"`
 	Attribute     bool `json:"attribute"`
 }
 
-type ConfigGoldmarkRenderer struct {
+type ConfigMarkdownRenderer struct {
 	Hardbreaks bool `json:"hardbreaks"`
-	XHTML      bool `json:"XHTML"`
+	XHTML      bool `json:"xhtml"`
+}
+
+type ConfigMarkdownHighlighting struct {
+	Style       string `json:"style"`
+	LineNumbers bool   `json:"line_numbers"`
 }
 
 // DefaultConfig constructs a new Config with default values.
 func DefaultConfig() *Config {
-	defaultGoldmark := ConfigGoldmark{
-		Extensions: []string{
-			"gfm",
-			"table",
-			"strikethrough",
-			"tasklist",
-			"deflist",
-			"footnotes",
-			"typographer",
-		},
-		Parser: ConfigGoldmarkParser{
-			AutoHeadingID: false,
-			Attribute:     false,
-		},
-		Renderer: ConfigGoldmarkRenderer{
-			Hardbreaks: false,
-			XHTML:      false,
-		},
+	defaultMarkdown := ConfigContentMarkdown{
+		Tables:         true,
+		Strikethrough:  true,
+		TaskList:       true,
+		Linkify:        true,
+		DefinitionList: true,
+		Footnotes:      true,
+		Typographer:    true,
 	}
 
 	return &Config{
@@ -219,7 +214,7 @@ func DefaultConfig() *Config {
 			Content:   "content",
 			Data:      "data",
 			Static:    "static",
-			Templates: "templates/*.tmpl",
+			Templates: "templates",
 		},
 		Build: ConfigBuild{
 			Minifier: &ConfigMinifier{},
@@ -231,9 +226,7 @@ func DefaultConfig() *Config {
 					Template: "page",
 				},
 			},
-			Markdown: ConfigContentMarkdown{
-				Goldmark: defaultGoldmark,
-			},
+			Markdown: defaultMarkdown,
 		},
 	}
 }
@@ -383,94 +376,20 @@ func (c *Config) Validate() error {
 	}
 	c.Paths.Data = dataPath
 
-	templateGlob, err := c.resolveGlob("paths.templates", c.Paths.Templates)
+	templatePath, err := c.resolvePath("paths.templates", c.Paths.Templates)
 	if err != nil {
 		return err
 	}
-	c.Paths.Templates = templateGlob
+	c.Paths.Templates = templatePath
 
 	return nil
 }
 
 func (c *Config) WatchedPaths() (paths []string, globs []string, err error) {
 	return []string{
-		filepath.Join(c.root(), filepath.FromSlash(c.StaticSourcePath())),
-		filepath.Join(c.root(), filepath.FromSlash(c.ContentSourcePath())),
+		filepath.Join(c.root(), filepath.FromSlash(c.Paths.Static)),
+		filepath.Join(c.root(), filepath.FromSlash(c.Paths.Content)),
 		filepath.Join(c.root(), filepath.FromSlash(c.Paths.Data)),
-	}, []string{filepath.Join(c.root(), filepath.FromSlash(c.TemplateGlob()))}, nil
-}
-
-func (c *Config) OutputPath() string {
-	return filepath.Join(c.root(), filepath.FromSlash(c.Paths.Output))
-}
-
-func (c *Config) StaticSourcePath() string {
-	return c.Paths.Static
-}
-
-func (c *Config) ContentSourcePath() string {
-	return c.Paths.Content
-}
-
-func (c *Config) TemplateGlob() string {
-	return c.Paths.Templates
-}
-
-func (cfg ConfigGoldmark) Build() gm.Markdown {
-	var (
-		exts       []gm.Extender
-		parserOpts []gmparse.Option
-		htmlOpts   []gmrenderer.Option
-	)
-
-	for _, name := range cfg.Extensions {
-		switch name {
-		case "gfm":
-			exts = append(exts, gmext.GFM)
-		case "table", "tables":
-			exts = append(exts, gmext.Table)
-		case "strikethrough":
-			exts = append(exts, gmext.Strikethrough)
-		case "tasklist", "task-list":
-			exts = append(exts, gmext.TaskList)
-		case "deflist", "definition-list":
-			exts = append(exts, gmext.DefinitionList)
-		case "footnote", "footnotes":
-			exts = append(exts, gmext.Footnote)
-		case "linkify":
-			exts = append(exts, gmext.Linkify)
-		case "typographer", "smartypants":
-			exts = append(exts, gmext.Typographer)
-		default:
-		}
-	}
-
-	if cfg.Parser.AutoHeadingID {
-		parserOpts = append(parserOpts, gmparse.WithAutoHeadingID())
-	}
-	if cfg.Parser.Attribute {
-		parserOpts = append(parserOpts, gmparse.WithAttribute())
-	}
-
-	htmlOpts = append(htmlOpts, gmhtml.WithUnsafe())
-
-	if cfg.Renderer.Hardbreaks {
-		htmlOpts = append(htmlOpts, gmhtml.WithHardWraps())
-	}
-	if cfg.Renderer.XHTML {
-		htmlOpts = append(htmlOpts, gmhtml.WithXHTML())
-	}
-
-	opts := make([]gm.Option, 0, 3)
-	if len(exts) > 0 {
-		opts = append(opts, gm.WithExtensions(exts...))
-	}
-	if len(parserOpts) > 0 {
-		opts = append(opts, gm.WithParserOptions(parserOpts...))
-	}
-	if len(htmlOpts) > 0 {
-		opts = append(opts, gm.WithRendererOptions(htmlOpts...))
-	}
-
-	return gm.New(opts...)
+		filepath.Join(c.root(), filepath.FromSlash(c.Paths.Templates)),
+	}, nil, nil
 }

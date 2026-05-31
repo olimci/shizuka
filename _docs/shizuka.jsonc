@@ -10,7 +10,7 @@
     "output": "dist",
     "content": "content",
     "static": "static",
-    "templates": "templates/*.tmpl"
+    "templates": "templates"
   },
   "build": {
     "minifier": null

@@ -11,8 +11,11 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/olimci/shizuka/pkg/build/embed"
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/manifest"
+	"github.com/olimci/shizuka/pkg/transforms"
+	"github.com/olimci/shizuka/pkg/utils/tmplutil"
 	"github.com/tdewolff/minify/v2"
 	mincss "github.com/tdewolff/minify/v2/css"
 	minhtml "github.com/tdewolff/minify/v2/html"
@@ -98,7 +101,7 @@ func matchGitignorePattern(pattern, target string) bool {
 	return doublestar.MatchUnvalidated(pattern, target) || doublestar.MatchUnvalidated("**/"+pattern, target)
 }
 
-func parseTemplates(sourceFS fs.FS, pattern string, funcs template.FuncMap) (*template.Template, error) {
+func parseRequiredTemplates(sourceFS fs.FS, pattern string, funcs template.FuncMap) (*template.Template, error) {
 	files, err := doublestar.Glob(sourceFS, pattern, doublestar.WithFailOnIOErrors())
 	if err != nil {
 		return nil, fmt.Errorf("template glob %q: %w", pattern, err)
@@ -106,7 +109,21 @@ func parseTemplates(sourceFS fs.FS, pattern string, funcs template.FuncMap) (*te
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no templates matched %q", pattern)
 	}
+	return parseTemplateFiles(sourceFS, files, funcs)
+}
 
+func parseOptionalTemplates(sourceFS fs.FS, pattern string, funcs template.FuncMap) (*template.Template, error) {
+	files, err := doublestar.Glob(sourceFS, pattern, doublestar.WithFailOnIOErrors())
+	if err != nil {
+		return nil, fmt.Errorf("template glob %q: %w", pattern, err)
+	}
+	if len(files) == 0 {
+		return template.New("shizuka").Funcs(funcs), nil
+	}
+	return parseTemplateFiles(sourceFS, files, funcs)
+}
+
+func parseTemplateFiles(sourceFS fs.FS, files []string, funcs template.FuncMap) (*template.Template, error) {
 	tmpl := template.New("shizuka").Funcs(funcs)
 
 	seen := make(map[string]struct{}, len(files))
@@ -130,4 +147,46 @@ func parseTemplates(sourceFS fs.FS, pattern string, funcs template.FuncMap) (*te
 	}
 
 	return tmpl, nil
+}
+
+func renderMarkdownComponentTemplate(tmpl *template.Template, page *transforms.Page) (string, error) {
+	tmpl, err := tmpl.Clone()
+	if err != nil {
+		return "", err
+	}
+	if _, err := tmpl.New(page.SourcePath).Parse(page.RawBody); err != nil {
+		return "", fmt.Errorf("markdown template %q: %w", page.SourcePath, err)
+	}
+
+	var buf strings.Builder
+	if err := tmpl.ExecuteTemplate(&buf, page.SourcePath, page.Tmpl()); err != nil {
+		return "", fmt.Errorf("markdown template %q: %w", page.SourcePath, err)
+	}
+	return buf.String(), nil
+}
+
+func emitDebugTemplate(sc *StepContext, claim manifest.Claim, data any, pp manifest.PostProcessor) error {
+	var buf strings.Builder
+	err := embed.Templates.Get().ExecuteTemplate(&buf, "debug", data)
+	if tmplutil.IsDiscard(err) {
+		return nil
+	}
+	if err != nil {
+		sc.Error(err, claim)
+		return nil
+	}
+	return sc.Manifest.Emit(manifest.TextArtefact(claim, buf.String()).Post(pp))
+}
+
+func emitRenderedTemplate(sc *StepContext, claim manifest.Claim, tmpl *template.Template, name string, data any, pp manifest.PostProcessor) error {
+	var buf strings.Builder
+	err := tmpl.ExecuteTemplate(&buf, name, data)
+	if tmplutil.IsDiscard(err) {
+		return nil
+	}
+	if err != nil {
+		sc.Error(err, claim)
+		return nil
+	}
+	return sc.Manifest.Emit(manifest.TextArtefact(claim, buf.String()).Post(pp))
 }

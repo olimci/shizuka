@@ -25,3 +25,5 @@ tmp/
 temp/
 .tmp/
 .gocache/
+
+PLAN.md
