@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/olimci/shizuka/cmd/internal/logging"
-	"github.com/olimci/shizuka/pkg/version"
+	"github.com/olimci/shizuka/internal/logging"
+	"github.com/olimci/shizuka/internal/version"
 	"github.com/urfave/cli/v3"
 )
 

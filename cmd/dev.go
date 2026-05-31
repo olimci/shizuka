@@ -1,19 +1,18 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"time"
-	"unicode/utf8"
 
-	"github.com/olimci/shizuka/cmd/internal/console"
-	"github.com/olimci/shizuka/pkg/build"
-	"github.com/olimci/shizuka/pkg/options"
-	"github.com/olimci/shizuka/pkg/server"
+	"github.com/olimci/shizuka/internal/console"
+	"github.com/olimci/shizuka/internal/build"
+	"github.com/olimci/shizuka/internal/options"
+	"github.com/olimci/shizuka/internal/server"
 	"github.com/urfave/cli/v3"
 )
 
@@ -54,7 +53,7 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 
 	con, err := console.Open(os.Stdin, os.Stdout, os.Stderr, console.Options{
 		HideCursor:     fancy,
-		NoEcho:         fancy,
+		CBreak:         fancy,
 		CleanupSignals: true,
 		Context:        ctx,
 	})
@@ -119,39 +118,48 @@ func devAction(ctx context.Context, cmd *cli.Command) error {
 }
 
 func readDevCommands(ctx context.Context, cancel context.CancelFunc, con *console.Console, srv *server.Server, logger *slog.Logger) {
-	scanner := bufio.NewScanner(con.In)
-	for scanner.Scan() {
+	buf := make([]byte, 1)
+	for {
+		n, err := con.In.Read(buf)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			logger.Error("reading input failed", "error", err)
+			return
+		}
+		if n == 0 {
+			continue
+		}
+
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
 
-		cmd := scanner.Text()
-		if cmd != "" {
-			r, _ := utf8.DecodeLastRuneInString(cmd)
-			cmd = string(r)
-		}
-		switch cmd {
-		case "q", "Q":
+		switch buf[0] {
+		case 'q', 'Q', 0x03, 0x04: // q, Ctrl-C, Ctrl-D
 			_ = srv.Close()
 			cancel()
 			return
-		case "r":
+		case 'r':
 			if err := srv.Rebuild(ctx, server.RebuildRequest{Reason: "manual"}); err != nil {
 				logger.Error("rebuild failed", "error", err)
 			}
-		case "R":
+		case 'R':
 			if err := srv.Rebuild(ctx, server.RebuildRequest{Reason: "manual cache reset", ResetCache: true}); err != nil {
 				logger.Error("rebuild failed", "error", err)
 			}
-		case "":
+		case '\n', '\r', ' ':
 		default:
-			logger.Warn("unknown command", "command", cmd)
+			logger.Warn("unknown command", "command", string(buf[0]))
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		logger.Error("reading input failed", "error", err)
 	}
 }
 
@@ -179,15 +187,23 @@ func logServerEvent(con *console.Console, logger *slog.Logger, ev server.Event, 
 		logger.Info("building", "reason", ev.Reason)
 	case server.EventBuildSucceeded:
 		logger.Info("build complete", "reason", ev.Reason, "duration", ev.Duration)
-		logger.Info("ready", "url", ev.URL, "commands", "r rebuild, R reset cache, q quit")
+		printReady(con, ev.URL)
 	case server.EventBuildFailed:
 		logger.Error("build failed", "reason", ev.Reason, "duration", ev.Duration, "error", ev.Err)
-		logger.Info("ready", "url", ev.URL, "commands", "r rebuild, R reset cache, q quit")
+		printReady(con, ev.URL)
 	case server.EventWatchError:
 		logger.Warn("watch error", "error", ev.Err)
 	case server.EventServerError:
 		logger.Error("server error", "error", ev.Err)
 	case server.EventListening:
-		logger.Info("listening", "url", ev.URL)
+		fmt.Fprintf(con.Out, "serving at %s\n", ev.URL)
 	}
+}
+
+func printReady(con *console.Console, url string) {
+	if url == "" {
+		fmt.Fprintln(con.Out, "ready · press r to rebuild · R to reset cache · q to quit")
+		return
+	}
+	fmt.Fprintf(con.Out, "ready · view at %s · press r to rebuild · R to reset cache · q to quit\n", url)
 }
