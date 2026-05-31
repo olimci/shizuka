@@ -24,7 +24,7 @@ import (
 
 func StepStatic(cfg *config.Config) Step {
 	return StepFunc("static", func(_ context.Context, sc *StepContext) error {
-		staticRoot := cfg.StaticSourcePath()
+		staticRoot := cfg.Paths.Static
 		info, err := fs.Stat(sc.Source.FS(), staticRoot)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {

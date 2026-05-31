@@ -241,45 +241,52 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "goldmark": {
-          "$ref": "#/$defs/goldmark"
-        }
-      }
-    },
-    "goldmark": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "extensions": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
-              "gfm",
-              "table",
-              "tables",
-              "strikethrough",
-              "tasklist",
-              "task-list",
-              "deflist",
-              "definition-list",
-              "footnote",
-              "footnotes",
-              "linkify",
-              "typographer",
-              "smartypants"
-            ]
-          }
+        "tables": {
+          "type": "boolean"
+        },
+        "strikethrough": {
+          "type": "boolean"
+        },
+        "task_list": {
+          "type": "boolean"
+        },
+        "definition_list": {
+          "type": "boolean"
+        },
+        "footnotes": {
+          "type": "boolean"
+        },
+        "linkify": {
+          "type": "boolean"
+        },
+        "typographer": {
+          "type": "boolean"
+        },
+        "wikilinks": {
+          "type": "boolean"
+        },
+        "components": {
+          "type": "boolean"
         },
         "parser": {
-          "$ref": "#/$defs/goldmarkParser"
+          "$ref": "#/$defs/markdownParser"
         },
         "renderer": {
-          "$ref": "#/$defs/goldmarkRenderer"
+          "$ref": "#/$defs/markdownRenderer"
+        },
+        "highlighting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/markdownHighlighting"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
-    "goldmarkParser": {
+    "markdownParser": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -291,14 +298,26 @@
         }
       }
     },
-    "goldmarkRenderer": {
+    "markdownRenderer": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "hardbreaks": {
           "type": "boolean"
         },
-        "XHTML": {
+        "xhtml": {
+          "type": "boolean"
+        }
+      }
+    },
+    "markdownHighlighting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "style": {
+          "type": "string"
+        },
+        "line_numbers": {
           "type": "boolean"
         }
       }

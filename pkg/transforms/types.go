@@ -44,6 +44,7 @@ type Page struct {
 	Preprocess string
 	RawBody    string
 	Body       template.HTML
+	Sections   []template.HTML
 
 	Featured bool
 	Draft    bool
@@ -53,6 +54,7 @@ func (p *Page) CloneShallow() *Page {
 	cloned := *p
 	cloned.Tags = slices.Clone(p.Tags)
 	cloned.Params = maps.Clone(p.Params)
+	cloned.Sections = slices.Clone(p.Sections)
 	return &cloned
 }
 
@@ -154,7 +156,8 @@ type PageTmpl struct {
 
 	Params map[string]any
 
-	Body template.HTML
+	Body     template.HTML
+	Sections []template.HTML
 
 	Featured bool
 	Draft    bool
@@ -181,6 +184,7 @@ func (p *Page) Tmpl() PageTmpl {
 		PubDate:     p.PubDate,
 		Params:      p.Params,
 		Body:        p.Body,
+		Sections:    p.Sections,
 		Featured:    p.Featured,
 		Draft:       p.Draft,
 	}

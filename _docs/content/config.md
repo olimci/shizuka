@@ -43,7 +43,7 @@ JSON configs may include `$schema` for editor support:
     "output": "dist",
     "content": "content",
     "static": "static",
-    "templates": "templates/*.tmpl"
+    "templates": "templates"
   },
   "build": {
     "minifier": {
@@ -72,16 +72,23 @@ JSON configs may include `$schema` for editor support:
       }
     },
     "markdown": {
-      "goldmark": {
-        "extensions": ["gfm", "table", "strikethrough", "tasklist", "deflist", "footnotes", "typographer"],
-        "parser": {
-          "auto_heading_id": false,
-          "attribute": false
-        },
-        "renderer": {
-          "hardbreaks": false,
-          "XHTML": false
-        }
+      "tables": true,
+      "strikethrough": true,
+      "task_list": true,
+      "definition_list": true,
+      "footnotes": true,
+      "linkify": true,
+      "typographer": true,
+      "wikilinks": false,
+      "components": false,
+      "highlighting": null,
+      "parser": {
+        "auto_heading_id": false,
+        "attribute": false
+      },
+      "renderer": {
+        "hardbreaks": false,
+        "xhtml": false
       }
     },
     "git": {
@@ -151,7 +158,7 @@ Filesystem locations for the site.
 | `output` | `dist` |
 | `content` | `content` |
 | `static` | `static` |
-| `templates` | `templates/*.tmpl` |
+| `templates` | `templates` |
 
 ## `build`
 
@@ -192,6 +199,32 @@ Section-specific defaults replace the global defaults object when the resolved
 section has a matching `sections` entry. Page frontmatter is decoded into the
 selected defaults, so page values always win, including explicit zero values
 such as `false`, `0`, empty strings, and empty lists.
+
+## `content.markdown`
+
+Markdown is configured with Shizuka feature flags. The renderer implementation
+is internal; the public config describes the behavior Shizuka supports.
+
+| Key | Meaning |
+| --- | --- |
+| `tables` | Enable pipe tables. |
+| `strikethrough` | Enable strikethrough spans. |
+| `task_list` | Enable task-list items. |
+| `definition_list` | Enable definition lists. |
+| `footnotes` | Enable footnotes. |
+| `linkify` | Turn plain URLs into links. |
+| `typographer` | Enable smart punctuation. |
+| `wikilinks` | Enable `[[target]]` wikilinks. |
+| `components` | Enable pre-render markdown templates from `templates/md/`. |
+| `highlighting` | Optional syntax-highlighting config. |
+| `parser.auto_heading_id` | Generate heading IDs. |
+| `parser.attribute` | Enable Markdown attributes. |
+| `renderer.hardbreaks` | Render soft line breaks as hard breaks. |
+| `renderer.xhtml` | Emit XHTML-compatible HTML. |
+
+`highlighting`, when present, supports `style` and `line_numbers`. Highlighted
+code uses Chroma classes; add CSS for the selected style to your templates or
+static assets.
 
 ## `artefacts`
 

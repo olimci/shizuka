@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/olimci/shizuka/pkg/build/embed"
 	"github.com/olimci/shizuka/pkg/config"
 	"github.com/olimci/shizuka/pkg/manifest"
+	"github.com/olimci/shizuka/pkg/markdown"
 	"github.com/olimci/shizuka/pkg/options"
 	"github.com/olimci/shizuka/pkg/registry"
 	"github.com/olimci/shizuka/pkg/transforms"
@@ -28,7 +28,7 @@ var (
 )
 
 func StepContent(cfg *config.Config, opts *options.Options) []Step {
-	buildStep := StepFunc("pages:build", func(_ context.Context, sc *StepContext) error {
+	build := StepFunc("pages:build", func(_ context.Context, sc *StepContext) error {
 		pages := registry.Get(sc.Registry, PagesK)
 		site := registry.Get(sc.Registry, SiteK)
 		tmpl := registry.Get(sc.Registry, TemplatesK)
@@ -131,8 +131,9 @@ func StepContent(cfg *config.Config, opts *options.Options) []Step {
 	}, "pages:index").Registry(registry.W(PagesK), registry.R(BuildCtxK), registry.RX(SiteGitK), registry.W(SiteK))
 
 	templates := StepFunc("pages:templates", func(_ context.Context, sc *StepContext) error {
+		pages := registry.Get(sc.Registry, PagesK)
 		funcs := tmplutil.DefaultFuncs()
-		md := cfg.Content.Markdown.Goldmark.Build()
+		md := markdown.Build(cfg.Content.Markdown, markdownOptions(cfg.Content.Markdown, pages, opts.Dev))
 		funcs["markdown"] = func(value any) (template.HTML, error) {
 			var buf strings.Builder
 			if err := md.Convert(fmt.Append(nil, value), &buf); err != nil {
@@ -143,18 +144,18 @@ func StepContent(cfg *config.Config, opts *options.Options) []Step {
 		maps.Copy(funcs, QueryFuncMap(registry.Get(sc.Registry, DBK)))
 		maps.Copy(funcs, paginationFuncMap())
 
-		templateGlob := cfg.TemplateGlob()
-		tmpl, err := parseTemplates(sc.Source.FS(), templateGlob, funcs)
+		templateGlob := path.Join(cfg.Paths.Templates, "html", "**", "*.tmpl")
+		tmpl, err := parseRequiredTemplates(sc.Source.FS(), templateGlob, funcs)
 		if err != nil {
-			return fmt.Errorf("template glob %q: %w", templateGlob, err)
+			return err
 		}
 
 		registry.Set(sc.Registry, TemplatesK, tmpl)
 		return nil
-	}, "pages:query").Registry(registry.R(DBK), registry.W(TemplatesK))
+	}, "pages:query").Registry(registry.R(PagesK), registry.R(DBK), registry.W(TemplatesK))
 
 	index := StepFunc("pages:index", func(_ context.Context, sc *StepContext) error {
-		contentRoot := cfg.ContentSourcePath()
+		contentRoot := cfg.Paths.Content
 		var pageSources []string
 
 		if err := fs.WalkDir(sc.Source.FS(), contentRoot, func(filePath string, d fs.DirEntry, err error) error {
@@ -291,7 +292,17 @@ func StepContent(cfg *config.Config, opts *options.Options) []Step {
 
 	render := StepFunc("pages:render", func(_ context.Context, sc *StepContext) error {
 		pages := registry.Get(sc.Registry, PagesK)
-		md := cfg.Content.Markdown.Goldmark.Build()
+		publicMD := markdown.Build(cfg.Content.Markdown, markdownOptions(cfg.Content.Markdown, pages, false))
+		draftMD := markdown.Build(cfg.Content.Markdown, markdownOptions(cfg.Content.Markdown, pages, true))
+		var mdTemplates *template.Template
+		if cfg.Content.Markdown.Components {
+			templateGlob := path.Join(cfg.Paths.Templates, "md", "**", "*.tmpl")
+			tmpl, err := parseOptionalTemplates(sc.Source.FS(), templateGlob, tmplutil.DefaultFuncs())
+			if err != nil {
+				return err
+			}
+			mdTemplates = tmpl
+		}
 
 		stream := pool.NewStream[*transforms.Page](sc.Pool, len(pages))
 		for _, page := range pages {
@@ -302,11 +313,26 @@ func StepContent(cfg *config.Config, opts *options.Options) []Step {
 			if err := stream.Go(func(_ context.Context) (*transforms.Page, error) {
 				switch page.Preprocess {
 				case "markdown":
-					var buf strings.Builder
-					if err := md.Convert([]byte(page.RawBody), &buf); err != nil {
-						return nil, fmt.Errorf("render markdown %q: %w", page.SourcePath, err)
+					rawBody := page.RawBody
+					if mdTemplates != nil {
+						rendered, err := renderMarkdownComponentTemplate(mdTemplates, page)
+						if err != nil {
+							return nil, err
+						}
+						rawBody = rendered
 					}
-					page.Body = template.HTML(buf.String())
+
+					md := publicMD
+					if page.Draft {
+						md = draftMD
+					}
+					doc, err := markdown.Render(md, page.SourcePath, rawBody)
+					if err != nil {
+						return nil, err
+					}
+					page.Body = doc.Body
+					page.Sections = doc.Sections
+
 					page.Preprocess = ""
 				default:
 					return nil, fmt.Errorf("unknown page preprocessor %q for %q", page.Preprocess, page.SourcePath)
@@ -338,31 +364,46 @@ func StepContent(cfg *config.Config, opts *options.Options) []Step {
 		return nil
 	}, "pages:render").Registry(registry.R(PagesK), registry.W(DBK))
 
-	return []Step{index, resolve, render, query, templates, buildStep}
+	return []Step{index, resolve, render, query, templates, build}
 }
 
-func emitDebugTemplate(sc *StepContext, claim manifest.Claim, data any, pp manifest.PostProcessor) error {
-	var buf strings.Builder
-	err := embed.Templates.Get().ExecuteTemplate(&buf, "debug", data)
-	if tmplutil.IsDiscard(err) {
-		return nil
+func markdownOptions(cfg config.ConfigContentMarkdown, pages []*transforms.Page, includeDrafts bool) markdown.Options {
+	if !cfg.Wikilinks {
+		return markdown.Options{}
 	}
-	if err != nil {
-		sc.Error(err, claim)
-		return nil
+
+	routes := make(map[string]struct{}, len(pages))
+	for _, page := range pages {
+		if page.Error != nil || page.Draft && !includeDrafts {
+			continue
+		}
+		routes[page.Path] = struct{}{}
 	}
-	return sc.Manifest.Emit(manifest.TextArtefact(claim, buf.String()).Post(pp))
+
+	return markdown.Options{
+		TargetResolver: func(target string) (string, error) {
+			route, err := wikilinkRouteTarget(target)
+			if err != nil {
+				return "", err
+			}
+			if _, ok := routes[route]; !ok {
+				return "", fmt.Errorf("missing route %q", route)
+			}
+			return route, nil
+		},
+	}
 }
 
-func emitRenderedTemplate(sc *StepContext, claim manifest.Claim, tmpl *template.Template, name string, data any, pp manifest.PostProcessor) error {
-	var buf strings.Builder
-	err := tmpl.ExecuteTemplate(&buf, name, data)
-	if tmplutil.IsDiscard(err) {
-		return nil
+func wikilinkRouteTarget(target string) (string, error) {
+	if target == "" {
+		return "", fmt.Errorf("target is empty")
 	}
-	if err != nil {
-		sc.Error(err, claim)
-		return nil
+	if strings.HasPrefix(target, "/") {
+		return pathutil.ValidateRoutePath(target)
 	}
-	return sc.Manifest.Emit(manifest.TextArtefact(claim, buf.String()).Post(pp))
+	route := "/" + target
+	if !strings.HasSuffix(route, "/") {
+		route += "/"
+	}
+	return pathutil.ValidateRoutePath(route)
 }

@@ -10,7 +10,9 @@ require (
 	github.com/olimci/structql v0.0.0-20260525155055-7a53754ceaa4
 	github.com/tdewolff/minify/v2 v2.24.13
 	github.com/urfave/cli/v3 v3.9.0
+	github.com/alecthomas/chroma/v2 v2.26.1
 	github.com/yuin/goldmark v1.8.2
+	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	golang.org/x/sync v0.20.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -20,6 +22,8 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
+	github.com/dlclark/regexp2 v1.12.0 // indirect
+	github.com/dlclark/regexp2/v2 v2.1.1 // indirect
 )
 
 require (

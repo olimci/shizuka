@@ -14,8 +14,11 @@ A Shizuka site is a directory with a config file and some content:
 │  └─ posts/
 │     └─ hello.md
 ├─ templates/
-│  ├─ index.tmpl
-│  └─ post.tmpl
+│  ├─ html/
+│  │  ├─ index.tmpl
+│  │  └─ post.tmpl
+│  └─ md/
+│     └─ demo.tmpl
 ├─ data/
 │  └─ catalog.jsonc
 └─ static/
@@ -28,7 +31,7 @@ A Shizuka site is a directory with a config file and some content:
 | --- | --- |
 | `content/` | Source pages. Markdown pages are converted to HTML and then rendered through a template. |
 | `data/` | Optional structured data manifests registered as query tables. |
-| `templates/` | Go `html/template` files used to render pages. |
+| `templates/` | Go template files. HTML layouts live under `templates/html/`; markdown components live under `templates/md/`. |
 | `static/` | Copied to the output as-is: CSS, images, JavaScript, fonts, and other static files. |
 | `dist/` | The default build output folder. |
 

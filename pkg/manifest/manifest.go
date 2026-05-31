@@ -62,7 +62,7 @@ func (m *Manifest) Start(ctx context.Context, cfg *config.Config, opts *options.
 	case cfg == nil:
 		return errors.New("manifest output path requires config or explicit output path")
 	default:
-		out = cfg.OutputPath()
+		out = filepath.Join(cfg.Root, filepath.FromSlash(cfg.Paths.Output))
 	}
 	if err := validateOutputPath(cfg, opts, out); err != nil {
 		return err

@@ -8,7 +8,7 @@ sitemap:
 
 This documentation is itself a Shizuka site. The source lives in `_docs/`, the
 content lives in `_docs/content/`, and the shared page template lives in
-`_docs/templates/page.tmpl`.
+`_docs/templates/html/page.tmpl`.
 
 ## Build the docs
 

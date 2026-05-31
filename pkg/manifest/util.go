@@ -68,9 +68,9 @@ func manifestSourcePaths(cfg *config.Config) ([]string, error) {
 	}
 
 	paths := []string{
-		filepath.Join(rootAbs, filepath.FromSlash(cfg.StaticSourcePath())),
-		filepath.Join(rootAbs, filepath.FromSlash(cfg.ContentSourcePath())),
-		filepath.Join(rootAbs, filepath.FromSlash(globBase(cfg.TemplateGlob()))),
+		filepath.Join(rootAbs, filepath.FromSlash(cfg.Paths.Static)),
+		filepath.Join(rootAbs, filepath.FromSlash(cfg.Paths.Content)),
+		filepath.Join(rootAbs, filepath.FromSlash(cfg.Paths.Templates)),
 	}
 	for i, p := range paths {
 		abs, err := filepath.Abs(p)
@@ -80,22 +80,6 @@ func manifestSourcePaths(cfg *config.Config) ([]string, error) {
 		paths[i] = abs
 	}
 	return paths, nil
-}
-
-func globBase(pattern string) string {
-	pattern = filepath.ToSlash(pattern)
-	parts := strings.Split(pattern, "/")
-	base := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if strings.ContainsAny(part, "*?[") {
-			break
-		}
-		base = append(base, part)
-	}
-	if len(base) == 0 {
-		return "."
-	}
-	return path.Join(base...)
 }
 
 func pathsIntersect(a, b string) bool {

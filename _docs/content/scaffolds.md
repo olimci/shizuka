@@ -21,7 +21,8 @@ my-template/
 ├─ content/
 │  └─ index.md
 ├─ templates/
-│  └─ page.tmpl
+│  └─ html/
+│     └─ page.tmpl
 └─ static/
    └─ style.css
 ```
@@ -59,7 +60,7 @@ When scaffolding:
   `shizuka.template.*` config.
 - Any path matching `files.templates` is processed as a Go `text/template` with
   your variables, such as `{{.SiteName}}`.
-- Site templates under `templates/*.tmpl` are copied as-is. They should keep
+- Site templates under `templates/html/` are copied as-is. They should keep
   their `.tmpl` extension and define their own template name, such as
   `{{ define "page" }}`.
 - `files.renames` matches by basename, for example `_gitignore` becomes
