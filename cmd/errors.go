@@ -1,36 +1,13 @@
 package cmd
 
-const defaultFailureExitCode = 1
-
 type HandledError struct {
 	Code int
 	Err  error
 }
 
+func (e *HandledError) Error() string { return e.Err.Error() }
+func (e *HandledError) Unwrap() error { return e.Err }
+
 func handled(err error) error {
-	return handledWithCode(defaultFailureExitCode, err)
-}
-
-func handledWithCode(code int, err error) error {
-	if err == nil {
-		return nil
-	}
-	if code == 0 {
-		code = defaultFailureExitCode
-	}
-	return &HandledError{Code: code, Err: err}
-}
-
-func (e *HandledError) Error() string {
-	if e == nil || e.Err == nil {
-		return ""
-	}
-	return e.Err.Error()
-}
-
-func (e *HandledError) Unwrap() error {
-	if e == nil {
-		return nil
-	}
-	return e.Err
+	return &HandledError{Code: 1, Err: err}
 }

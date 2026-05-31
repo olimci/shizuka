@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/olimci/shizuka/cmd/internal/console"
-	"github.com/olimci/shizuka/cmd/internal/logging"
+	"github.com/olimci/shizuka/internal/console"
+	"github.com/olimci/shizuka/internal/logging"
 	"github.com/urfave/cli/v3"
 )
 
