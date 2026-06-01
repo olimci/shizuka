@@ -1,12 +1,5 @@
 # TODO:
 
-- [ ] Logging/UX:
-  - [x] Currently if you split logging out like `shizuka build --debug > debug.log`, the stderr output is not captured in the log file. I think the best UX would be to output stderr to output, but also replicate it to stdout if we are emitting to a file like this.
-  - [x] key rendering in logging is kind of ugly as it stands. and the debug color is way too dim.
-  - [x] debug logging isn't that useful as it stands, tells you step starts etc, but it would be nice if steps reported more information, like (found x pages) warnings etc.
-  - [x] shizuka dev user messages shouldn't be emitted via the logger, as it makes the hints harder to read/less obvious.
-  - [x] evaluate if setting raw mode would be valuable here (saves each keybind requiring enter) update: perhaps just disable ICANON
-
 ## not for now:
 
 - [ ] extensions plan

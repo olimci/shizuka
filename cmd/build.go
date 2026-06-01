@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/olimci/shizuka/internal/console"
 	"github.com/olimci/shizuka/internal/build"
+	"github.com/olimci/shizuka/internal/console"
 	"github.com/olimci/shizuka/internal/options"
 	"github.com/urfave/cli/v3"
 )

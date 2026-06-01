@@ -346,6 +346,7 @@ func StepContent(cfg *config.Config, opts *options.Options) []Step {
 					}
 					page.Body = doc.Body
 					page.Sections = doc.Sections
+					page.ToC = doc.ToC
 
 					page.Preprocess = ""
 				default:

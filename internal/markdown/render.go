@@ -13,22 +13,31 @@ import (
 type Document struct {
 	Body     template.HTML
 	Sections []template.HTML
+	ToC      []ToCEntry
+}
+
+type ToCEntry struct {
+	Level int
+	ID    string
+	Text  string
 }
 
 func Render(md gm.Markdown, sourcePath, rawBody string) (Document, error) {
 	source := []byte(rawBody)
 	doc := md.Parser().Parse(gmtext.NewReader(source))
+	toc := collectToC(source, doc)
 	body, err := renderNode(md, sourcePath, source, doc)
 	if err != nil {
 		return Document{}, err
 	}
-	sections, err := renderSections(md, sourcePath, source, doc)
+	sections, err := renderSections(md, sourcePath, source)
 	if err != nil {
 		return Document{}, err
 	}
 	return Document{
 		Body:     body,
 		Sections: sections,
+		ToC:      toc,
 	}, nil
 }
 
@@ -40,7 +49,31 @@ func renderNode(md gm.Markdown, sourcePath string, source []byte, node gmast.Nod
 	return template.HTML(buf.String()), nil
 }
 
-func renderSections(md gm.Markdown, sourcePath string, source []byte, doc gmast.Node) ([]template.HTML, error) {
+func collectToC(source []byte, doc gmast.Node) []ToCEntry {
+	var toc []ToCEntry
+	if err := gmast.Walk(doc, func(node gmast.Node, entering bool) (gmast.WalkStatus, error) {
+		if !entering || node.Kind() != gmast.KindHeading {
+			return gmast.WalkContinue, nil
+		}
+
+		heading := node.(*gmast.Heading)
+		entry := ToCEntry{
+			Level: heading.Level,
+			Text:  string(heading.Text(source)),
+		}
+		if id, ok := heading.AttributeString("id"); ok {
+			entry.ID = string(id.([]byte))
+		}
+		toc = append(toc, entry)
+		return gmast.WalkSkipChildren, nil
+	}); err != nil {
+		panic(err)
+	}
+	return toc
+}
+
+func renderSections(md gm.Markdown, sourcePath string, source []byte) ([]template.HTML, error) {
+	doc := md.Parser().Parse(gmtext.NewReader(source))
 	var sections []template.HTML
 	section := gmast.NewDocument()
 	for node := doc.FirstChild(); node != nil; {

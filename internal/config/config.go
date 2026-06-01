@@ -186,6 +186,7 @@ type ConfigMarkdownRenderer struct {
 type ConfigMarkdownHighlighting struct {
 	Style       string `json:"style"`
 	LineNumbers bool   `json:"line_numbers"`
+	Classes     bool   `json:"classes"`
 }
 
 // DefaultConfig constructs a new Config with default values.

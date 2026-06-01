@@ -319,6 +319,9 @@
         },
         "line_numbers": {
           "type": "boolean"
+        },
+        "classes": {
+          "type": "boolean"
         }
       }
     },

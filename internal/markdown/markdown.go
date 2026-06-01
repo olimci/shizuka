@@ -58,7 +58,7 @@ func Build(cfg config.ConfigContentMarkdown, options Options) gm.Markdown {
 	if cfg.Highlighting != nil {
 		highlightOpts := []highlighting.Option{
 			highlighting.WithFormatOptions(
-				chromahtml.WithClasses(true),
+				chromahtml.WithClasses(cfg.Highlighting.Classes),
 				chromahtml.WithLineNumbers(cfg.Highlighting.LineNumbers),
 			),
 		}

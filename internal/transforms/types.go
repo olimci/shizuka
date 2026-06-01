@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/olimci/shizuka/internal/frontmatter"
+	"github.com/olimci/shizuka/internal/markdown"
 )
 
 type Page struct {
@@ -45,6 +46,7 @@ type Page struct {
 	RawBody    string
 	Body       template.HTML
 	Sections   []template.HTML
+	ToC        []markdown.ToCEntry
 
 	Featured bool
 	Draft    bool
@@ -55,6 +57,7 @@ func (p *Page) CloneShallow() *Page {
 	cloned.Tags = slices.Clone(p.Tags)
 	cloned.Params = maps.Clone(p.Params)
 	cloned.Sections = slices.Clone(p.Sections)
+	cloned.ToC = slices.Clone(p.ToC)
 	return &cloned
 }
 
@@ -158,6 +161,7 @@ type PageTmpl struct {
 
 	Body     template.HTML
 	Sections []template.HTML
+	ToC      []markdown.ToCEntry
 
 	Featured bool
 	Draft    bool
@@ -185,6 +189,7 @@ func (p *Page) Tmpl() PageTmpl {
 		Params:      p.Params,
 		Body:        p.Body,
 		Sections:    p.Sections,
+		ToC:         p.ToC,
 		Featured:    p.Featured,
 		Draft:       p.Draft,
 	}
