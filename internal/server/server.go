@@ -288,6 +288,7 @@ func (s *Server) buildOptions(ctx context.Context, changedPaths []string) []opti
 		options.WithInternalSiteURL(s.siteURL),
 		options.WithInternalCache(s.cache),
 		options.WithInternalChanges(changedPaths),
+		options.WithForce(true),
 	)
 	all := make([]options.Option, 0, len(s.opts.BuildOptions)+len(internal))
 	all = append(all, s.opts.BuildOptions...)

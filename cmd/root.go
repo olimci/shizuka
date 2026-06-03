@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"runtime"
 
 	"github.com/olimci/shizuka/internal/logging"
 	"github.com/olimci/shizuka/internal/version"
@@ -36,6 +37,7 @@ func Execute(ctx context.Context, args []string) error {
 			&cli.IntFlag{
 				Name:    "workers",
 				Aliases: []string{"w"},
+				Value:   runtime.NumCPU(),
 				Usage:   "Maximum number of concurrent workers",
 				Validator: func(workers int) error {
 					if workers <= 0 {

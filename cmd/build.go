@@ -31,6 +31,10 @@ var buildCmd = &cli.Command{
 			Name:  "dev",
 			Usage: "Build in dev mode",
 		},
+		&cli.BoolFlag{
+			Name:  "force",
+			Usage: "Overwrite a non-empty output directory",
+		},
 	},
 	Action: buildAction,
 }
@@ -58,6 +62,7 @@ func buildAction(ctx context.Context, cmd *cli.Command) error {
 		options.WithConfigPath(cmd.String("config")),
 		options.If(options.WithOutputPath(cmd.String("output")), cmd.IsSet("output")),
 		options.If(options.WithMaxWorkers(cmd.Int("workers")), cmd.IsSet("workers")),
+		options.If(options.WithForce(true), cmd.Bool("force")),
 
 		// dev stuff
 		options.If(options.WithDev(true), cmd.Bool("dev")),

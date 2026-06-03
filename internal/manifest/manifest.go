@@ -79,6 +79,17 @@ func (m *Manifest) Start(ctx context.Context, cfg *config.Config, opts *options.
 	if err != nil {
 		return err
 	}
+	if !opts.Force {
+		empty, err := rootEmpty(outRoot)
+		if err != nil {
+			_ = outRoot.Close()
+			return fmt.Errorf("output %q: %w", out, err)
+		}
+		if !empty {
+			_ = outRoot.Close()
+			return fmt.Errorf("output directory %q is not empty; pass --force to overwrite it", out)
+		}
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()

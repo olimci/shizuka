@@ -97,6 +97,12 @@ func WithDev(dev bool) Option {
 	}
 }
 
+func WithForce(force bool) Option {
+	return func(o *Options) {
+		o.Force = force
+	}
+}
+
 func WithSyncWrites(sync bool) Option {
 	return func(o *Options) {
 		o.SyncWrites = sync
@@ -203,6 +209,7 @@ type Options struct {
 	// Runtime options
 	MaxWorkers int
 	SyncWrites bool
+	Force      bool
 
 	// Cache Options
 	CacheRegistry *registry.Registry

@@ -3,6 +3,7 @@ package manifest
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -118,6 +119,20 @@ func rootFileExists(root *os.Root, full string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+func rootEmpty(root *os.Root) (bool, error) {
+	dir, err := root.Open(".")
+	if err != nil {
+		return false, err
+	}
+	defer dir.Close()
+
+	entries, err := dir.ReadDir(1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	return len(entries) == 0, nil
 }
 
 func conflictError(target string, claims []Claim) error {

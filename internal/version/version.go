@@ -9,8 +9,8 @@ import (
 
 // Version is for storing the version of shizuka
 const (
-	Major = 0
-	Minor = 1
+	Major = 1
+	Minor = 0
 	Patch = 0
 )
 
