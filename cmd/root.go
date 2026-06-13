@@ -20,9 +20,14 @@ const (
 )
 
 func Execute(ctx context.Context, args []string) error {
+	return newRootCommand().Run(ctx, args)
+}
+
+func newRootCommand() *cli.Command {
 	app := &cli.Command{
-		Name:  "shizuka",
-		Usage: "The BEST static site generator",
+		Name:                  "shizuka",
+		Usage:                 "The BEST static site generator",
+		EnableShellCompletion: true,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:  "debug",
@@ -53,6 +58,5 @@ func Execute(ctx context.Context, args []string) error {
 		},
 		Version: version.Current().String(),
 	}
-
-	return app.Run(ctx, args)
+	return app
 }

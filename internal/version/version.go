@@ -11,7 +11,7 @@ import (
 const (
 	Major = 1
 	Minor = 0
-	Patch = 0
+	Patch = 1
 )
 
 var ErrInvalidVersion = errors.New("invalid version")
